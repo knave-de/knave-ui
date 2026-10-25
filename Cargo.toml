@@ -1,0 +1,17 @@
+[workspace]
+members = ["crates/knave-ui", "crates/knave-renderer"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+bytemuck = { version = "1", features = ["derive"] }
+glyphon = "0.12.0"
+knave-ui = { path = "crates/knave-ui" }
+knave-desktop-api = { git = "https://github.com/knave-de/knave.git", rev = "ece467b47c942bdc0fe7e0dea73088a8c31ca98e" }
+png = "0.18"
+pollster = "1.0.1"
+wgpu = "30.0.1"
