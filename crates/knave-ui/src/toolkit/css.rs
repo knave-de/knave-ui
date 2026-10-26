@@ -69,7 +69,7 @@ impl Stylesheet {
             .warning { color: var(--warning); }
             .danger { color: var(--danger); }
             panel, scene-snapshot { background-color: #151d28; }
-            button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination { background-color: #212c3c; padding: 6px 10px; }
+            button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination { background-color: #212c3c; }
             button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: #314053; }
             button:pressed, link:pressed, selectable:pressed { background-color: #1c283a; }
             button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: #2a5870; }
@@ -365,6 +365,11 @@ pub(super) fn compute(
     }
     for (name, (_, _, raw)) in declarations {
         if name.starts_with("--") {
+            continue;
+        }
+        if node.element.style.background.is_some()
+            && matches!(name.as_str(), "background" | "background-color")
+        {
             continue;
         }
         let value = resolve_vars(&raw, &vars, 0).ok()?;
@@ -829,5 +834,29 @@ mod tests {
         );
         assert!(Stylesheet::parse("button { border-radius: -2px; }").is_err());
         assert!(Stylesheet::parse("button:active { color: red; }").is_err());
+    }
+    #[test]
+    fn explicit_background_and_default_layout_metrics_are_preserved() {
+        let mut explicit = Element::new(2, Widget::Panel);
+        let mut paint = ShapePaint::fill(Color::rgba(32, 36, 39, 255));
+        paint.radii = CornerRadii::uniform(7.0);
+        explicit.style.background = Some(paint.clone());
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![
+            explicit,
+            Element::new(3, Widget::Button("Run".into())),
+        ]))
+        .unwrap();
+        let button_padding = scene.computed_style(ElementId(3)).unwrap().padding;
+        scene
+            .set_stylesheet("panel { background-color: #abcdef; }")
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.background,
+            Some(paint)
+        );
+        assert_eq!(
+            scene.computed_style(ElementId(3)).unwrap().padding,
+            button_padding
+        );
     }
 }

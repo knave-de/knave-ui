@@ -10,10 +10,7 @@ impl Scene {
         }
         self.list.commands.clear();
         self.list.revision = self.list.revision.wrapping_add(1);
-        self.list.clear_color = self
-            .computed_style(self.nodes[0].element.id)
-            .and_then(|style| style.style.background.and_then(|paint| paint.fill))
-            .unwrap_or(Color::BACKGROUND);
+        self.list.clear_color = Color::BACKGROUND;
         self.stats.visible_elements = 0;
         let order = self.order.clone();
         for i in order {
