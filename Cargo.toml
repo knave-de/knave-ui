@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/knave-ui", "crates/knave-renderer"]
+members = ["crates/knave-ui", "crates/knave-renderer", "crates/knave-app"]
 resolver = "3"
 
 [workspace.package]

@@ -13,6 +13,28 @@ preserved during extraction. The extracted crates originate from
 [Knave Shell revision 1cd6ac6](https://github.com/knave-de/knaveshell/tree/1cd6ac60f8e03edc110acf3629f468ad3385cb5f);
 their original MIT copyright notice is retained in `LICENSE`.
 
+## Standalone apps and widget gallery
+
+Run the interactive gallery in an existing Wayland or X11 desktop:
+
+```sh
+cargo run -p knave-app --example widget-gallery --locked
+```
+
+The gallery has Core, Layout, Navigation, Overlays, States and Coverage pages.
+It distinguishes existing primitives, application compositions and missing features,
+with side-by-side selection/disabled states and live focus/pressed/expanded states.
+Tab/Shift+Tab moves focus; page switching preserves values and per-page scrolling.
+See the [coverage matrix](docs/architecture/widget-catalog.md) for remaining gaps.
+It runs independently of Knave Shell.
+
+To build an app, depend on `knave-app` and `knave-ui`, implement
+`knave_app::Application` with `scene()` and `action()`, then call
+`knave_app::run(title, [width, height], app)`. The host handles the window,
+rendering, input, cursor, clipboard and IME bridge. App state and service requests
+stay in your implementation. See the [gallery source](crates/knave-app/examples/widget-gallery.rs)
+and [hosting architecture](docs/architecture/standalone-apps.md).
+
 ## Build
 
 ```sh

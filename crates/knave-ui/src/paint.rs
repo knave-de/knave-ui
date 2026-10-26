@@ -119,6 +119,14 @@ pub enum TextAlign {
     End,
 }
 
+/// Shared heading typography in logical pixels.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum HeadingLevel {
+    H1,
+    H2,
+    H3,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextStyle {
     pub color: Color,
@@ -128,6 +136,25 @@ pub struct TextStyle {
     pub weight: u16,
     pub wrap: TextWrap,
     pub align: TextAlign,
+}
+
+impl TextStyle {
+    /// Bold, wrapping heading presets: H1 24/32, H2 20/28, H3 16/24
+    /// (font size / line height in logical pixels).
+    pub fn heading(level: HeadingLevel) -> Self {
+        let (font_size, line_height) = match level {
+            HeadingLevel::H1 => (24.0, 32.0),
+            HeadingLevel::H2 => (20.0, 28.0),
+            HeadingLevel::H3 => (16.0, 24.0),
+        };
+        Self {
+            font_size,
+            line_height,
+            weight: 700,
+            wrap: TextWrap::WordOrGlyph,
+            ..Self::default()
+        }
+    }
 }
 
 impl Default for TextStyle {
