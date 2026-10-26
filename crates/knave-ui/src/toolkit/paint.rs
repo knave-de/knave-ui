@@ -10,7 +10,10 @@ impl Scene {
         }
         self.list.commands.clear();
         self.list.revision = self.list.revision.wrapping_add(1);
-        self.list.clear_color = Color::BACKGROUND;
+        self.list.clear_color = self
+            .computed_style(self.nodes[0].element.id)
+            .and_then(|style| style.style.background.and_then(|paint| paint.fill))
+            .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
         for i in order {
@@ -28,13 +31,15 @@ impl Scene {
             let node = &self.nodes[self.indices[&id]];
             if let Some(label) = &node.element.tooltip {
                 let w = 280.0f32.min(self.viewport.width);
-                let mut tooltip_style = node.element.style.text.clone();
-                tooltip_style.color = Color::TEXT;
+                let tooltip = self.auxiliary_style("tooltip");
+                let mut tooltip_style = tooltip.style.text.clone();
                 tooltip_style.wrap = TextWrap::WordOrGlyph;
+                let inset_x = tooltip.padding.horizontal();
+                let inset_y = tooltip.padding.vertical();
                 let h = (text
-                    .measure(label, &tooltip_style, (w - 16.0).max(1.0))
+                    .measure(label, &tooltip_style, (w - inset_x).max(1.0))
                     .size[1]
-                    + 16.0)
+                    + inset_y)
                     .min(self.viewport.height);
                 let b = Rect::new(
                     node.bounds.x.clamp(0.0, (self.viewport.width - w).max(0.0)),
@@ -43,15 +48,19 @@ impl Scene {
                     w,
                     h,
                 );
-                shape(
-                    &mut self.list,
-                    b,
-                    Some(self.viewport),
-                    ShapePaint::fill(Color::rgba(45, 61, 80, 255)),
-                );
+                let mut tip_paint = tooltip
+                    .style
+                    .background
+                    .clone()
+                    .unwrap_or_else(|| ShapePaint::fill(Color::rgba(45, 61, 80, 255)));
+                tip_paint.radii = tooltip
+                    .style
+                    .radii
+                    .unwrap_or(CornerRadii::uniform(tooltip.style.radius));
+                shape(&mut self.list, b, Some(self.viewport), tip_paint);
                 text_cmd(
                     &mut self.list,
-                    inset(b, 8.0),
+                    tooltip.padding.apply(b),
                     Some(b),
                     label.clone(),
                     tooltip_style,
@@ -68,7 +77,10 @@ impl Scene {
         let b = node.bounds;
         let clip = node.clip;
         let state = self.interaction(e.id).unwrap();
-        let mut style = e.style.clone();
+        let mut style = self
+            .computed_style(e.id)
+            .map_or_else(|| e.style.clone(), |s| s.style);
+        let layout = self.effective_layout(i);
         if state.disabled {
             style.text.color.alpha = 105;
         }
@@ -113,8 +125,8 @@ impl Scene {
             }
             shape(&mut self.list, b, clip, paint.clone());
         }
-        let content = control_content(b, e.layout);
-        let text_area = label_content(b, e.layout);
+        let content = control_content(b, layout);
+        let text_area = label_content(b, layout);
         let mut label = None;
         match &e.widget {
             Widget::Icon(icon) => {
@@ -160,20 +172,20 @@ impl Scene {
             }
             Widget::Toast { label: value, .. } | Widget::Text(value) => text_cmd(
                 &mut self.list,
-                e.layout.insets().apply(b),
+                layout.insets().apply(b),
                 clip,
                 value.clone(),
                 style.text.clone(),
             ),
             Widget::Paragraph(spans) => self.list.commands.push(DisplayCommand::RichText {
-                bounds: e.layout.insets().apply(b),
+                bounds: layout.insets().apply(b),
                 spans: spans.clone(),
                 style: style.text.clone(),
                 transform: Transform2D::IDENTITY,
                 clip,
             }),
             Widget::Image(image, image_style) => self.list.commands.push(DisplayCommand::Image {
-                bounds: e.layout.insets().apply(b),
+                bounds: layout.insets().apply(b),
                 image: image.clone(),
                 style: *image_style,
                 transform: Transform2D::IDENTITY,
@@ -209,11 +221,7 @@ impl Scene {
                     w,
                     18.0,
                 );
-                let mut paint = ShapePaint::fill(if checked {
-                    Color::ACCENT
-                } else {
-                    Color::rgba(72, 85, 102, 255)
-                });
+                let mut paint = ShapePaint::fill(if checked { style.focus } else { style.hover });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
                 shape(&mut self.list, rect, clip, paint);
                 if toggle {
@@ -228,7 +236,7 @@ impl Scene {
                         clip,
                         ShapePaint {
                             radii: CornerRadii::uniform(6.0),
-                            ..ShapePaint::fill(Color::TEXT)
+                            ..ShapePaint::fill(style.text.color)
                         },
                     );
                 }
@@ -243,7 +251,7 @@ impl Scene {
                             line_height: 18.0,
                             weight: 700,
                             align: crate::TextAlign::Center,
-                            color: Color::TEXT,
+                            color: style.text.color,
                             wrap: TextWrap::None,
                             ..style.text.clone()
                         },
@@ -282,12 +290,7 @@ impl Scene {
                         4.0,
                     )
                 };
-                shape(
-                    &mut self.list,
-                    track,
-                    clip,
-                    ShapePaint::fill(Color::rgba(80, 92, 111, 255)),
-                );
+                shape(&mut self.list, track, clip, ShapePaint::fill(style.hover));
                 let fill = if vertical {
                     Rect::new(
                         track.x,
@@ -299,7 +302,7 @@ impl Scene {
                     Rect::new(track.x, track.y, track.width * f, track.height)
                 };
                 if fill.is_finite_positive() {
-                    shape(&mut self.list, fill, clip, ShapePaint::fill(Color::ACCENT));
+                    shape(&mut self.list, fill, clip, ShapePaint::fill(style.focus));
                 }
                 let center = if vertical {
                     [
@@ -312,7 +315,7 @@ impl Scene {
                         content.y + content.height / 2.0,
                     ]
                 };
-                let mut paint = ShapePaint::fill(Color::TEXT);
+                let mut paint = ShapePaint::fill(style.text.color);
                 paint.radii = CornerRadii::uniform(9.0);
                 shape(
                     &mut self.list,
@@ -378,7 +381,7 @@ impl Scene {
                                     height,
                                 ),
                                 text_clip,
-                                ShapePaint::fill(Color::rgba(58, 107, 151, 255)),
+                                ShapePaint::fill(style.selected),
                             );
                         }
                     }
@@ -415,7 +418,7 @@ impl Scene {
                             height,
                         ),
                         text_clip,
-                        ShapePaint::fill(Color::TEXT),
+                        ShapePaint::fill(style.text.color),
                     );
                     if !preedit.is_empty() {
                         text_cmd(
@@ -477,10 +480,10 @@ impl Scene {
                 &mut self.list,
                 Rect::new(b.x, b.y + b.height / 2.0, b.width, 1.0),
                 clip,
-                ShapePaint::fill(Color::rgba(80, 92, 111, 255)),
+                ShapePaint::fill(style.hover),
             ),
             Widget::Scroll if node.scroll_max > 0.0 => {
-                let area = e.layout.insets().apply(b);
+                let area = layout.insets().apply(b);
                 let h = (area.height * area.height / (area.height + node.scroll_max))
                     .max(12.0)
                     .min(area.height);
@@ -489,7 +492,7 @@ impl Scene {
                     &mut self.list,
                     Rect::new(b.x + b.width - 5.0, y, 3.0, h),
                     clip,
-                    ShapePaint::fill(Color::rgba(106, 128, 153, 255)),
+                    ShapePaint::fill(style.hover),
                 );
             }
             _ => {}
@@ -515,14 +518,20 @@ impl Scene {
             return;
         };
         let node = &self.nodes[self.indices[&menu.owner]];
+        let menu_style = self
+            .computed_style(node.element.id)
+            .unwrap_or_else(|| ComputedStyle::from(&node.element))
+            .style;
         let b = menu.bounds;
         let clip = Some(b);
-        shape(
-            &mut self.list,
-            b,
-            clip,
-            ShapePaint::fill(Color::rgba(28, 39, 55, 255)),
-        );
+        let mut menu_paint = menu_style
+            .background
+            .clone()
+            .unwrap_or_else(|| ShapePaint::fill(Color::rgba(28, 39, 55, 255)));
+        menu_paint.radii = menu_style
+            .radii
+            .unwrap_or(CornerRadii::uniform(menu_style.radius));
+        shape(&mut self.list, b, clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
             return;
         };
@@ -541,7 +550,7 @@ impl Scene {
                     &mut self.list,
                     Rect::new(b.x + 8.0, row.y + h / 2.0, (b.width - 16.0).max(0.0), 1.0),
                     clip,
-                    ShapePaint::fill(Color::rgba(80, 92, 111, 255)),
+                    ShapePaint::fill(menu_style.hover),
                 ),
                 MenuItem::Option { label, enabled, .. } => {
                     if menu.highlighted == Some(index) {
@@ -549,10 +558,10 @@ impl Scene {
                             &mut self.list,
                             row,
                             clip,
-                            ShapePaint::fill(node.element.style.hover),
+                            ShapePaint::fill(menu_style.hover),
                         );
                     }
-                    let mut style = node.element.style.text.clone();
+                    let mut style = menu_style.text.clone();
                     style.wrap = TextWrap::None;
                     if !enabled {
                         style.color.alpha = 100;

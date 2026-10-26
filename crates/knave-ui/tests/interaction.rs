@@ -1,4 +1,4 @@
-use knave_ui::{TextSpan, TextStyle, toolkit::*};
+use knave_ui::{DisplayCommand, TextSpan, TextStyle, toolkit::*};
 struct Metrics;
 impl TextMeasurer for Metrics {
     fn measure(&mut self, text: &str, style: &TextStyle, width: f32) -> TextLayout {
@@ -75,6 +75,42 @@ fn press_leave_reenter_and_release_is_one_activation() {
     assert_eq!(s.event(Input::PointerUp([20.0, 20.0])).action, None);
     s.event(Input::PointerDown([20.0, 20.0]));
     assert_eq!(s.event(Input::PointerUp([450.0, 20.0])).action, None);
+}
+#[test]
+fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
+    let mut button = Element::new(1, Widget::Button("Open".into()));
+    button.tooltip = Some("Open the menu".into());
+    let menu = Element::new(
+        2,
+        Widget::Menu {
+            label: "Menu".into(),
+            items: vec![MenuItem::option(1, "First")],
+        },
+    );
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![button, menu])).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let original_height = s.bounds(ElementId(1)).unwrap().height;
+    s.set_stylesheet("button { padding: 20px; background-color: #334455; } button:hover { background-color: #556677; } tooltip { color: #eeeeee; background-color: #abcdef; padding: 12px; } menu { background-color: #112233; }").unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let b = s.bounds(ElementId(1)).unwrap();
+    assert!(b.height > original_height);
+    assert!(b.height >= 76.0);
+    s.event(Input::PointerMove([20.0, b.y + b.height - 2.0]));
+    assert!(s.interaction(ElementId(1)).unwrap().hovered);
+    assert_eq!(
+        s.computed_style(ElementId(1)).unwrap().style.hover,
+        knave_ui::Color::rgba(0x55, 0x66, 0x77, 255)
+    );
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0x55,0x66,0x77,255)))));
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0xab,0xcd,0xef,255)))));
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{style,..} if style.color==knave_ui::Color::rgba(0xee,0xee,0xee,255))));
+    let menu_bounds = s.bounds(ElementId(2)).unwrap();
+    let point = [menu_bounds.x + 5.0, menu_bounds.y + 5.0];
+    s.event(Input::PointerDown(point));
+    s.event(Input::PointerUp(point));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0x11,0x22,0x33,255)))));
 }
 #[test]
 fn slider_captures_outside_and_cancel_restores_value() {

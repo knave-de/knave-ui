@@ -54,7 +54,7 @@ impl Scene {
             self.nodes[i].natural = [0.0; 2];
             return [0.0; 2];
         }
-        let layout = self.nodes[i].element.layout;
+        let layout = self.effective_layout(i);
         let available = match layout.width {
             Length::Px(w) => w,
             _ => (width - layout.margin.horizontal()).max(0.0),
@@ -64,14 +64,20 @@ impl Scene {
         let mut intrinsic = match &self.nodes[i].element.widget {
             Widget::Text(value) => {
                 let value = value.clone();
-                let style = self.nodes[i].element.style.text.clone();
+                let style = self.computed_style(self.nodes[i].element.id).map_or_else(
+                    || self.nodes[i].element.style.text.clone(),
+                    |s| s.style.text,
+                );
                 self.nodes[i].text = text.measure(&value, &style, inner);
                 self.stats.measured_texts += 1;
                 self.nodes[i].text.size
             }
             Widget::Paragraph(spans) => {
                 let spans = spans.clone();
-                let style = self.nodes[i].element.style.text.clone();
+                let style = self.computed_style(self.nodes[i].element.id).map_or_else(
+                    || self.nodes[i].element.style.text.clone(),
+                    |s| s.style.text,
+                );
                 self.nodes[i].text = text.measure_spans(&spans, &style, inner);
                 self.stats.measured_texts += 1;
                 self.nodes[i].text.size
@@ -80,7 +86,10 @@ impl Scene {
                 let edit = edit.clone();
                 let value = edit.display_text();
                 let multiline = edit.mode() == InputMode::Multiline;
-                let mut style = self.nodes[i].element.style.text.clone();
+                let mut style = self.computed_style(self.nodes[i].element.id).map_or_else(
+                    || self.nodes[i].element.style.text.clone(),
+                    |s| s.style.text,
+                );
                 style.wrap = if multiline {
                     crate::TextWrap::WordOrGlyph
                 } else {
@@ -98,13 +107,18 @@ impl Scene {
             }
             widget
                 if widget.focusable()
-                    && self.nodes[i].element.style.text.wrap != crate::TextWrap::None
+                    && self
+                        .computed_style(self.nodes[i].element.id)
+                        .is_none_or(|s| s.style.text.wrap != crate::TextWrap::None)
                     && !matches!(widget, Widget::Slider(_) | Widget::Collection(_)) =>
             {
                 let value = widget.display_label().to_owned();
                 let reserve = widget.label_reserve();
                 let area = label_content(Rect::new(0.0, 0.0, available, 0.0), layout);
-                let style = self.nodes[i].element.style.text.clone();
+                let style = self.computed_style(self.nodes[i].element.id).map_or_else(
+                    || self.nodes[i].element.style.text.clone(),
+                    |s| s.style.text,
+                );
                 self.nodes[i].text = text.measure(&value, &style, (area.width - reserve).max(1.0));
                 self.stats.measured_texts += 1;
                 let size = self.nodes[i].text.size;
@@ -213,7 +227,7 @@ impl Scene {
         ]
     }
     fn arrange(&mut self, i: usize, mut bounds: Rect, parent_clip: Option<Rect>) {
-        let l = self.nodes[i].element.layout;
+        let l = self.effective_layout(i);
         bounds.x += l.offset[0];
         bounds.y += l.offset[1];
         self.nodes[i].bounds = bounds;

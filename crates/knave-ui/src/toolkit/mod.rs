@@ -5,6 +5,9 @@ mod color_picker;
 mod combo;
 mod components;
 mod context_menu;
+mod css;
+use css::Stylesheet;
+pub use css::{ComputedStyle, StylesheetError};
 mod cursor;
 mod snapshot;
 pub use snapshot::*;
@@ -74,6 +77,7 @@ struct MenuState {
 
 /// Owns scene structure, widget values and input state. Storage is bounded by `MAX_ELEMENTS`.
 pub struct Scene {
+    stylesheet: Stylesheet,
     clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -97,8 +101,72 @@ pub struct Scene {
     pub inspect: bool,
 }
 impl Scene {
+    /// Atomically replace the scene stylesheet. Invalid replacements preserve the active sheet.
+    pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
+        let next = Stylesheet::parse(source)?;
+        if !self.stylesheet.same_as(&next) {
+            let old = self
+                .nodes
+                .iter()
+                .map(|n| self.computed_style(n.element.id))
+                .collect::<Vec<_>>();
+            let _previous = std::mem::replace(&mut self.stylesheet, next);
+            let new = self
+                .nodes
+                .iter()
+                .map(|n| self.computed_style(n.element.id))
+                .collect::<Vec<_>>();
+            let changed = old != new;
+            if changed {
+                let metrics_changed = old.iter().zip(&new).any(|(a, b)| {
+                    a.as_ref().zip(b.as_ref()).is_some_and(|(a, b)| {
+                        a.padding != b.padding
+                            || a.margin != b.margin
+                            || a.gap != b.gap
+                            || a.style.text.font_family != b.style.text.font_family
+                            || a.style.text.font_size != b.style.text.font_size
+                            || a.style.text.line_height != b.style.text.line_height
+                            || a.style.text.weight != b.style.text.weight
+                            || a.style.text.wrap != b.style.text.wrap
+                            || a.style.text.align != b.style.text.align
+                    })
+                });
+                if metrics_changed {
+                    self.invalidate_layout();
+                } else {
+                    self.paint_dirty = true;
+                }
+            } else {
+                self.paint_dirty = true;
+            }
+        }
+        Ok(())
+    }
+    pub fn computed_style(&self, id: ElementId) -> Option<ComputedStyle> {
+        self.computed_style_for(id, self.interaction(id)?)
+    }
+    pub fn computed_style_for(
+        &self,
+        id: ElementId,
+        state: InteractionState,
+    ) -> Option<ComputedStyle> {
+        css::compute(self, id, state)
+    }
+    pub(super) fn auxiliary_style(&self, kind: &str) -> ComputedStyle {
+        css::auxiliary(self, kind)
+    }
+    pub(super) fn effective_layout(&self, index: usize) -> Layout {
+        let mut layout = self.nodes[index].element.layout;
+        if let Some(style) = self.computed_style(self.nodes[index].element.id) {
+            layout.padding_edges = Some(style.padding);
+            layout.margin = style.margin;
+            layout.gap = style.gap;
+        }
+        layout
+    }
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
+            stylesheet: Stylesheet::default_sheet(),
             clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
@@ -637,6 +705,14 @@ fn validate(e: &Element) -> Result<(), UiError> {
         || e.widget.label().len() > MAX_TEXT_BYTES
     {
         return Err(UiError::TextTooLong);
+    }
+    if e.classes.len() > 64
+        || e.classes.iter().any(|c| c.is_empty() || c.len() > 128)
+        || e.style_id
+            .as_ref()
+            .is_some_and(|id| id.is_empty() || id.len() > 128)
+    {
+        return Err(UiError::InvalidLayout);
     }
     if let Widget::Paragraph(spans) = &e.widget
         && spans.iter().map(|s| s.text.len()).sum::<usize>() > MAX_TEXT_BYTES
