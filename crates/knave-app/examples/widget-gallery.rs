@@ -941,8 +941,8 @@ impl Application for Gallery {
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
                 let point = [
-                    bounds.x + bounds.width / 2.0,
-                    bounds.y + bounds.height / 2.0,
+                    (bounds.x + bounds.width / 2.0).min(size[0] - 1.0),
+                    (bounds.y + bounds.height / 2.0).min(size[1] - 1.0),
                 ];
                 let key = |key, pressed| Input::Key {
                     key,
@@ -978,6 +978,21 @@ impl Application for Gallery {
                         fixture.event(key(Key::ContextMenu, true));
                     }
                     _ => {}
+                }
+                let interaction = fixture.interaction(ElementId(target)).unwrap();
+                let valid = match state {
+                    1 => interaction.hovered,
+                    2 => interaction.focused,
+                    3 => interaction.pressed && interaction.captured,
+                    4 => interaction.disabled,
+                    5 => !interaction.focused,
+                    _ => true,
+                };
+                if !valid {
+                    return Err(format!(
+                        "{title}: {label} fixture did not enter its intended state"
+                    )
+                    .into());
                 }
                 let id = 50_000 + kind as u64 * 100 + state as u64 * 4;
                 let mut preview = SceneSnapshot::capture(&mut fixture, size, text)?.element(id + 2);
