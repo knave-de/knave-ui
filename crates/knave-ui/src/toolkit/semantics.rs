@@ -106,7 +106,7 @@ impl Scene {
                     Widget::Selectable { .. } => self
                         .group_for(i)
                         .map_or(Role::ListItem, |g| g.1.item_role()),
-                    Widget::Image(..) | Widget::SceneSnapshot(_) => Role::Image,
+                    Widget::Image(..) | Widget::Icon(_) | Widget::SceneSnapshot(_) => Role::Image,
                     Widget::Popup { .. } => Role::Dialog,
                     _ => e.selection_group.map_or(Role::Group, SelectionGroup::role),
                 });

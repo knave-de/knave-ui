@@ -117,6 +117,21 @@ impl Scene {
         let text_area = label_content(b, e.layout);
         let mut label = None;
         match &e.widget {
+            Widget::Icon(icon) => {
+                let size = 24.0f32.min(b.width).min(b.height);
+                self.list.commands.push(DisplayCommand::Image {
+                    bounds: Rect::new(
+                        b.x + (b.width - size) / 2.0,
+                        b.y + (b.height - size) / 2.0,
+                        size,
+                        size,
+                    ),
+                    image: icon.image.clone(),
+                    style: crate::ImageStyle::default(),
+                    transform: Transform2D::IDENTITY,
+                    clip,
+                });
+            }
             Widget::SceneSnapshot(snapshot) => snapshot.paint(&mut self.list, b, clip),
             Widget::Pagination { page, pages } => {
                 label = Some(format!(

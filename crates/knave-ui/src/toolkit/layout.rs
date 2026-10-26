@@ -123,6 +123,7 @@ impl Scene {
             Widget::SceneSnapshot(snapshot) => snapshot.size(),
             Widget::Separator => [1.0, 1.0],
             Widget::Image(..) => [64.0, 64.0],
+            Widget::Icon(_) => [24.0, 24.0],
             Widget::Panel | Widget::Scroll | Widget::Popup { .. } => [0.0, 0.0],
             _ => [120.0, 36.0],
         };
@@ -190,6 +191,12 @@ impl Scene {
                         + layout.gap * (sizes.len().div_ceil(columns) - 1) as f32,
                 ],
             };
+        }
+        if matches!(self.nodes[i].element.widget, Widget::Button(_))
+            && self.nodes[i].element.button_variant == Some(ButtonVariant::Icon)
+        {
+            intrinsic[0] = intrinsic[0].max(36.0);
+            intrinsic[1] = intrinsic[1].max(36.0);
         }
         intrinsic[0] += padding.horizontal();
         intrinsic[1] += padding.vertical();

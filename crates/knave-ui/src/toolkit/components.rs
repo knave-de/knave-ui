@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ImageStyle, UiImage};
+use crate::UiImage;
 
 /// Appearance intent for the future theme layer; constructors do not set paint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -27,7 +27,10 @@ pub struct Icon {
 }
 impl Icon {
     pub fn element(&self, id: u64) -> Element {
-        let mut result = Element::new(id, Widget::Image(self.image.clone(), ImageStyle::default()));
+        let mut result = Element::new(id, Widget::Icon(self.clone())).layout(Layout {
+            width: Length::Auto,
+            ..Layout::default()
+        });
         result.semantics.name = Some(self.name.clone());
         result
     }
@@ -47,6 +50,8 @@ impl Element {
     pub fn icon_button(id: u64, image_id: u64, icon: &Icon) -> Self {
         let mut result = Self::action_button(id, "", ButtonVariant::Icon);
         result.semantics.name = Some(icon.name.clone());
+        result.layout.flow = Flow::Overlay;
+        result.layout.align = Align::Center;
         // The image is passive: hit testing and focus resolve to the button.
         result.children.push(icon.element(image_id));
         result

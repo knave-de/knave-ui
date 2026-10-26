@@ -1004,6 +1004,20 @@ impl Application for Gallery {
         &mut self.scene
     }
     fn action(&mut self, action: Action) -> AppResult {
+        let edited = match &action {
+            Action::TextChanged(id, _) | Action::Submitted(id, _) => Some(*id),
+            _ => None,
+        };
+        if let Some(id) = edited
+            && matches!(self.scene.widget(id), Some(Widget::TextInput(edit)) if edit.mode() == InputMode::Password)
+        {
+            if self.trace {
+                println!("PasswordEdited({id:?})");
+            }
+            self.scene
+                .set_widget(STATUS, Widget::Text("Password field updated".into()))?;
+            return Ok(());
+        }
         if self.trace {
             println!("{action:?}");
         }
@@ -1175,5 +1189,18 @@ mod tests {
             app.scene.widget(ElementId(50_002)),
             Some(Widget::SceneSnapshot(_))
         ));
+    }
+    #[test]
+    fn password_values_never_reach_gallery_status_text() {
+        let mut app = app();
+        for action in [
+            Action::TextChanged(ElementId(170), "private value".into()),
+            Action::Submitted(ElementId(170), "private value".into()),
+        ] {
+            app.action(action).unwrap();
+            assert!(
+                matches!(app.scene.widget(STATUS), Some(Widget::Text(label)) if label == "Password field updated")
+            );
+        }
     }
 }

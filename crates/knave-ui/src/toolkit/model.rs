@@ -294,6 +294,7 @@ impl Slider {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Widget {
     Panel,
+    Icon(super::Icon),
     SceneSnapshot(super::SceneSnapshot),
     Pagination {
         page: usize,
@@ -393,6 +394,7 @@ impl Widget {
     pub(crate) fn label(&self) -> &str {
         match self {
             Self::Text(s) | Self::Button(s) | Self::Draggable(s) => s,
+            Self::Icon(icon) => &icon.name,
             Self::Toast { label, .. }
             | Self::Disclosure { label, .. }
             | Self::Link { label, .. }
