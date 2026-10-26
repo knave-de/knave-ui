@@ -75,10 +75,13 @@ impl Gpu {
     fn new(window: Arc<Window>) -> AppResult<Self> {
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window.clone())?;
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            compatible_surface: Some(&surface),
-            ..Default::default()
-        }))?;
+        let adapter =
+            pollster::block_on(knave_renderer::select_adapter(&instance, Some(&surface)))?;
+        let info = adapter.get_info();
+        eprintln!(
+            "knave-app: GPU adapter {} ({:?}, {})",
+            info.name, info.backend, info.driver
+        );
         let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))?;
         let size = window.inner_size();
         let mut config = surface
