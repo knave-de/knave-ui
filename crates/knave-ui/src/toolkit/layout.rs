@@ -76,13 +76,25 @@ impl Scene {
                 self.stats.measured_texts += 1;
                 self.nodes[i].text.size
             }
-            Widget::TextInput(edit) => {
-                let value = edit.text().to_owned();
+            Widget::TextInput(edit) | Widget::ComboBox { edit, .. } => {
+                let edit = edit.clone();
+                let value = edit.display_text();
+                let multiline = edit.mode() == InputMode::Multiline;
                 let mut style = self.nodes[i].element.style.text.clone();
-                style.wrap = crate::TextWrap::None;
-                self.nodes[i].text = text.measure(&value, &style, 16384.0);
+                style.wrap = if multiline {
+                    crate::TextWrap::WordOrGlyph
+                } else {
+                    crate::TextWrap::None
+                };
+                let width = if multiline {
+                    label_content(Rect::new(0.0, 0.0, available, 0.0), layout).width
+                } else {
+                    16384.0
+                };
+                self.nodes[i].text = text.measure(&value, &style, width.max(1.0));
+                edit.map_display_carets(&mut self.nodes[i].text);
                 self.stats.measured_texts += 1;
-                [160.0, 36.0]
+                [160.0, if multiline { 108.0 } else { 36.0 }]
             }
             widget
                 if widget.focusable()
@@ -107,6 +119,8 @@ impl Scene {
                     size[1].max(36.0),
                 ]
             }
+            Widget::Collection(_) => [160.0, 216.0],
+            Widget::SceneSnapshot(snapshot) => snapshot.size(),
             Widget::Separator => [1.0, 1.0],
             Widget::Image(..) => [64.0, 64.0],
             Widget::Panel | Widget::Scroll | Widget::Popup { .. } => [0.0, 0.0],
@@ -206,7 +220,48 @@ impl Scene {
                     && !matches!(self.nodes[*c].element.widget, Widget::Popup { .. })
             })
             .collect();
+        if let Widget::Collection(c) = &self.nodes[i].element.widget {
+            let rows = c.visible_items().len().div_ceil(c.columns());
+            self.nodes[i].scroll_max = (rows as f32 * super::collection::COLLECTION_ROW_HEIGHT
+                + c.header_height()
+                - inner.height)
+                .max(0.0);
+            self.nodes[i].scroll = self.nodes[i].scroll.clamp(0.0, self.nodes[i].scroll_max);
+        }
         if active.is_empty() {
+            return;
+        }
+        if let Some(split) = self.nodes[i].element.split_layout
+            && active.len() == 3
+            && let Widget::Splitter(slider) = self.nodes[active[1]].element.widget
+        {
+            let horizontal = split.orientation == Orientation::Horizontal;
+            let extent = if horizontal {
+                inner.width
+            } else {
+                inner.height
+            };
+            let divider = 8.0f32.min(extent);
+            let available = (extent - divider).max(0.0);
+            let min = split.min_pane.min(available / 2.0);
+            let fraction = if horizontal {
+                slider.fraction()
+            } else {
+                1.0 - slider.fraction()
+            };
+            let first = (available * fraction).clamp(min, available - min);
+            let sizes = [first, divider, available - first];
+            let clip = parent_clip.and_then(|c| c.intersection(inner));
+            let mut position = 0.0;
+            for (child, size) in active.iter().zip(sizes) {
+                let bounds = if horizontal {
+                    Rect::new(inner.x + position, inner.y, size, inner.height)
+                } else {
+                    Rect::new(inner.x, inner.y + position, inner.width, size)
+                };
+                self.arrange(*child, bounds, clip);
+                position += size;
+            }
             return;
         }
         let scroll = matches!(self.nodes[i].element.widget, Widget::Scroll);

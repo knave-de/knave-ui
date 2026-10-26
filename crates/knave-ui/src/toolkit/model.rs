@@ -294,10 +294,33 @@ impl Slider {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Widget {
     Panel,
+    SceneSnapshot(super::SceneSnapshot),
+    Pagination {
+        page: usize,
+        pages: usize,
+    },
+    ColorSwatch(Color),
+    Collection(super::Collection),
+    Progress {
+        value: Option<f64>,
+    },
+    Spinner,
+    Toast {
+        label: String,
+        lifetime: std::time::Duration,
+    },
     Text(String),
     Paragraph(Vec<crate::TextSpan>),
     Image(UiImage, ImageStyle),
     Button(String),
+    Link {
+        label: String,
+        target: String,
+    },
+    MixedCheckbox {
+        label: String,
+        state: super::CheckState,
+    },
     Toggle {
         label: String,
         checked: bool,
@@ -307,11 +330,27 @@ pub enum Widget {
         checked: bool,
     },
     Slider(Slider),
+    Splitter(Slider),
+    Disclosure {
+        label: String,
+        content: ElementId,
+        expanded: bool,
+        accordion: Option<ElementId>,
+    },
     TextInput(super::TextEdit),
+    ComboBox {
+        edit: super::TextEdit,
+        items: Vec<MenuItem>,
+        suggestions: Vec<MenuItem>,
+    },
     Dropdown {
         label: String,
         items: Vec<MenuItem>,
         selected: Option<u64>,
+    },
+    ContextMenu {
+        label: String,
+        items: Vec<MenuItem>,
     },
     Menu {
         label: String,
@@ -332,13 +371,21 @@ impl Widget {
     pub(crate) fn focusable(&self) -> bool {
         matches!(
             self,
-            Self::Button(_)
+            Self::Collection(_)
+                | Self::Pagination { .. }
+                | Self::Button(_)
+                | Self::Link { .. }
+                | Self::MixedCheckbox { .. }
                 | Self::Toggle { .. }
                 | Self::Checkbox { .. }
                 | Self::Slider(_)
+                | Self::Splitter(_)
+                | Self::Disclosure { .. }
                 | Self::TextInput(_)
+                | Self::ComboBox { .. }
                 | Self::Dropdown { .. }
                 | Self::Menu { .. }
+                | Self::ContextMenu { .. }
                 | Self::Selectable { .. }
                 | Self::Draggable(_)
         )
@@ -346,12 +393,17 @@ impl Widget {
     pub(crate) fn label(&self) -> &str {
         match self {
             Self::Text(s) | Self::Button(s) | Self::Draggable(s) => s,
-            Self::Toggle { label, .. }
+            Self::Toast { label, .. }
+            | Self::Disclosure { label, .. }
+            | Self::Link { label, .. }
+            | Self::MixedCheckbox { label, .. }
+            | Self::Toggle { label, .. }
             | Self::Checkbox { label, .. }
             | Self::Dropdown { label, .. }
             | Self::Menu { label, .. }
+            | Self::ContextMenu { label, .. }
             | Self::Selectable { label, .. } => label,
-            Self::TextInput(edit) => edit.text(),
+            Self::TextInput(edit) | Self::ComboBox { edit, .. } => edit.text(),
             _ => "",
         }
     }
@@ -375,14 +427,17 @@ impl Widget {
     }
     pub(crate) fn label_reserve(&self) -> f32 {
         match self {
-            Self::Checkbox { .. } => 26.0,
+            Self::Checkbox { .. } | Self::MixedCheckbox { .. } => 26.0,
             Self::Toggle { .. } => 40.0,
             _ => 0.0,
         }
     }
     pub(crate) fn menu(&self) -> Option<&[MenuItem]> {
         match self {
-            Self::Dropdown { items, .. } | Self::Menu { items, .. } => Some(items),
+            Self::Dropdown { items, .. }
+            | Self::Menu { items, .. }
+            | Self::ContextMenu { items, .. } => Some(items),
+            Self::ComboBox { suggestions, .. } => Some(suggestions),
             _ => None,
         }
     }
@@ -411,6 +466,13 @@ pub enum CursorShape {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Element {
+    pub command_target: Option<ElementId>,
+    pub color_picker: Option<super::ColorPickerState>,
+    pub color_channel: Option<super::ColorChannel>,
+    pub split_layout: Option<super::SplitLayout>,
+    pub button_variant: Option<super::ButtonVariant>,
+    pub semantics: super::Semantics,
+    pub selection_group: Option<super::SelectionGroup>,
     pub id: ElementId,
     pub widget: Widget,
     pub layout: Layout,
@@ -436,6 +498,13 @@ impl Element {
             style.text.wrap = crate::TextWrap::None;
         }
         Self {
+            command_target: None,
+            color_picker: None,
+            color_channel: None,
+            split_layout: None,
+            button_variant: None,
+            semantics: super::Semantics::default(),
+            selection_group: None,
             id: ElementId(id),
             widget,
             layout: Layout::default(),
@@ -457,6 +526,7 @@ impl Element {
     pub fn heading(id: u64, text: impl Into<String>, level: crate::HeadingLevel) -> Self {
         let mut element = Self::new(id, Widget::Text(text.into()));
         element.style.text = TextStyle::heading(level);
+        element.semantics.role = Some(super::Role::Heading);
         element
     }
     /// Wrapping for text, paragraphs and control labels. Use Auto height to grow with the text.
@@ -509,7 +579,7 @@ pub struct InteractionState {
 }
 
 /// Glyph-derived caret positions in logical coordinates. Byte offsets are UTF-8 boundaries.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Caret {
     pub byte: usize,
     pub x: f32,
@@ -524,6 +594,26 @@ pub struct TextLayout {
 impl TextLayout {
     pub fn caret(&self, byte: usize) -> Option<Caret> {
         self.carets.iter().find(|c| c.byte == byte).copied()
+    }
+    pub fn hit_at(&self, x: f32, y: f32) -> usize {
+        self.carets
+            .iter()
+            .min_by(|a, b| {
+                let distance = |c: &Caret| {
+                    let dy = if y < c.y {
+                        c.y - y
+                    } else if y > c.y + c.height {
+                        y - c.y - c.height
+                    } else {
+                        0.0
+                    };
+                    (dy, (c.x - x).abs())
+                };
+                let a = distance(a);
+                let b = distance(b);
+                a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1))
+            })
+            .map_or(0, |c| c.byte)
     }
     pub fn hit(&self, x: f32) -> usize {
         self.carets
@@ -543,8 +633,19 @@ pub trait TextMeasurer {
     ) -> TextLayout;
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TextPurpose {
+    #[default]
+    Normal,
+    Password,
+    Multiline,
+    Search,
+    Number,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextInputState {
+    pub purpose: TextPurpose,
     pub id: ElementId,
     pub text: String,
     pub cursor: usize,

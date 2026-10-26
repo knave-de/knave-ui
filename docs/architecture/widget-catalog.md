@@ -1,96 +1,118 @@
 # Component catalog and coverage
 
-The gallery is a developer catalog in `knave-app/examples/widget-gallery.rs`.
-It demonstrates renderer-independent Knave UI primitives and clearly labelled
-application compositions. It is not a claim that every component below exists.
-Page switching retains widget values and per-page scrolling. The catalog uses
-ordinary selectable controls for page navigation, not a dedicated tab widget.
+Run `cargo run -p knave-app --example widget-gallery`. The catalog uses public
+Knave UI widgets and shared scene composition. Page switching preserves edits,
+selection and each page's scroll position. The application has no desktop-service
+dependency; desktop presentation belongs to Shell's internal `knave-shell-ui`.
 
 ## Appearance policy
 
-The catalog uses toolkit defaults and shared heading presets. It supplies no
-custom panel backgrounds, radii, padding, gaps, control heights, caption metrics
-or text-wrap/color/weight overrides. Rich spans currently require explicit color
-and weight values, so these are initialized from `TextStyle::default()`.
+The gallery supplies no custom backgrounds, radii, padding, gaps, control heights,
+caption metrics or text wrap/color/weight overrides. Rich spans initialize their
+required values from `TextStyle::default()`. Images, icons and the color picker's
+selected color are sample content. Explicit fixture sizes, split dimensions,
+rows, columns, grids, clipping and scrolling demonstrate structural layout.
 
-Rows, columns, grids, scrolling and the explicit size/offset fixtures used to
-demonstrate layout remain structural examples. Image pixels are sample content.
-Global CSS styling with per-component custom overrides is planned for a later
-stage; this change does not introduce a CSS engine. Existing toolkit defaults
-still determine appearance until that system exists.
+Global CSS, theme tokens, light/high-contrast palettes and custom CSS overrides
+remain deferred. Action variants record semantic intent and currently share the
+default button appearance. They do not install a provisional gallery theme.
 
-## Shared heading presets
+## Heading presets
 
-`knave-ui` exports `HeadingLevel::{H1, H2, H3}` and
-`TextStyle::heading(level)`. `Element::heading(id, text, level)` applies these
-presets with automatic height and word-or-glyph wrapping. All three use weight
-700 and the default font family/color. Sizes and line heights are H1 24/32,
-H2 20/28 and H3 16/24 logical pixels.
-
-The catalog uses H1 for its page title, H2 for section and dialog titles, and H3
-for subordinate empty-state text. Typography samples use those same public
-constructors. Applications can override color or other styling after construction.
-These are additive source APIs; existing text defaults and renderer/host contracts
-are preserved. They introduce no configuration or persisted-data changes.
+`HeadingLevel::{H1, H2, H3}`, `TextStyle::heading` and `Element::heading` supply
+24/32, 20/28 and 16/24 logical-pixel font-size/line-height presets. All use weight
+700 with the default font family/color. The gallery uses these same public
+constructors for its title, sections, subordinate headings and samples.
 
 ## Component coverage
 
-| Area | Available primitives | Demonstrated compositions | Gaps |
-| --- | --- | --- | --- |
-| Typography/display | Text, rich paragraphs, images, tooltips, separators | Three heading levels (24/20/16 logical pixels), default body/supporting text | Semantic links, icon system, badges |
-| Actions | Button, toggle, selectable label | Styled actions can use existing paint/layout | Defined primary/secondary/ghost/destructive/icon/split/loading variants |
-| Selection | Checkbox, toggle, selectable | Selected rows | Radio groups, segmented controls, chips, mixed state |
-| Inputs | Single-line text editing, sliders, dropdown | Labelled input sections | Password, multiline, search/numeric behavior, editable combo box, color picker, validation states |
-| Layout | Row, column, grid, overlay, panel, scroll, margins/padding/clipping | Panel/card structure | Resizable split views, expanders/accordions |
-| Navigation/collections | Selectable controls and layout | Catalog page selection, sidebar/detail area, small lists and labelled grid items | Dedicated tabs/sidebar/list/icon-grid contracts; breadcrumbs, tree, table, context-menu triggers, pagination, command palette, virtualization |
-| Feedback/overlays | Menu, popup, tooltip | Modal confirmation, information and empty state | Progress, spinner, toast lifetime, semantic alerts/status indicators |
-
-Next navigation work should prioritize tabs, sidebar navigation, lists and icon
-grids. These need keyboard, selection and accessibility contracts, not just
-visual arrangements. Full table/tree implementations wait for an application
-that supplies their requirements. New action variants and input primitives also
-need behavior and state specifications before being advertised as supported.
-
-## State and condition coverage
-
-| State/condition | Current catalog coverage |
+| Area | Shared implementation |
 | --- | --- |
-| Default/disabled | Side by side for buttons, selection controls, text input, sliders, dropdowns and menus |
-| Checked/unchecked/selected | Real widget values, including disabled selection examples |
-| Hover/focused/pressed | Real live input on the enabled controls; no static paint pretending to be interaction state |
-| Expanded | Open menus/dropdowns; includes disabled options and separators |
-| Modal | Tab trap, confirmation/cancel, Escape/outside dismissal and opener restoration |
-| Inactive window | Switch focus to another window; focus visuals and late text/paste are governed by Scene |
-| Long labels/narrow width | Default overflow/wrapping for long labels and paragraphs; constrained-width clipping |
-| Output scaling | Host converts physical input and painting to logical scene coordinates; exercise fractional scaling externally |
-| Keyboard-only | Page selection retains focus; hidden-page and disabled controls are excluded from Tab |
-| Mixed/invalid/loading | Missing from the current widget model; not drawn as if supported |
-| Light/high contrast | Not implemented as coherent themes; the catalog currently uses toolkit defaults |
-| Frozen hover/pressed reference matrix | Still missing; should use isolated real Scene fixtures and the common painter rather than duplicate widget painting |
+| Typography/display | Text, headings, rich paragraphs, semantic links, application-provided named icons, images, badges, tooltips, separators |
+| Actions | Primary, secondary, ghost, destructive and icon intent; icon buttons; split-button composition; toggles; disabled/busy loading buttons |
+| Selection | Boolean and mixed checkboxes, switches, exclusive radio/segmented/chip groups, selectable rows |
+| Inputs | Grapheme-aware text editing; masked password fields; multiline editing; search clearing; numeric stepping/range checks; sliders; dropdowns; filtered editable combo boxes; RGBA color picker; required/length validation |
+| Layout | Row, column, grid, overlay, panel, scroll, spacing/clipping; pointer/keyboard split resizing with minimum pane sizes and cancellation; disclosures and exclusive accordions |
+| Navigation | Tabs, sidebar groups, breadcrumbs, pagination, right-click/Menu/Shift+F10 context triggers, modal searchable command palette |
+| Collections | Single-selection lists/icon grids, expandable trees, tables with column sorting and stable row identity; bounded data with visible-row painting |
+| Feedback/overlays | Determinate/indeterminate progress, spinner, semantic alert/status, expiring/dismissible toasts, menus, popup/dialog/modal focus scopes and empty-state composition |
 
-A reusable theme/token system and isolated interaction-state fixtures are needed
-before claiming complete appearance/state coverage. The existing paint path has
-hardcoded control/menu colors; changing only text and panel colors would not
-constitute a working light or high-contrast theme.
+These are application-toolkit contracts, not file-manager business logic. Tables
+sort supplied text columns and trees consume supplied parent relationships. They
+do not fetch filesystem data or provide spreadsheet editing or drag-and-drop
+filesystem operations.
 
-## Shell ownership
+## Keyboard, selection and accessibility
 
-Shell-specific showcases belong in Knave Shell: bar/workspace/application/tray
-indicators, overview and window previews, quick settings, notifications,
-authentication and power/session dialogs, OSD, calendar, switcher and lock-screen
-controls. These compose the common UI system and supply desktop-service fixtures.
-The application catalog does not duplicate their services or presentation policy.
-Desktop projections, desktop actions, the status bar and desktop assets now belong
-to Shell's internal `knave-shell-ui` crate. Generic UI crates do not depend on
-`knave-desktop-api`.
+Selection groups have one Tab stop. Arrows and Home/End change the selected item
+and skip disabled/hidden choices. Tabs use Left/Right; sidebar/list/radio groups
+also accept Up/Down; icon grids use their column stride. `Action::Selected` carries
+the owner and stable item identity. Tabs expose their controlled page IDs.
 
-## Compatibility and verification
+Virtual collections keep focus on their owner and reveal the selected row during
+keyboard navigation. Home/End reaches the first/last enabled visible item.
+Tree Right expands and Left collapses or selects the parent. Table Left/Right
+chooses a column; Ctrl+Space or a header click toggles its sort order. Enter
+activates a collection item; ordinary pointer selection does not activate it
+unless the collection explicitly opts in (as the command palette does).
 
-This reorganizes one example without adding public toolkit types, configuration,
-persistence, Shell services or protocols. Navigation and state tests cover
-retained edits, hidden-page traversal, disabled controls and modal restoration.
-Verify scroll direction with actual wheel input independently of keyboard focus
-scrolling, then reverse it to return to the start. Repeat with platform-reversed
-input and physical-pixel deltas at fractional scale. A nested test does not prove
-physical libinput preference application; that remains a direct-device check.
-Reverting the catalog and host scroll fix has no data migration.
+`Scene::accessibility()` exports roles, names, relationships, focus, disabled,
+checked/mixed, selected, expanded, invalid, busy and current-location state.
+Visible virtual items include stable identities, bounds, tree depth and table
+header/value pairs. Menu suggestions expose their current highlight and disabled
+state. Item IDs are namespaced by their owner, independent of element IDs.
+This is a renderer-independent semantic adapter contract; it does not by itself
+install an operating-system accessibility bridge.
+
+Password values are masked using grapheme boundaries. Paint, semantic names,
+clipboard copy/cut and IME surrounding text do not expose their contents. Hosts
+receive the password IME purpose. Applications still receive their own edited
+values. Multiline Enter inserts a newline and Ctrl+Enter submits; Home/End moves
+within the visual line and Ctrl+Home/End within the document. Numeric Up/Down
+steps within bounds and Enter reports invalid input instead of submitting it.
+Search Escape clears the query. Combo typing filters suggestions; Up/Down and
+Enter navigate/select them while clipboard and caret editing remain available.
+
+## States and conditions
+
+| State/condition | Catalog coverage |
+| --- | --- |
+| Default/hover/focus/pressed/disabled/inactive | Frozen references for every interactive widget family, generated by real input on isolated scenes; also available through live controls |
+| Checked/unchecked/mixed/selected/expanded/invalid/loading | Real widget values and semantic state; dedicated alternate-state references and live samples |
+| Modal | Tab trap, Escape/outside dismissal, command filtering/activation, opener restoration |
+| Long text/narrow layouts | Shared wrapping/clipping and constrained-width samples |
+| Scaling | Logical coordinates; host scales input/paint together; fractional output scaling remains an external runtime check |
+| Keyboard only | Roving groups, retained page state, disabled/hidden exclusion and modal traversal |
+| Light/high contrast | Deferred with global CSS/theming |
+
+`SceneSnapshot::capture` freezes a real scene display list using the common text
+measurer. The public snapshot widget renders it through the common painter;
+there is no gallery-only implementation of hover or pressed paint.
+
+Feedback uses monotonic scene time. Visible, focused-window animations request
+50 ms deadlines; scenes without active feedback sleep. Toasts pause on hover,
+keyboard focus, hidden pages and window focus loss. Lifetime and dismissal belong
+to the scene; applications can dismiss or restart a toast explicitly.
+
+## Bounds, compatibility and verification
+
+Retained scene limits remain 2,048 elements, depth 48, 16 KiB text fields and
+1,024 menu options. Collections hold at most 100,000 items and 1 MiB of text;
+visible-row painting avoids creating one retained node per data item. Font/image
+caches and renderer frame limits remain bounded. Snapshots reject oversized
+command/text payloads.
+
+This is an unreleased Rust source API change: `Widget`/`Action` gain variants,
+`Element` gains component/semantic metadata and `TextInputState` gains purpose.
+Update exhaustive matches and literal construction together. Shell and standalone
+hosts adopt password hints and context-menu input. No Knave desktop payload,
+configuration schema or persisted-data migration is introduced. Publish the UI
+revision before pinning Shell; roll back the coordinated revisions together.
+
+Tests cover typed effects, disabled/hidden exclusion, group traversal, password
+privacy, multiline caret metrics, validation, split cancellation, accordion focus,
+virtualized end-of-list navigation, tree expansion, sorting, command-palette
+restoration and feedback deadlines. Runtime verification must additionally
+exercise actual wheel direction, fractional scaling, painting and idle behavior;
+nested software-rendered evidence does not establish physical input preferences
+or direct-TTY/hardware-GPU behavior.

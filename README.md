@@ -58,3 +58,6 @@ managed builds patch them to the recorded source snapshot.
 See [renderer architecture](docs/architecture/renderer-foundation.md),
 [scene toolkit](docs/architecture/scene-toolkit.md) and the
 [repository extraction decision](docs/architecture/repository-split.md).
+
+The [component catalog](docs/architecture/widget-catalog.md) documents shared
+widgets, keyboard/selection contracts, semantic snapshots and deferred CSS work.
