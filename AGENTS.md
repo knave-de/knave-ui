@@ -1,7 +1,7 @@
 # Knave UI agent instructions
 
 This repository owns `knave-ui` (renderer-independent UI primitives, toolkit,
-shared desktop projections and assets) and `knave-renderer` (wgpu painting and
+application widgets) and `knave-renderer` (wgpu painting and
 text measurement). Knave Shell owns desktop surfaces and Wayland hosting.
 Keep the renderer dependent on the UI crate, never the reverse.
 

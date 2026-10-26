@@ -1,4 +1,4 @@
-//! Retained shell UI scenes. Coordinates are logical pixels; no desktop IPC is performed here.
+//! Retained application UI scenes. Coordinates are logical pixels; no desktop IPC is performed here.
 mod cursor;
 mod input;
 mod layout;

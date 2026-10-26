@@ -4,8 +4,7 @@
 
 Shell controls need layout, focus, capture, text editing and shared rendering
 across an entire output. `knave-ui::toolkit` now owns those concerns without
-Wayland, GPU or desktop-service dependencies. Existing `UiScene` projections
-remain available during adoption.
+Wayland, GPU or desktop-service dependencies. Desktop `UiScene` projections live in Shell's internal `knave-shell-ui` crate.
 
 An application composes an `Element` tree with stable `ElementId`s into a
 `Scene`. Rows, columns, grids and overlays use logical pixels, padding, gaps,

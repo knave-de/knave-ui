@@ -2,9 +2,9 @@
 
 Reusable Rust UI and rendering libraries for Knave. `knave-ui` owns logical
 geometry, paint styles, ordered display lists, the retained scene toolkit,
-shared desktop projections and bundled assets. `knave-renderer` implements
+application widgets. `knave-renderer` implements
 wgpu painting and text measurement against that display list. UI primitives
-have no GPU or Wayland dependency; desktop projections use Knave's typed API.
+have no GPU, Wayland or desktop-service dependency. Shell owns desktop projections and assets.
 
 Knave Shell consumes both crates and owns desktop surfaces, service integration
 and Wayland hosting. The renderer depends on the UI crate; the UI crate does

@@ -1,6 +1,4 @@
-use crate::{
-    Color, ImageStyle, Rect, ShapePaint, TextStyle, Transform2D, UiImage, UiNode, UiScene,
-};
+use crate::{Color, ImageStyle, Rect, ShapePaint, TextStyle, Transform2D, UiImage};
 
 /// One renderer-independent drawing operation in back-to-front order.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,38 +47,6 @@ impl DisplayList {
             clear_color,
             commands: Vec::new(),
         }
-    }
-
-    pub fn from_scene(scene: &UiScene) -> Self {
-        let mut builder = DisplayListBuilder::new(scene.revision(), scene.clear_color());
-        for node in scene.nodes() {
-            match node {
-                UiNode::Panel { bounds, color, .. } => {
-                    builder.fill_rect(*bounds, *color);
-                }
-                UiNode::Label {
-                    bounds,
-                    color,
-                    text,
-                    ..
-                } => {
-                    builder.text(
-                        *bounds,
-                        text.clone(),
-                        TextStyle {
-                            color: *color,
-                            ..TextStyle::default()
-                        },
-                    );
-                }
-                UiNode::Image { bounds, image, .. } => {
-                    builder.image(*bounds, image.clone(), ImageStyle::default());
-                }
-            }
-        }
-        builder
-            .finish()
-            .expect("scene conversion does not alter builder state")
     }
 }
 
@@ -228,7 +194,7 @@ pub type RenderList = DisplayList;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CornerRadii, NodeId};
+    use crate::CornerRadii;
 
     #[test]
     fn commands_remain_in_insertion_order_and_keep_full_styles() {
@@ -252,28 +218,6 @@ mod tests {
             unreachable!()
         };
         assert_eq!(paint.radii, CornerRadii::uniform(5.0));
-    }
-
-    #[test]
-    fn scene_projection_preserves_order_revision_and_clear_color() {
-        let mut scene = UiScene::new(11);
-        scene.set_clear_color(Color::rgba(8, 12, 18, 245));
-        scene.push(UiNode::Panel {
-            id: NodeId(1),
-            bounds: Rect::new(0.0, 0.0, 4.0, 4.0),
-            color: Color::ACCENT,
-        });
-        scene.push(UiNode::Label {
-            id: NodeId(2),
-            bounds: Rect::new(1.0, 1.0, 2.0, 2.0),
-            color: Color::TEXT,
-            text: "top".into(),
-        });
-        let list = DisplayList::from_scene(&scene);
-        assert_eq!(list.revision, 11);
-        assert_eq!(list.clear_color, Color::rgba(8, 12, 18, 245));
-        assert!(matches!(list.commands[0], DisplayCommand::Shape { .. }));
-        assert!(matches!(list.commands[1], DisplayCommand::Text { .. }));
     }
 
     #[test]

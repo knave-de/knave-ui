@@ -80,7 +80,9 @@ indicators, overview and window previews, quick settings, notifications,
 authentication and power/session dialogs, OSD, calendar, switcher and lock-screen
 controls. These compose the common UI system and supply desktop-service fixtures.
 The application catalog does not duplicate their services or presentation policy.
-Existing shared desktop projections are not moved as part of this change.
+Desktop projections, desktop actions, the status bar and desktop assets now belong
+to Shell's internal `knave-shell-ui` crate. Generic UI crates do not depend on
+`knave-desktop-api`.
 
 ## Compatibility and verification
 
