@@ -158,7 +158,9 @@ impl Scene {
     pub(super) fn effective_layout(&self, index: usize) -> Layout {
         let mut layout = self.nodes[index].element.layout;
         if let Some(style) = self.computed_style(self.nodes[index].element.id) {
-            layout.padding_edges = Some(style.padding);
+            if style.padding_explicit {
+                layout.padding_edges = Some(style.padding);
+            }
             layout.margin = style.margin;
             layout.gap = style.gap;
         }

@@ -7,6 +7,7 @@ pub struct ComputedStyle {
     pub padding: Insets,
     pub margin: Insets,
     pub gap: f32,
+    pub(super) padding_explicit: bool,
 }
 impl From<&Element> for ComputedStyle {
     fn from(element: &Element) -> Self {
@@ -15,6 +16,7 @@ impl From<&Element> for ComputedStyle {
             padding: element.layout.insets(),
             margin: element.layout.margin,
             gap: element.layout.gap,
+            padding_explicit: false,
         }
     }
 }
@@ -180,6 +182,7 @@ impl Stylesheet {
                         padding: Insets::default(),
                         margin: Insets::default(),
                         gap: 0.0,
+                        padding_explicit: false,
                     },
                     name,
                     &value,
@@ -383,6 +386,7 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
         padding: Insets::all(8.0),
         margin: Insets::default(),
         gap: 0.0,
+        padding_explicit: true,
     };
     let mut decl = std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
     let mut vars = std::collections::BTreeMap::<String, String>::new();
@@ -695,6 +699,7 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
                 },
                 _ => return Err(StylesheetError::InvalidValue),
             };
+            c.padding_explicit = true;
         }
         "margin" => {
             let vals = v

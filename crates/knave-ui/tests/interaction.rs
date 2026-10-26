@@ -114,6 +114,13 @@ fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
     assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0x11,0x22,0x33,255)))));
 }
 #[test]
+fn bundled_stylesheet_preserves_default_control_insets() {
+    let mut s = scene(vec![leaf(1, Widget::Button("Run".into()))]);
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{bounds: text_bounds,text,..} if text=="Run" && text_bounds.x==bounds.x+10.0)));
+}
+#[test]
 fn slider_captures_outside_and_cancel_restores_value() {
     let mut s = scene(vec![leaf(
         1,
