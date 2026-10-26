@@ -262,7 +262,6 @@ impl TextPass {
         style: &TextStyle,
         width: f32,
     ) -> knave_ui::toolkit::TextLayout {
-        use knave_ui::toolkit::{Caret, TextLayout};
         let item = TextItem {
             bounds: Rect::new(0.0, 0.0, width, 16384.0),
             text,
@@ -282,53 +281,9 @@ impl TextPass {
         } else {
             Arc::new(create_buffer(&mut self.font_system, &item))
         };
-        let mut result = TextLayout::default();
         let content = spans.map(|spans| spans.iter().map(|s| s.text.as_str()).collect::<String>());
         let text = content.as_deref().unwrap_or(text);
-        let offsets: Vec<_> = std::iter::once(0)
-            .chain(text.match_indices('\n').map(|(i, _)| i + 1))
-            .collect();
-        for run in buffer.layout_runs() {
-            result.size[0] = result.size[0].max(run.line_w);
-            result.size[1] = result.size[1].max(run.line_top + run.line_height);
-            let line_offset = offsets.get(run.line_i).copied().unwrap_or(0);
-            for glyph in run.glyphs {
-                let (start, end) = if glyph.level.is_rtl() {
-                    (glyph.x + glyph.w, glyph.x)
-                } else {
-                    (glyph.x, glyph.x + glyph.w)
-                };
-                // Match Cosmic Text's grapheme interpolation inside ligature clusters.
-                let cluster = &run.text[glyph.start..glyph.end];
-                let count = cluster.graphemes(true).count().max(1);
-                for (position, (byte, _)) in cluster.grapheme_indices(true).enumerate() {
-                    result.carets.push(Caret {
-                        byte: line_offset + glyph.start + byte,
-                        x: start + (end - start) * position as f32 / count as f32,
-                        y: run.line_top,
-                        height: run.line_height,
-                    });
-                }
-                result.carets.push(Caret {
-                    byte: line_offset + glyph.end,
-                    x: end,
-                    y: run.line_top,
-                    height: run.line_height,
-                });
-            }
-        }
-        result.carets.sort_by_key(|c| c.byte);
-        result.carets.dedup_by_key(|c| c.byte);
-        if result.carets.is_empty() {
-            result.carets.push(Caret {
-                byte: 0,
-                x: 0.0,
-                y: 0.0,
-                height: style.line_height,
-            });
-            result.size[1] = style.line_height;
-        }
-        result
+        measured_layout(&buffer, text, style)
     }
 
     pub fn render<'a>(
@@ -550,6 +505,67 @@ fn ceil_to_i32(value: f32) -> i32 {
     value.ceil().clamp(i32::MIN as f32, i32::MAX as f32) as i32
 }
 
+fn measured_layout(
+    buffer: &Buffer,
+    text: &str,
+    style: &TextStyle,
+) -> knave_ui::toolkit::TextLayout {
+    use knave_ui::toolkit::{Caret, TextLayout};
+    let mut result = TextLayout::default();
+    let offsets: Vec<_> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+    for run in buffer.layout_runs() {
+        result.size[0] = result.size[0].max(run.line_w);
+        result.size[1] = result.size[1].max(run.line_top + run.line_height);
+        let line_offset = offsets.get(run.line_i).copied().unwrap_or(0);
+        if run.glyphs.is_empty() {
+            result.carets.push(Caret {
+                byte: line_offset,
+                x: 0.0,
+                y: run.line_top,
+                height: run.line_height,
+            });
+        }
+        for glyph in run.glyphs {
+            let (start, end) = if glyph.level.is_rtl() {
+                (glyph.x + glyph.w, glyph.x)
+            } else {
+                (glyph.x, glyph.x + glyph.w)
+            };
+            // Match Cosmic Text's grapheme interpolation inside ligature clusters.
+            let cluster = &run.text[glyph.start..glyph.end];
+            let count = cluster.graphemes(true).count().max(1);
+            for (position, (byte, _)) in cluster.grapheme_indices(true).enumerate() {
+                result.carets.push(Caret {
+                    byte: line_offset + glyph.start + byte,
+                    x: start + (end - start) * position as f32 / count as f32,
+                    y: run.line_top,
+                    height: run.line_height,
+                });
+            }
+            result.carets.push(Caret {
+                byte: line_offset + glyph.end,
+                x: end,
+                y: run.line_top,
+                height: run.line_height,
+            });
+        }
+    }
+    result.carets.sort_by_key(|c| c.byte);
+    result.carets.dedup_by_key(|c| c.byte);
+    if result.carets.is_empty() {
+        result.carets.push(Caret {
+            byte: 0,
+            x: 0.0,
+            y: 0.0,
+            height: style.line_height,
+        });
+        result.size[1] = style.line_height;
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,100 +595,24 @@ mod tests {
     }
 
     #[test]
-    fn focused_status_title_shapes_one_line_and_clips_to_its_allocation() {
-        use knave_desktop_api::{
-            DesktopSnapshot, WindowId, WindowSummary, WorkspaceId, WorkspaceSummary,
-        };
+    fn multiline_measurement_keeps_carets_on_empty_and_trailing_lines() {
         let mut fonts = FontSystem::new();
-        for title in [
-            "W".repeat(100),
-            "文書".repeat(100),
-            "first\nsecond\rthird".into(),
-        ] {
-            let snapshot = DesktopSnapshot {
-                generation: 1,
-                overview_visible: false,
-                workspaces: vec![WorkspaceSummary {
-                    workspace: WorkspaceId(1),
-                    active: true,
-                    window_count: 1,
-                    visible_window_count: 1,
-                }],
-                windows: vec![WindowSummary {
-                    id: WindowId(1),
-                    workspace: WorkspaceId(1),
-                    title,
-                    app_id: String::new(),
-                    focused: true,
-                    minimized: false,
-                    floating: false,
-                    fullscreen: false,
-                    maximized: false,
-                }],
-            };
-            let bar = knave_ui::status_bar::StatusBar::new(
-                1,
-                600.0,
-                36.0,
-                Some(&snapshot),
-                true,
-                None,
-                &[],
-            );
-            let (bounds, text) = bar
-                .scene
-                .nodes()
-                .iter()
-                .find_map(|node| match node {
-                    knave_ui::UiNode::Label {
-                        id: knave_ui::NodeId(8),
-                        bounds,
-                        text,
-                        ..
-                    } => Some((*bounds, text)),
-                    _ => None,
-                })
-                .unwrap();
-            let commands: Vec<_> = bar
-                .display
-                .commands
-                .iter()
-                .filter_map(|command| match command {
-                    knave_ui::DisplayCommand::Text {
-                        bounds: b,
-                        text: t,
-                        style,
-                        transform,
-                        clip,
-                    } if *b == bounds && t == text => Some((style, *transform, *clip)),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(commands.len(), 1);
-            let (style, transform, clip) = commands[0];
-            assert_eq!(style.wrap, TextWrap::None);
-            assert_eq!(clip, Some(bounds));
-            let item = TextItem {
-                bounds,
-                text,
-                spans: None,
-                style,
-                transform,
-                clip,
-            };
-            let buffer = create_buffer(&mut fonts, &item);
-            let runs: Vec<_> = buffer.layout_runs().collect();
-            assert_eq!(runs.len(), 1, "focused title must shape to one line");
-            assert!(
-                runs[0].line_w <= bounds.width,
-                "conservative truncation reserves the ellipsis"
-            );
-            let area = prepared_area(&item, 600, 36).unwrap().unwrap();
-            assert_eq!(area.clip.left, bounds.x.floor() as i32);
-            assert_eq!(area.clip.right, (bounds.x + bounds.width).ceil() as i32);
-            assert_eq!(area.clip.top, 0);
-            assert_eq!(area.clip.bottom, 36);
-        }
+        let style = TextStyle {
+            wrap: TextWrap::WordOrGlyph,
+            ..TextStyle::default()
+        };
+        let item = TextItem {
+            bounds: Rect::new(0.0, 0.0, 200.0, 300.0),
+            text: "first\n\n",
+            spans: None,
+            style: &style,
+            transform: Transform2D::IDENTITY,
+            clip: None,
+        };
+        let buffer = create_buffer(&mut fonts, &item);
+        let metrics = measured_layout(&buffer, item.text, &style);
+        assert!(metrics.caret(6).unwrap().y > 0.0);
+        assert!(metrics.caret(7).unwrap().y >= style.line_height * 2.0);
     }
 
     #[test]

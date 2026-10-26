@@ -1,5 +1,4 @@
-//! Catalog of existing primitives and app-level compositions. Missing widgets are
-//! documented as gaps rather than imitated with differently labelled buttons.
+//! Shared application widgets, behavior examples and frozen real-scene references.
 use knave_app::{AppResult, Application};
 use knave_ui::{HeadingLevel, TextSpan, TextStyle, toolkit::*};
 
@@ -67,6 +66,14 @@ fn core() -> Result<Vec<Element>, UiError> {
                 ),
                 supporting_text,
                 Element::new(
+                    130,
+                    Widget::Link {
+                        label: "Documentation link · reports an OpenLink action".into(),
+                        target: "https://github.com/knave-de/knave-ui".into(),
+                    },
+                ),
+                Element::badge(131, "Badge · 3 updates"),
+                Element::new(
                     105,
                     Widget::Paragraph(vec![
                         TextSpan {
@@ -133,6 +140,103 @@ fn core() -> Result<Vec<Element>, UiError> {
                         ),
                     ],
                 ),
+                grid(
+                    140,
+                    3,
+                    vec![
+                        Element::action_button(141, "Primary", ButtonVariant::Primary),
+                        Element::action_button(142, "Secondary", ButtonVariant::Secondary),
+                        Element::action_button(143, "Ghost", ButtonVariant::Ghost),
+                        Element::action_button(144, "Destructive", ButtonVariant::Destructive),
+                        Element::loading_button(145, "Saving · busy"),
+                        Element::icon_button(147, 148, &sample_icon()),
+                        Element::new(
+                            146,
+                            Widget::MixedCheckbox {
+                                label: "Mixed selection".into(),
+                                state: CheckState::Mixed,
+                            },
+                        ),
+                    ],
+                ),
+                Element::selection_group(
+                    150,
+                    SelectionGroup::Radio,
+                    vec![
+                        Element::new(
+                            151,
+                            Widget::Selectable {
+                                label: "Radio A".into(),
+                                selected: true,
+                            },
+                        ),
+                        Element::new(
+                            152,
+                            Widget::Selectable {
+                                label: "Radio B".into(),
+                                selected: false,
+                            },
+                        ),
+                    ],
+                ),
+                Element::selection_group(
+                    160,
+                    SelectionGroup::Segmented,
+                    vec![
+                        Element::new(
+                            161,
+                            Widget::Selectable {
+                                label: "Day".into(),
+                                selected: true,
+                            },
+                        ),
+                        Element::new(
+                            162,
+                            Widget::Selectable {
+                                label: "Week".into(),
+                                selected: false,
+                            },
+                        ),
+                        Element::new(
+                            163,
+                            Widget::Selectable {
+                                label: "Month".into(),
+                                selected: false,
+                            },
+                        ),
+                    ],
+                ),
+                Element::split_button(
+                    180,
+                    Element::action_button(181, "Run action", ButtonVariant::Primary),
+                    Element::new(
+                        182,
+                        Widget::Menu {
+                            label: "More actions".into(),
+                            items: choices(),
+                        },
+                    ),
+                ),
+                Element::selection_group(
+                    185,
+                    SelectionGroup::Chips,
+                    vec![
+                        Element::new(
+                            186,
+                            Widget::Selectable {
+                                label: "Choice A".into(),
+                                selected: true,
+                            },
+                        ),
+                        Element::new(
+                            187,
+                            Widget::Selectable {
+                                label: "Choice B".into(),
+                                selected: false,
+                            },
+                        ),
+                    ],
+                ),
                 Element::new(
                     15,
                     Widget::Selectable {
@@ -165,9 +269,49 @@ fn core() -> Result<Vec<Element>, UiError> {
                         items: choices(),
                     },
                 ),
+                Element::new(
+                    170,
+                    Widget::TextInput(
+                        TextEdit::new("Password sample")?.with_mode(InputMode::Password)?,
+                    ),
+                ),
+                Element::new(
+                    171,
+                    Widget::TextInput(TextEdit::multiline(
+                        "Multiline input\nEnter inserts a line; Ctrl+Enter submits",
+                    )?),
+                ),
+                Element::new(
+                    172,
+                    Widget::TextInput(
+                        TextEdit::new("Search · Escape clears")?.with_mode(InputMode::Search)?,
+                    ),
+                ),
+                Element::new(
+                    173,
+                    Widget::TextInput(TextEdit::new("5")?.with_mode(InputMode::Numeric {
+                        min: 0.0,
+                        max: 10.0,
+                        step: 0.5,
+                    })?),
+                ),
+                Element::new(
+                    174,
+                    Widget::TextInput(TextEdit::new("")?.with_validation(TextValidation {
+                        required: true,
+                        max_graphemes: Some(20),
+                    })),
+                ),
+                Element::combo_box(196, "", choices())?,
+                Element::color_picker(
+                    190,
+                    191,
+                    [192, 193, 194, 195],
+                    knave_ui::Color::rgba(93, 173, 226, 255),
+                ),
                 text(
                     122,
-                    "Text input is single-line. Password, multiline, numeric, search behavior, editable combo boxes and color picking are not implemented.",
+                    "Numeric Up/Down steps; Enter validates. Password text is masked and excluded from copy/cut and IME surrounding text.",
                 ),
             ],
         ),
@@ -194,23 +338,187 @@ fn layout() -> Vec<Element> {
                 .children(vec![Element::new(2304, Widget::Button("Background".into())),
                     Element::new(2305, Widget::Button("Overlay".into())).layout(Layout { width: Length::Px(180.0), offset: [30.0, 30.0], ..Default::default() })]),
             Element::new(26, Widget::Draggable("Drag this control · Escape cancels".into())),
-            text(2306, "Split views and expanders need additional behavior; they are not supplied by the row/grid layout itself."),
+            Element::split_view(2400, 2401, text(2402, "Resizable first pane"), text(2403, "Second pane · drag or use arrow keys on the divider"), Orientation::Horizontal, 0.4, 60.0).expect("valid split").layout(Layout { height: Length::Px(160.0), ..Default::default() }),
+            Element::accordion(2500, vec![
+                Element::expander(2501, 2502, "First section", text(2503, "Only one accordion section is open"), true),
+                Element::expander(2504, 2505, "Second section", text(2506, "Collapsed content is excluded from focus and semantics"), false),
+            ]),
         ]),
     ]
 }
+fn sample_icon() -> Icon {
+    Icon {
+        image: knave_ui::UiImage::from_rgba(
+            2,
+            2,
+            vec![
+                93, 173, 226, 255, 240, 244, 248, 255, 240, 244, 248, 255, 93, 173, 226, 255,
+            ],
+        )
+        .expect("sample pixels"),
+        name: "Sample icon".into(),
+    }
+}
+fn fixture_element(kind: usize, alternate: bool) -> Result<Element, UiError> {
+    let collection = |kind| -> Result<Element, UiError> {
+        let mut parent = CollectionItem::new(1, "Alpha");
+        parent.expanded = alternate;
+        parent.cells.push("12".into());
+        let mut child = CollectionItem::new(2, "Beta");
+        child.cells.push("24".into());
+        if matches!(kind, CollectionKind::Tree) {
+            child.parent = Some(1);
+        }
+        let table = matches!(kind, CollectionKind::Table { .. });
+        let mut data = Collection::new(kind, vec![parent, child])?;
+        if alternate && table {
+            data.sort_by(0, true)?;
+        }
+        if alternate && !matches!(data.items()[1].parent, Some(1)) {
+            data.select(2)?;
+        }
+        Ok(Element::new(1, Widget::Collection(data)))
+    };
+    Ok(match kind {
+        0 if alternate => Element::loading_button(1, "Saving"),
+        0 => Element::new(1, Widget::Button("Button".into())),
+        1 => Element::new(
+            1,
+            Widget::MixedCheckbox {
+                label: "Checkbox".into(),
+                state: if alternate {
+                    CheckState::Mixed
+                } else {
+                    CheckState::Unchecked
+                },
+            },
+        ),
+        2 => Element::new(
+            1,
+            Widget::Toggle {
+                label: "Switch".into(),
+                checked: alternate,
+            },
+        ),
+        3 => Element::new(
+            1,
+            Widget::Slider(Slider::new(
+                0.0,
+                100.0,
+                if alternate { 90.0 } else { 40.0 },
+                Some(1.0),
+            )?),
+        ),
+        4 => Element::new(
+            1,
+            Widget::TextInput(
+                TextEdit::new(if alternate { "" } else { "Edit text" })?.with_validation(
+                    TextValidation {
+                        required: true,
+                        max_graphemes: Some(20),
+                    },
+                ),
+            ),
+        ),
+        5 => Element::new(
+            1,
+            Widget::Dropdown {
+                label: "Dropdown".into(),
+                items: choices(),
+                selected: Some(1),
+            },
+        ),
+        6 => Element::new(
+            1,
+            Widget::Menu {
+                label: "Menu".into(),
+                items: choices(),
+            },
+        ),
+        7 => Element::new(
+            1,
+            Widget::Selectable {
+                label: "Selectable".into(),
+                selected: alternate,
+            },
+        ),
+        8 => Element::new(
+            1,
+            Widget::Link {
+                label: "Link".into(),
+                target: "https://example.org".into(),
+            },
+        ),
+        9 => Element::combo_box(1, "", choices())?,
+        10 => Element::new(
+            1,
+            Widget::ContextMenu {
+                label: "Context menu".into(),
+                items: choices(),
+            },
+        ),
+        11 => Element::pagination(1, if alternate { 9 } else { 0 }, 10)?,
+        12 => collection(CollectionKind::List)?,
+        13 => collection(CollectionKind::IconGrid { columns: 2 })?,
+        14 => collection(CollectionKind::Tree)?,
+        15 => collection(CollectionKind::Table {
+            headers: vec!["Name".into(), "Count".into()],
+        })?,
+        16 => Element::expander(2, 1, "Disclosure", text(3, "Expanded content"), alternate),
+        17 => Element::split_view(
+            2,
+            1,
+            text(3, "Left"),
+            text(4, "Right"),
+            Orientation::Horizontal,
+            if alternate { 0.7 } else { 0.4 },
+            20.0,
+        )?,
+        18 => Element::icon_button(1, 2, &sample_icon()),
+        _ => Element::color_picker(
+            1,
+            2,
+            [3, 4, 5, 6],
+            knave_ui::Color::rgba(if alternate { 255 } else { 93 }, 173, 226, 255),
+        ),
+    })
+}
+fn command_palette() -> Result<CommandPalette, UiError> {
+    CommandPalette::new(
+        PaletteIds {
+            popup: 7000,
+            title: 7001,
+            query: 7002,
+            results: 7003,
+        },
+        vec![
+            CollectionItem::new(1, "Open document"),
+            CollectionItem::new(2, "Save document"),
+            CollectionItem::new(3, "Close document"),
+        ],
+    )
+}
 fn navigation() -> Vec<Element> {
+    let collection = |id, kind, items| {
+        Element::new(
+            id,
+            Widget::Collection(Collection::new(kind, items).expect("bounded sample collection")),
+        )
+    };
+    let mut child = CollectionItem::new(2, "Child document");
+    child.parent = Some(1);
+    let mut a = CollectionItem::new(10, "Alpha");
+    a.cells = vec!["Document".into(), "12 KB".into()];
+    let mut b = CollectionItem::new(20, "Beta");
+    b.cells = vec!["Image".into(), "24 KB".into()];
     vec![
         section(
             3100,
-            "Page navigation · application composition",
+            "Tabs and sidebar · shared selection contracts",
             vec![
                 text(
                     3102,
-                    "The catalog buttons above switch retained page visibility. They are selectable controls, not a native tab-bar widget: arrow-key tab semantics are not implemented.",
-                ),
-                text(
-                    3103,
-                    "The sidebar below composes selectable rows. Choosing a row updates its selection and the detail text. It is not a dedicated navigation-rail primitive.",
+                    "Groups use one Tab stop, arrow/Home/End navigation and exclusive selection. Page contents retain their values.",
                 ),
                 Element::new(3104, Widget::Panel)
                     .layout(Layout {
@@ -218,79 +526,143 @@ fn navigation() -> Vec<Element> {
                         ..Default::default()
                     })
                     .children(vec![
-                        Element::new(3105, Widget::Panel)
-                            .layout(Layout {
-                                width: Length::Px(160.0),
-                                ..Default::default()
-                            })
-                            .children(vec![
-                                Element::new(
-                                    3110,
-                                    Widget::Selectable {
-                                        label: "General".into(),
-                                        selected: true,
-                                    },
-                                ),
-                                Element::new(
-                                    3111,
-                                    Widget::Selectable {
-                                        label: "Appearance".into(),
-                                        selected: false,
-                                    },
-                                ),
-                                Element::new(
-                                    3112,
-                                    Widget::Selectable {
-                                        label: "Input".into(),
-                                        selected: false,
-                                    },
-                                ),
-                            ]),
-                        text(3120, "General settings · composed detail area"),
+                        Element::selection_group(
+                            3105,
+                            SelectionGroup::Sidebar,
+                            ["General", "Appearance", "Input"]
+                                .iter()
+                                .enumerate()
+                                .map(|(i, label)| {
+                                    Element::new(
+                                        3110 + i as u64,
+                                        Widget::Selectable {
+                                            label: (*label).into(),
+                                            selected: i == 0,
+                                        },
+                                    )
+                                })
+                                .collect(),
+                        )
+                        .layout(Layout {
+                            width: Length::Px(160.0),
+                            ..Default::default()
+                        }),
+                        text(3120, "General settings · detail area"),
                     ]),
             ],
         ),
         section(
             3200,
-            "Lists and icon grids · compositions",
+            "Virtual collections · lists and icon grids",
             vec![
                 text(
                     3202,
-                    "Selectable rows and a grid provide small collections. These retain every node; they do not virtualize large lists.",
+                    "10,000 rows; only visible rows are painted. End reveals the last item; wheel scrolling preserves selection.",
                 ),
-                Element::new(
+                collection(
                     3210,
-                    Widget::Selectable {
-                        label: "Network A".into(),
-                        selected: true,
-                    },
+                    CollectionKind::List,
+                    (0..10_000)
+                        .map(|id| CollectionItem::new(id, format!("Document {id}")))
+                        .collect(),
                 ),
-                Element::new(
-                    3211,
-                    Widget::Selectable {
-                        label: "Network B".into(),
-                        selected: false,
-                    },
-                ),
-                grid(
+                collection(
                     3220,
-                    3,
+                    CollectionKind::IconGrid { columns: 3 },
+                    (0..12)
+                        .map(|id| {
+                            let mut item = CollectionItem::new(id, format!("Item {id}"));
+                            item.icon = Some(sample_icon().image);
+                            item
+                        })
+                        .collect(),
+                ),
+            ],
+        ),
+        section(
+            3300,
+            "Tree and table · structured collections",
+            vec![
+                text(
+                    3302,
+                    "Tree Left/Right collapses/expands; table Left/Right chooses a column and Ctrl+Space sorts it. Header clicks also sort.",
+                ),
+                collection(
+                    3303,
+                    CollectionKind::Tree,
                     vec![
-                        Element::new(3221, Widget::Button("▣ Files".into())),
-                        Element::new(3222, Widget::Button("▣ Settings".into())),
-                        Element::new(3223, Widget::Button("▣ Browser".into())),
+                        CollectionItem::new(1, "Folder"),
+                        child,
+                        CollectionItem::new(3, "Another folder"),
                     ],
                 ),
-                text(
-                    3203,
-                    "Next priorities: dedicated tabs, sidebar navigation, lists and icon grids. Tree/table behavior, breadcrumbs, context menus and command palettes wait for application requirements.",
+                collection(
+                    3304,
+                    CollectionKind::Table {
+                        headers: vec!["Name".into(), "Kind".into(), "Size".into()],
+                    },
+                    vec![a, b],
                 ),
+            ],
+        ),
+        section(
+            3400,
+            "Paths, pages and commands",
+            vec![
+                Element::breadcrumbs(
+                    3402,
+                    vec![
+                        Breadcrumb {
+                            id: 3403,
+                            label: "Home".into(),
+                            target: "/".into(),
+                        },
+                        Breadcrumb {
+                            id: 3404,
+                            label: "Documents".into(),
+                            target: "/documents".into(),
+                        },
+                    ],
+                ),
+                Element::pagination(3405, 0, 12).expect("sample pagination"),
+                Element::new(
+                    3406,
+                    Widget::ContextMenu {
+                        label: "Right-click or press Menu / Shift+F10".into(),
+                        items: choices(),
+                    },
+                ),
+                Element::new(3407, Widget::Button("Open command palette".into())),
             ],
         ),
     ]
 }
 fn overlays() -> Vec<Element> {
     vec![
+        section(
+            4500,
+            "Feedback · shared widgets",
+            vec![
+                Element::progress(4502, Some(0.65)).expect("valid progress"),
+                Element::progress(4503, None).expect("indeterminate progress"),
+                Element::new(4504, Widget::Spinner),
+                Element::alert(4505, "Alert · changes require attention"),
+                Element::new(4506, Widget::Button("Show five-second toast".into())),
+                {
+                    let mut toast = Element::toast(
+                        4507,
+                        "Saved · hover or focus pauses expiry",
+                        std::time::Duration::from_secs(5),
+                    )
+                    .children(vec![Element::new(
+                        4508,
+                        Widget::Button("Dismiss toast".into()),
+                    )]);
+                    toast.visible = false;
+                    toast
+                },
+            ],
+        ),
         section(
             4100,
             "Menus and modal dialogs · primitives and compositions",
@@ -321,7 +693,7 @@ fn overlays() -> Vec<Element> {
                 Element::new(4204, Widget::Button("Example action".into())),
                 text(
                     4205,
-                    "Alerts, progress bars, spinners and toast lifecycles are not implemented primitives. This catalog does not imply they exist by drawing static imitations.",
+                    "Progress, spinner, alert and expiring toast examples above use the shared widgets. Toast dismissal also supports an ordinary button.",
                 ),
             ],
         ),
@@ -329,6 +701,7 @@ fn overlays() -> Vec<Element> {
 }
 fn states() -> Result<Vec<Element>, UiError> {
     Ok(vec![
+        section(5500, "Frozen interaction references · real scene snapshots", vec![Element::new(5502, Widget::Panel)]),
         section(5100, "Buttons · default and disabled", vec![
             grid(5102, 2, vec![Element::new(5110, Widget::Button("Default".into())), disabled(Element::new(5111, Widget::Button("Disabled".into())))]),
             text(5103, "Use the enabled button for real hover, keyboard focus and pressed/release states. Only the actually focused/pressed control displays that state; these are not painted replicas."),
@@ -365,7 +738,7 @@ fn states() -> Result<Vec<Element>, UiError> {
 ,
             Element::new(5411, Widget::Panel).layout(Layout { width: Length::Px(240.0), ..Default::default() })
                 .children(vec![text(5412, "LongUnbrokenTextAlsoNeedsWrapping_abcdefghijklmnopqrstuvwxyz_0123456789")]),
-            text(5402, "Resize to narrow widths to inspect default wrapping/clipping; use output scaling and keyboard-only navigation. Appearance currently comes from toolkit defaults. Light/high-contrast themes and automated side-by-side hover/pressed fixtures remain explicit gaps."),
+            text(5402, "Resize to narrow widths to inspect default wrapping/clipping; use output scaling and keyboard-only navigation. Appearance currently comes from toolkit defaults. Frozen fixtures above use real Scene input and the common painter. Light/high-contrast themes remain deferred with global CSS."),
         ]),
     ])
 }
@@ -448,24 +821,28 @@ fn gallery() -> Result<Scene, UiError> {
     let nav = PAGES
         .iter()
         .enumerate()
-        .map(|(i, (_, label))| {
-            Element::new(
+        .map(|(i, (page, label))| {
+            let mut element = Element::new(
                 NAV + i as u64,
                 Widget::Selectable {
                     label: (*label).into(),
                     selected: i == 0,
                 },
-            )
+            );
+            element.semantics.controls = Some(ElementId(*page));
+            element
         })
         .collect();
     Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             text(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
-            grid(4, 3, nav),
+            Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
-            popup]))
+            popup, command_palette()?.element("Commands")?]))
 }
 struct Gallery {
+    palette: CommandPalette,
+    fixtures_ready: bool,
     scene: Scene,
     clicks: u32,
     trace: bool,
@@ -493,22 +870,198 @@ impl Gallery {
     }
 }
 impl Application for Gallery {
+    fn ready(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
+        if self.fixtures_ready {
+            return Ok(());
+        }
+        for (kind, title) in [
+            "Button",
+            "Checkbox",
+            "Switch",
+            "Slider",
+            "Text input",
+            "Dropdown",
+            "Menu",
+            "Selectable",
+            "Link",
+            "Combo box",
+            "Context menu",
+            "Pagination",
+            "List",
+            "Icon grid",
+            "Tree",
+            "Table",
+            "Disclosure",
+            "Split divider",
+            "Icon button",
+            "Color picker",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let mut cells = Vec::new();
+            for state in 0..7 {
+                let special = match kind {
+                    0 => "Loading",
+                    1 => "Mixed",
+                    2 => "Checked",
+                    4 => "Invalid",
+                    5 | 6 | 9 | 10 => "Expanded",
+                    7 | 12 | 13 => "Selected",
+                    14 | 16 => "Expanded",
+                    15 => "Sorted",
+                    _ => "Alternate value",
+                };
+                let label = [
+                    "Default",
+                    "Hover",
+                    "Keyboard focus",
+                    "Pressed",
+                    "Disabled",
+                    "Inactive window",
+                    special,
+                ][state];
+                let mut element = fixture_element(kind, state == 6)?;
+                if state == 4 {
+                    element.enabled = false;
+                }
+                let size = [
+                    220.0,
+                    if state == 6 && matches!(kind, 5 | 6 | 9 | 10 | 14 | 16) {
+                        180.0
+                    } else if kind == 19 {
+                        216.0
+                    } else {
+                        80.0
+                    },
+                ];
+                let mut fixture =
+                    Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
+                fixture.layout(size, text);
+                let target = if kind == 19 { 3 } else { 1 };
+                let bounds = fixture.bounds(ElementId(target)).unwrap();
+                let point = [
+                    (bounds.x + bounds.width / 2.0).min(size[0] - 1.0),
+                    (bounds.y + bounds.height / 2.0).min(size[1] - 1.0),
+                ];
+                let key = |key, pressed| Input::Key {
+                    key,
+                    pressed,
+                    repeat: false,
+                    modifiers: KeyModifiers::default(),
+                };
+                match state {
+                    1 => {
+                        fixture.event(Input::PointerMove(point));
+                    }
+                    2 => {
+                        fixture.event(key(Key::Tab, true));
+                    }
+                    3 => {
+                        fixture.event(Input::PointerDown(point));
+                    }
+                    5 => {
+                        fixture.event(key(Key::Tab, true));
+                        fixture.event(Input::FocusLost);
+                    }
+                    6 if matches!(kind, 5 | 6) => {
+                        fixture.set_focus(Some(ElementId(1)))?;
+                        fixture.event(key(Key::Space, true));
+                        fixture.event(key(Key::Space, false));
+                    }
+                    6 if kind == 9 => {
+                        fixture.set_focus(Some(ElementId(1)))?;
+                        fixture.event(key(Key::Down, true));
+                    }
+                    6 if kind == 10 => {
+                        fixture.set_focus(Some(ElementId(1)))?;
+                        fixture.event(key(Key::ContextMenu, true));
+                    }
+                    _ => {}
+                }
+                let interaction = fixture.interaction(ElementId(target)).unwrap();
+                let valid = match state {
+                    1 => interaction.hovered,
+                    2 => interaction.focused,
+                    3 => interaction.pressed && interaction.captured,
+                    4 => interaction.disabled,
+                    5 => !interaction.focused,
+                    _ => true,
+                };
+                if !valid {
+                    return Err(format!(
+                        "{title}: {label} fixture did not enter its intended state"
+                    )
+                    .into());
+                }
+                let id = 50_000 + kind as u64 * 100 + state as u64 * 4;
+                let mut preview = SceneSnapshot::capture(&mut fixture, size, text)?.element(id + 2);
+                preview.semantics.name = Some(format!("{title}: {label}"));
+                cells.push(
+                    Element::new(id, Widget::Panel)
+                        .children(vec![self::text(id + 1, label), preview]),
+                );
+            }
+            let id = 5600 + kind as u64 * 20;
+            self.scene.insert(
+                ElementId(5502),
+                Element::new(id, Widget::Panel).children(vec![
+                    Element::heading(id + 1, *title, HeadingLevel::H3),
+                    grid(id + 2, 3, cells),
+                ]),
+            )?;
+        }
+        self.fixtures_ready = true;
+        Ok(())
+    }
+
     fn scene(&mut self) -> &mut Scene {
         &mut self.scene
     }
     fn action(&mut self, action: Action) -> AppResult {
+        let edited = match &action {
+            Action::TextChanged(id, _) | Action::Submitted(id, _) => Some(*id),
+            _ => None,
+        };
+        if let Some(id) = edited
+            && matches!(self.scene.widget(id), Some(Widget::TextInput(edit)) if edit.mode() == InputMode::Password)
+        {
+            if self.trace {
+                println!("PasswordEdited({id:?})");
+            }
+            self.scene
+                .set_widget(STATUS, Widget::Text("Password field updated".into()))?;
+            return Ok(());
+        }
         if self.trace {
             println!("{action:?}");
         }
+        if let Some(command) = self.palette.handle(&mut self.scene, &action)? {
+            self.scene
+                .set_widget(STATUS, Widget::Text(format!("Command {command} activated")))?;
+            return Ok(());
+        }
         match action {
-            Action::Activated(ElementId(id)) if (NAV..NAV + PAGES.len() as u64).contains(&id) => {
+            Action::Activated(ElementId(3407)) => self.palette.open(&mut self.scene)?,
+            Action::Selected(ElementId(4), id) if (NAV..NAV + PAGES.len() as u64).contains(&id) => {
                 self.select_page((id - NAV) as usize)?
             }
+            Action::Activated(ElementId(4506)) => {
+                self.scene.set_widget(
+                    ElementId(4507),
+                    Widget::Toast {
+                        label: "Saved · hover or focus pauses expiry".into(),
+                        lifetime: std::time::Duration::from_secs(5),
+                    },
+                )?;
+                self.scene.set_visible(ElementId(4507), true)?;
+            }
+            Action::Activated(ElementId(4508)) => self.scene.dismiss_toast(ElementId(4507))?,
             Action::Activated(ElementId(27)) => self.scene.open_popup(POPUP)?,
             Action::Activated(ElementId(33 | 35)) => {
                 self.scene.close_popup();
             }
-            Action::Activated(ElementId(id @ 3110..=3112)) => {
+            Action::Selected(ElementId(3105), id @ 3110..=3112) => {
                 for (i, label) in ["General", "Appearance", "Input"].iter().enumerate() {
                     self.scene.set_widget(
                         ElementId(3110 + i as u64),
@@ -545,6 +1098,8 @@ fn main() -> AppResult {
         "Knave UI · Component catalog",
         [960.0, 840.0],
         Gallery {
+            palette: command_palette()?,
+            fixtures_ready: false,
             scene: gallery()?,
             clicks: 0,
             trace: std::env::args().any(|arg| arg == "--trace"),
@@ -557,6 +1112,8 @@ mod tests {
     use super::*;
     fn app() -> Gallery {
         Gallery {
+            palette: command_palette().unwrap(),
+            fixtures_ready: false,
             scene: gallery().unwrap(),
             clicks: 0,
             trace: false,
@@ -595,9 +1152,8 @@ mod tests {
         let mut app = app();
         app.scene.set_focus(Some(ElementId(NAV + 5))).unwrap();
         tab(&mut app.scene);
-        assert_eq!(app.scene.focus(), Some(ElementId(10)));
+        assert_eq!(app.scene.focus(), Some(ElementId(130)));
         app.select_page(4).unwrap();
-        tab(&mut app.scene);
         tab(&mut app.scene);
         assert_eq!(app.scene.focus(), Some(ElementId(5110)));
         tab(&mut app.scene);
@@ -617,5 +1173,49 @@ mod tests {
         assert_eq!(app.scene.focus(), Some(ElementId(33)));
         app.action(Action::Activated(ElementId(33))).unwrap();
         assert_eq!(app.scene.focus(), Some(ElementId(27)));
+    }
+    #[test]
+    fn frozen_references_are_built_by_real_scenes_and_the_common_text_engine() {
+        let instance = wgpu::Instance::default();
+        let Ok(adapter) =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+        else {
+            eprintln!("no headless adapter; fixture test skipped");
+            return;
+        };
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+        let mut painter =
+            knave_renderer::WgpuPainter::new(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb)
+                .unwrap();
+        let mut app = app();
+        app.ready(&mut painter).unwrap();
+        app.select_page(4).unwrap();
+        assert_eq!(
+            app.scene
+                .accessibility()
+                .iter()
+                .filter(|node| node.role == Role::Image)
+                .count(),
+            140
+        );
+        app.ready(&mut painter).unwrap();
+        assert!(matches!(
+            app.scene.widget(ElementId(50_002)),
+            Some(Widget::SceneSnapshot(_))
+        ));
+    }
+    #[test]
+    fn password_values_never_reach_gallery_status_text() {
+        let mut app = app();
+        for action in [
+            Action::TextChanged(ElementId(170), "private value".into()),
+            Action::Submitted(ElementId(170), "private value".into()),
+        ] {
+            app.action(action).unwrap();
+            assert!(
+                matches!(app.scene.widget(STATUS), Some(Widget::Text(label)) if label == "Password field updated")
+            );
+        }
     }
 }

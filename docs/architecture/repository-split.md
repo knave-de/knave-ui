@@ -2,15 +2,14 @@
 
 Knave Shell previously owned the UI toolkit and renderer in its Cargo workspace,
 which coupled reusable drawing and interaction libraries to shell development.
-The `knave-ui` repository now owns both crates, their assets, tests and architecture
-documents. Their package names and existing Rust APIs are preserved.
+The `knave-ui` repository now owns both crates, tests and architecture
+documents. Package names are preserved; the later [desktop boundary](desktop-boundary.md) moves Shell APIs to their owner.
 
 The dependency direction is `knaveshell` → `knave-renderer` → `knave-ui`;
 Wayland hosting also consumes `knave-ui` directly. UI primitives remain independent
-of GPU and Wayland; existing desktop projections continue to consume the typed
-`knave-desktop-api`. Desktop surfaces, service transport and Wayland hosting stay
-in Knave Shell. Bundled status icons are accessed through `status_icons`, avoiding
-cross-repository file includes.
+of GPU, Wayland and desktop services. Desktop projections, actions, status icons,
+surfaces and Wayland hosting belong in Knave Shell's workspace. Its internal
+`knave-shell-ui` crate owns desktop presentation and assets.
 
 Knave's managed workflow records all five source revisions, patches both UI crates
 into coordinated snapshots, builds this library-only workspace, and records its

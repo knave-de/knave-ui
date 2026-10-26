@@ -27,6 +27,8 @@ pub enum Key {
     V,
     Q,
     K,
+    ContextMenu,
+    F10,
     Other,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -35,6 +37,7 @@ pub enum Input {
     PointerDown([f32; 2]),
     PointerUp([f32; 2]),
     PointerLeave,
+    ContextMenu([f32; 2]),
     Scroll {
         position: [f32; 2],
         delta: [f32; 2],
@@ -64,6 +67,18 @@ pub enum Input {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Activated(ElementId),
+    OpenLink(ElementId, String),
+    ValidationFailed(ElementId, String),
+    CheckChanged(ElementId, CheckState),
+    ToastDismissed(ElementId),
+    Expanded(ElementId, u64, bool),
+    Sorted(ElementId, usize, bool),
+    CellFocused(ElementId, u64, usize),
+    /// The final flag is true for a committed keyboard/pointer change.
+    ColorChanged(ElementId, Color, bool),
+    ColorCancelled(ElementId, Color),
+    PageChanged(ElementId, usize),
+    ItemActivated(ElementId, u64),
     Toggled(ElementId, bool),
     Selected(ElementId, u64),
     ValueChanged(ElementId, f64),
@@ -94,9 +109,16 @@ impl Scene {
     /// Focus an eligible control in the current modal scope, or clear focus.
     pub fn set_focus(&mut self, target: Option<ElementId>) -> Result<(), UiError> {
         if let Some(id) = target
-            && !self.focus_candidates(None).contains(&id)
+            && !self.indices.get(&id).is_some_and(|i| {
+                self.eligible(*i)
+                    && self.nodes[*i].element.widget.focusable()
+                    && self.modal_root().is_none_or(|root| self.within(*i, root))
+            })
         {
             return Err(UiError::MissingElement(id));
+        }
+        if let Some(id) = target {
+            self.select_group_item(self.indices[&id]);
         }
         if self.focus != target {
             self.cancel_capture();
@@ -120,6 +142,10 @@ impl Scene {
             self.paint_dirty = true;
         }
         let action = match input {
+            Input::ContextMenu(p) => {
+                self.context_at(p);
+                None
+            }
             Input::PointerMove(p) => self.motion(p),
             Input::PointerDown(p) => self.press(p),
             Input::PointerUp(p) => self.release(p),
@@ -155,7 +181,7 @@ impl Scene {
             }
             Input::Preedit(text) => {
                 if let Some(id) = self.focus
-                    && let Widget::TextInput(edit) =
+                    && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
                         &mut self.nodes[self.indices[&id]].element.widget
                     && edit.set_preedit(&text).is_ok()
                 {
@@ -175,7 +201,7 @@ impl Scene {
             } => {
                 if let Some(id) = self.focus
                     && self.surface_focused
-                    && let Widget::TextInput(edit) =
+                    && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
                         &mut self.nodes[self.indices[&id]].element.widget
                 {
                     let mut changed = false;
@@ -205,7 +231,7 @@ impl Scene {
                     self.surface_focused = false;
                 }
                 if let Some(id) = self.focus
-                    && let Widget::TextInput(edit) =
+                    && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
                         &mut self.nodes[self.indices[&id]].element.widget
                 {
                     let _ = edit.set_preedit("");
@@ -219,6 +245,16 @@ impl Scene {
                 cancelled.map(Action::Cancelled)
             }
         };
+        let action = action
+            .as_ref()
+            .and_then(|action| self.color_action(action))
+            .or(action);
+        match &action {
+            Some(Action::TextChanged(id, _)) | Some(Action::Cut { id, .. }) => {
+                self.refresh_combo(*id)
+            }
+            _ => {}
+        }
         EventResult {
             redraw: self.needs_frame(),
             action,
@@ -274,7 +310,9 @@ impl Scene {
         let mut capture = self.capture?;
         let i = self.indices[&capture.id];
         match &self.nodes[i].element.widget {
-            Widget::Slider(_) => self.move_slider(capture.id, p, capture.offset[0]),
+            Widget::Slider(_) | Widget::Splitter(_) => {
+                self.move_slider(capture.id, p, capture.offset[0])
+            }
             Widget::Draggable(_) => {
                 let delta = [p[0] - capture.origin[0], p[1] - capture.origin[1]];
                 if !capture.started && delta[0].hypot(delta[1]) < 4.0 {
@@ -292,12 +330,14 @@ impl Scene {
                     Action::DragMoved(capture.id, offset)
                 })
             }
-            Widget::TextInput(_) => {
+            Widget::TextInput(_) | Widget::ComboBox { .. } => {
                 let x = p[0]
                     - control_content(self.nodes[i].bounds, self.nodes[i].element.layout).x
                     + self.nodes[i].text_offset;
-                let byte = self.nodes[i].text.hit(x);
-                if let Widget::TextInput(edit) = &mut self.nodes[i].element.widget {
+                let byte = self.nodes[i].text.hit_at(x, self.input_hit_y(i, p[1]));
+                if let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
+                    &mut self.nodes[i].element.widget
+                {
                     edit.place(byte, true);
                 }
                 self.paint_dirty = true;
@@ -358,6 +398,11 @@ impl Scene {
             started: false,
         };
         let action = match &self.nodes[i].element.widget {
+            Widget::Splitter(slider) => {
+                capture.value = slider.value();
+                capture.offset[0] = 0.0;
+                self.move_slider(id, p, 0.0)
+            }
             Widget::Slider(slider) => {
                 capture.value = slider.value();
                 let fraction = slider.fraction();
@@ -379,12 +424,15 @@ impl Scene {
                 ];
                 self.move_slider(id, p, capture.offset[0])
             }
-            Widget::TextInput(_) => {
-                let byte = self.nodes[i].text.hit(
+            Widget::TextInput(_) | Widget::ComboBox { .. } => {
+                let byte = self.nodes[i].text.hit_at(
                     p[0] - control_content(self.nodes[i].bounds, self.nodes[i].element.layout).x
                         + self.nodes[i].text_offset,
+                    self.input_hit_y(i, p[1]),
                 );
-                if let Widget::TextInput(edit) = &mut self.nodes[i].element.widget {
+                if let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
+                    &mut self.nodes[i].element.widget
+                {
                     edit.place(byte, false);
                 }
                 None
@@ -414,7 +462,9 @@ impl Scene {
         self.paint_dirty = true;
         let i = self.indices[&capture.id];
         match &self.nodes[i].element.widget {
-            Widget::Slider(slider) => Some(Action::ValueCommitted(capture.id, slider.value())),
+            Widget::Slider(slider) | Widget::Splitter(slider) => {
+                Some(Action::ValueCommitted(capture.id, slider.value()))
+            }
             Widget::Draggable(_) => {
                 if capture.started || matches!(update, Some(Action::DragStarted(_))) {
                     Some(Action::DragFinished(
@@ -425,7 +475,11 @@ impl Scene {
                     None
                 }
             }
-            Widget::TextInput(_) => None,
+            Widget::Pagination { .. } if self.hover == Some(capture.id) => {
+                self.pagination_click(i, p)
+            }
+            Widget::Collection(_) if self.hover == Some(capture.id) => self.collection_click(i, p),
+            Widget::TextInput(_) | Widget::ComboBox { .. } => None,
             _ if self.hit_test(p) == Some(capture.id) => self.activate(capture.id),
             _ => None,
         }
@@ -433,7 +487,21 @@ impl Scene {
     fn activate(&mut self, id: ElementId) -> Option<Action> {
         let i = self.indices[&id];
         self.paint_dirty = true;
+        if let Some(action) = self.toggle_disclosure(i) {
+            return Some(action);
+        }
+        if let Some(action) = self.select_group_item(i) {
+            return Some(action);
+        }
         match &mut self.nodes[i].element.widget {
+            Widget::Link { target, .. } => Some(Action::OpenLink(id, target.clone())),
+            Widget::MixedCheckbox { state, .. } => {
+                *state = match state {
+                    CheckState::Checked => CheckState::Unchecked,
+                    _ => CheckState::Checked,
+                };
+                Some(Action::CheckChanged(id, *state))
+            }
             Widget::Toggle { checked, .. } | Widget::Checkbox { checked, .. } => {
                 *checked = !*checked;
                 Some(Action::Toggled(id, *checked))
@@ -448,6 +516,7 @@ impl Scene {
                 let highlighted=items.iter().position(|item|matches!(item,MenuItem::Option{id,enabled:true,..} if Some(*id)==*selected))
                     .or_else(||items.iter().position(MenuItem::selectable));
                 self.menu = Some(MenuState {
+                    anchor: None,
                     owner: id,
                     highlighted,
                     pressed: None,
@@ -461,6 +530,7 @@ impl Scene {
             Widget::Menu { items, .. } => {
                 let highlighted = items.iter().position(MenuItem::selectable);
                 self.menu = Some(MenuState {
+                    anchor: None,
                     owner: id,
                     highlighted,
                     pressed: None,
@@ -475,14 +545,28 @@ impl Scene {
     }
     fn move_slider(&mut self, id: ElementId, p: [f32; 2], offset: f32) -> Option<Action> {
         let i = self.indices[&id];
-        let b = control_content(self.nodes[i].bounds, self.nodes[i].element.layout);
-        if let Widget::Slider(slider) = &mut self.nodes[i].element.widget {
+        let splitter = matches!(self.nodes[i].element.widget, Widget::Splitter(_));
+        let b = if splitter {
+            let parent = self.nodes[i].parent?;
+            self.nodes[parent]
+                .element
+                .layout
+                .insets()
+                .apply(self.nodes[parent].bounds)
+        } else {
+            control_content(self.nodes[i].bounds, self.nodes[i].element.layout)
+        };
+        if let Widget::Slider(slider) | Widget::Splitter(slider) = &mut self.nodes[i].element.widget
+        {
             let fraction = if slider.orientation == Orientation::Vertical {
                 1.0 - (p[1] - offset - b.y) / b.height.max(1.0)
             } else {
                 (p[0] - offset - b.x) / b.width.max(1.0)
             };
             if slider.set_fraction(fraction) {
+                if splitter {
+                    self.layout_dirty = true;
+                }
                 self.paint_dirty = true;
                 return Some(Action::ValueChanged(id, slider.value()));
             }
@@ -510,7 +594,8 @@ impl Scene {
         }
         if let Some(id) = self.hit_test(p) {
             let i = self.indices[&id];
-            if let Widget::Slider(slider) = &mut self.nodes[i].element.widget
+            if let Widget::Slider(slider) | Widget::Splitter(slider) =
+                &mut self.nodes[i].element.widget
                 && let Some(changed) = slider.scroll_by(delta)
             {
                 if changed {
@@ -527,7 +612,7 @@ impl Scene {
                 continue;
             }
             let n = &mut self.nodes[i];
-            if matches!(n.element.widget, Widget::Scroll) {
+            if matches!(n.element.widget, Widget::Scroll | Widget::Collection(_)) {
                 let next = (n.scroll + delta).clamp(0.0, n.scroll_max);
                 if next != n.scroll {
                     n.scroll = next;
@@ -544,8 +629,9 @@ impl Scene {
         let c = self.capture.take()?;
         let i = *self.indices.get(&c.id)?;
         match &mut self.nodes[i].element.widget {
-            Widget::Slider(s) => {
+            Widget::Slider(s) | Widget::Splitter(s) => {
                 s.set(c.value);
+                self.layout_dirty = true;
             }
             Widget::Draggable(_) => {
                 self.nodes[i].element.layout.offset = c.offset;
@@ -580,7 +666,25 @@ impl Scene {
             }
             return None;
         }
+        if key == Key::ContextMenu || (key == Key::F10 && modifiers.shift) {
+            if let Some(id) = self.focus {
+                let b = self.nodes[self.indices[&id]].bounds;
+                let _ = self.open_context_menu(id, [b.x, b.y + b.height]);
+            }
+            return None;
+        }
         if key == Key::Escape {
+            if let Some(id) = self.focus
+                && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
+                    &mut self.nodes[self.indices[&id]].element.widget
+                && edit.mode() == InputMode::Search
+                && !edit.text().is_empty()
+            {
+                edit.select_all();
+                edit.insert("");
+                self.invalidate_layout();
+                return Some(Action::TextChanged(id, String::new()));
+            }
             if let Some(id) = self.cancel_capture() {
                 return Some(Action::Cancelled(id));
             }
@@ -600,10 +704,17 @@ impl Scene {
             {
                 return self.choose_menu(index);
             }
-            if key != Key::Tab {
+            let editable = self.menu.as_ref().is_some_and(|m| {
+                matches!(
+                    self.nodes[self.indices[&m.owner]].element.widget,
+                    Widget::ComboBox { .. }
+                )
+            });
+            if key == Key::Tab {
+                self.menu = None;
+            } else if !editable {
                 return None;
             }
-            self.menu = None;
         }
         if key == Key::Tab {
             self.key_pressed = None;
@@ -629,10 +740,34 @@ impl Scene {
         if !self.eligible(i) {
             return None;
         }
-        if matches!(self.nodes[i].element.widget, Widget::TextInput(_)) {
+        if let Some(action) = self.pagination_key(i, key) {
+            return action;
+        }
+        if key == Key::Down
+            && let Some(target) = self.nodes[i].element.command_target
+        {
+            if self.set_focus(Some(target)).is_ok() {
+                self.paint_dirty = true;
+            }
+            return None;
+        }
+        if let Some(action) = self.collection_key(i, key, modifiers) {
+            return action;
+        }
+        if let Some(action) = self.group_key(i, key) {
+            return action;
+        }
+        if matches!(key, Key::Down | Key::Up) && self.open_combo(i) {
+            return None;
+        }
+        if matches!(
+            self.nodes[i].element.widget,
+            Widget::TextInput(_) | Widget::ComboBox { .. }
+        ) {
             return self.edit_key(id, key, modifiers);
         }
-        if let Widget::Slider(slider) = &mut self.nodes[i].element.widget {
+        if let Widget::Slider(slider) | Widget::Splitter(slider) = &mut self.nodes[i].element.widget
+        {
             let handled = matches!(
                 key,
                 Key::Left | Key::Down | Key::Right | Key::Up | Key::Home | Key::End
@@ -645,8 +780,10 @@ impl Scene {
                 _ => false,
             };
             if changed {
+                let value = slider.value();
+                self.layout_dirty = true;
                 self.paint_dirty = true;
-                return Some(Action::ValueCommitted(id, slider.value()));
+                return Some(Action::ValueCommitted(id, value));
             }
             if handled {
                 return None;
@@ -694,7 +831,7 @@ impl Scene {
             self.paint_dirty = true;
         }
     }
-    fn reveal_focus(&mut self) {
+    pub(super) fn reveal_focus(&mut self) {
         let Some(id) = self.focus else {
             return;
         };
@@ -722,10 +859,19 @@ impl Scene {
             parent = self.nodes[p].parent;
         }
     }
+    fn input_hit_y(&self, i: usize, y: f32) -> f32 {
+        let n = &self.nodes[i];
+        if matches!(&n.element.widget, Widget::TextInput(e) if e.mode() == InputMode::Multiline) {
+            y - label_content(n.bounds, n.element.layout).y + n.text_scroll_y
+        } else {
+            0.0
+        }
+    }
     fn insert_text(&mut self, text: &str) -> Option<Action> {
         let id = self.focus?;
         let i = self.indices[&id];
-        if let Widget::TextInput(edit) = &mut self.nodes[i].element.widget
+        if let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
+            &mut self.nodes[i].element.widget
             && edit.insert(text)
         {
             let value = edit.text().to_owned();
@@ -736,7 +882,10 @@ impl Scene {
     }
     fn edit_key(&mut self, id: ElementId, key: Key, m: KeyModifiers) -> Option<Action> {
         let i = self.indices[&id];
-        let Widget::TextInput(edit) = &mut self.nodes[i].element.widget else {
+        let metrics = self.nodes[i].text.clone();
+        let (Widget::TextInput(edit) | Widget::ComboBox { edit, .. }) =
+            &mut self.nodes[i].element.widget
+        else {
             return None;
         };
         let mut changed = false;
@@ -745,8 +894,10 @@ impl Scene {
                 edit.select_all();
                 None
             }
-            Key::C if m.control => Some(Action::Copy(edit.selected_text().to_owned())),
-            Key::X if m.control => {
+            Key::C if m.control && edit.mode() != InputMode::Password => {
+                Some(Action::Copy(edit.selected_text().to_owned()))
+            }
+            Key::X if m.control && edit.mode() != InputMode::Password => {
                 let copied = edit.selected_text().to_owned();
                 changed = edit.insert("");
                 changed.then(|| Action::Cut {
@@ -765,11 +916,41 @@ impl Scene {
                 None
             }
             Key::Home => {
-                edit.place(0, m.shift);
+                let target = if edit.mode() == InputMode::Multiline && !m.control {
+                    metrics
+                        .caret(edit.cursor())
+                        .and_then(|caret| {
+                            metrics
+                                .carets
+                                .iter()
+                                .filter(|c| c.y == caret.y)
+                                .map(|c| c.byte)
+                                .min()
+                        })
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                edit.place(target, m.shift);
                 None
             }
             Key::End => {
-                edit.place(edit.text().len(), m.shift);
+                let target = if edit.mode() == InputMode::Multiline && !m.control {
+                    metrics
+                        .caret(edit.cursor())
+                        .and_then(|caret| {
+                            metrics
+                                .carets
+                                .iter()
+                                .filter(|c| c.y == caret.y)
+                                .map(|c| c.byte)
+                                .max()
+                        })
+                        .unwrap_or(edit.text().len())
+                } else {
+                    edit.text().len()
+                };
+                edit.place(target, m.shift);
                 None
             }
             Key::Backspace => {
@@ -780,7 +961,30 @@ impl Scene {
                 changed = edit.delete(true);
                 None
             }
-            Key::Enter => Some(Action::Submitted(id, edit.text().to_owned())),
+            Key::Up | Key::Down if matches!(edit.mode(), InputMode::Numeric { .. }) => {
+                changed = edit.increment(if key == Key::Up { 1.0 } else { -1.0 });
+                None
+            }
+            Key::Up | Key::Down if edit.mode() == InputMode::Multiline => {
+                if let Some(caret) = metrics.caret(edit.cursor()) {
+                    let y = caret.y
+                        + if key == Key::Up {
+                            -caret.height
+                        } else {
+                            caret.height
+                        };
+                    edit.place(metrics.hit_at(caret.x, y + caret.height * 0.5), m.shift);
+                }
+                None
+            }
+            Key::Enter if edit.mode() == InputMode::Multiline && !m.control => {
+                changed = edit.insert("\n");
+                None
+            }
+            Key::Enter => match edit.validation_message() {
+                Some(message) => Some(Action::ValidationFailed(id, message.into())),
+                None => Some(Action::Submitted(id, edit.text().to_owned())),
+            },
             _ => None,
         };
         let text = changed.then(|| edit.text().to_owned());
@@ -794,6 +998,9 @@ impl Scene {
         let total = self.menu_total();
         if let Some(m) = &mut self.menu {
             let anchor = self.nodes[self.indices[&m.owner]].bounds;
+            let anchor = m
+                .anchor
+                .map_or(anchor, |p| Rect::new(p[0], p[1], 180.0, 0.0));
             let h = total.min(280.0).min(self.viewport.height);
             let w = anchor.width.max(180.0).min(self.viewport.width);
             let y = if anchor.y + anchor.height + h <= self.viewport.height {
@@ -841,18 +1048,27 @@ impl Scene {
         let owner = self.menu.as_ref()?.owner;
         let i = self.indices[&owner];
         let MenuItem::Option {
-            id, enabled: true, ..
+            id,
+            label,
+            enabled: true,
+            ..
         } = self.nodes[i].element.widget.menu()?.get(index)?
         else {
             return None;
         };
         let selected = *id;
+        let selected_label = label.clone();
         // Keep the external option identity independent of row positions and separators.
         if let Widget::Dropdown {
             selected: value, ..
         } = &mut self.nodes[i].element.widget
         {
             *value = Some(selected);
+        }
+        if let Widget::ComboBox { edit, .. } = &mut self.nodes[i].element.widget {
+            edit.select_all();
+            edit.insert(&selected_label);
+            self.invalidate_layout();
         }
         self.menu = None;
         self.key_pressed = None;

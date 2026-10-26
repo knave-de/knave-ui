@@ -117,7 +117,48 @@ impl Scene {
         let text_area = label_content(b, e.layout);
         let mut label = None;
         match &e.widget {
-            Widget::Text(value) => text_cmd(
+            Widget::Icon(icon) => {
+                let size = b.width.min(b.height);
+                self.list.commands.push(DisplayCommand::Image {
+                    bounds: Rect::new(
+                        b.x + (b.width - size) / 2.0,
+                        b.y + (b.height - size) / 2.0,
+                        size,
+                        size,
+                    ),
+                    image: icon.image.clone(),
+                    style: crate::ImageStyle::default(),
+                    transform: Transform2D::IDENTITY,
+                    clip,
+                });
+            }
+            Widget::SceneSnapshot(snapshot) => snapshot.paint(&mut self.list, b, clip),
+            Widget::Pagination { page, pages } => {
+                label = Some(format!(
+                    "{}  Page {} of {}  {}",
+                    if *page > 0 { "◀" } else { "" },
+                    page + 1,
+                    pages,
+                    if page + 1 < *pages { "▶" } else { "" }
+                ));
+            }
+            Widget::ColorSwatch(color) => {
+                shape(&mut self.list, b, clip, ShapePaint::fill(*color));
+                text_cmd(
+                    &mut self.list,
+                    text_area,
+                    clip,
+                    format!(
+                        "#{:02X}{:02X}{:02X}{:02X}",
+                        color.red, color.green, color.blue, color.alpha
+                    ),
+                    style.text.clone(),
+                );
+            }
+            Widget::Collection(collection) => {
+                super::collection_paint::paint_collection(&mut self.list, node, collection)
+            }
+            Widget::Toast { label: value, .. } | Widget::Text(value) => text_cmd(
                 &mut self.list,
                 e.layout.insets().apply(b),
                 clip,
@@ -138,16 +179,28 @@ impl Scene {
                 transform: Transform2D::IDENTITY,
                 clip,
             }),
-            Widget::Button(value) | Widget::Draggable(value) => label = Some(value.clone()),
+            Widget::ContextMenu { label: value, .. }
+            | Widget::Link { label: value, .. }
+            | Widget::Button(value)
+            | Widget::Draggable(value) => label = Some(value.clone()),
             Widget::Selectable { label: value, .. } => label = Some(value.clone()),
-            Widget::Checkbox {
+            Widget::Disclosure {
                 label: value,
-                checked,
-            }
-            | Widget::Toggle {
-                label: value,
-                checked,
-            } => {
+                expanded,
+                ..
+            } => label = Some(format!("{} {value}", if *expanded { "▾" } else { "▸" })),
+            Widget::Checkbox { label: value, .. }
+            | Widget::MixedCheckbox { label: value, .. }
+            | Widget::Toggle { label: value, .. } => {
+                let (checked, mixed) = match e.widget {
+                    Widget::MixedCheckbox { state, .. } => {
+                        (state != CheckState::Unchecked, state == CheckState::Mixed)
+                    }
+                    Widget::Checkbox { checked, .. } | Widget::Toggle { checked, .. } => {
+                        (checked, false)
+                    }
+                    _ => unreachable!(),
+                };
                 let toggle = matches!(e.widget, Widget::Toggle { .. });
                 let w = if toggle { 32.0 } else { 18.0 };
                 let rect = Rect::new(
@@ -156,7 +209,7 @@ impl Scene {
                     w,
                     18.0,
                 );
-                let mut paint = ShapePaint::fill(if *checked {
+                let mut paint = ShapePaint::fill(if checked {
                     Color::ACCENT
                 } else {
                     Color::rgba(72, 85, 102, 255)
@@ -167,7 +220,7 @@ impl Scene {
                     shape(
                         &mut self.list,
                         Rect::new(
-                            rect.x + if toggle && *checked { 17.0 } else { 3.0 },
+                            rect.x + if toggle && checked { 17.0 } else { 3.0 },
                             rect.y + 3.0,
                             12.0,
                             12.0,
@@ -179,12 +232,12 @@ impl Scene {
                         },
                     );
                 }
-                if *checked && !toggle {
+                if checked && !toggle {
                     text_cmd(
                         &mut self.list,
                         rect,
                         clip,
-                        "✓".into(),
+                        if mixed { "−" } else { "✓" }.into(),
                         TextStyle {
                             font_size: 16.0,
                             line_height: 18.0,
@@ -268,34 +321,62 @@ impl Scene {
                     paint,
                 );
             }
-            Widget::TextInput(edit) => {
-                let caret_y =
-                    text_area.y + ((text_area.height - style.text.line_height) / 2.0).max(0.0);
-                let caret_height = style.text.line_height.min(text_area.height);
-                let cursor = edit.cursor();
+            Widget::TextInput(edit) | Widget::ComboBox { edit, .. } => {
+                let multiline = edit.mode() == InputMode::Multiline;
+                let password = edit.mode() == InputMode::Password;
                 let selection = edit.selection();
-                let value = edit.text().to_owned();
-                let preedit = edit.preedit.clone();
+                let value = edit.display_text();
+                let preedit = if password {
+                    "•".repeat(edit.preedit.chars().count())
+                } else {
+                    edit.preedit.clone()
+                };
                 let metrics = node.text.clone();
-                let x = metrics.caret(cursor).map_or(0.0, |c| c.x);
+                let caret = metrics.caret(edit.cursor()).unwrap_or_default();
+                let height = style.text.line_height.min(text_area.height);
                 let mut offset = node.text_offset;
-                if x - offset > content.width - 3.0 {
-                    offset = (x - content.width + 3.0).max(0.0);
-                } else if x < offset {
-                    offset = x;
+                let mut offset_y = node.text_scroll_y;
+                if multiline {
+                    offset = 0.0;
+                    if caret.y < offset_y {
+                        offset_y = caret.y;
+                    }
+                    if caret.y + height > offset_y + text_area.height {
+                        offset_y = (caret.y + height - text_area.height).max(0.0);
+                    }
+                } else {
+                    offset_y = 0.0;
+                    if caret.x - offset > text_area.width - 3.0 {
+                        offset = (caret.x - text_area.width + 3.0).max(0.0);
+                    } else if caret.x < offset {
+                        offset = caret.x;
+                    }
                 }
+                let base_y = text_area.y
+                    + if multiline {
+                        -offset_y
+                    } else {
+                        ((text_area.height - height) / 2.0).max(0.0)
+                    };
                 self.nodes[i].text_offset = offset;
-                let text_bounds =
-                    Rect::new(content.x - offset, text_area.y, 16384.0, text_area.height);
+                self.nodes[i].text_scroll_y = offset_y;
                 let text_clip = clip.and_then(|c| c.intersection(text_area));
                 if !selection.is_empty() {
                     for pair in metrics.carets.windows(2) {
                         if pair[0].byte >= selection.start && pair[0].byte < selection.end {
-                            let left = pair[0].x.min(pair[1].x);
-                            let width = (pair[1].x - pair[0].x).abs();
+                            let width = if pair[1].y > pair[0].y {
+                                (text_area.width - pair[0].x).max(1.0)
+                            } else {
+                                (pair[1].x - pair[0].x).abs()
+                            };
                             shape(
                                 &mut self.list,
-                                Rect::new(content.x + left - offset, caret_y, width, caret_height),
+                                Rect::new(
+                                    text_area.x + pair[0].x.min(pair[1].x) - offset,
+                                    base_y + pair[0].y,
+                                    width,
+                                    height,
+                                ),
                                 text_clip,
                                 ShapePaint::fill(Color::rgba(58, 107, 151, 255)),
                             );
@@ -303,12 +384,36 @@ impl Scene {
                     }
                 }
                 let mut ts = style.text.clone();
-                ts.wrap = TextWrap::None;
-                text_cmd(&mut self.list, text_bounds, text_clip, value, ts.clone());
+                ts.wrap = if multiline {
+                    TextWrap::WordOrGlyph
+                } else {
+                    TextWrap::None
+                };
+                text_cmd(
+                    &mut self.list,
+                    Rect::new(
+                        text_area.x - offset,
+                        base_y,
+                        if multiline { text_area.width } else { 16384.0 },
+                        if multiline {
+                            metrics.size[1].max(height)
+                        } else {
+                            height
+                        },
+                    ),
+                    text_clip,
+                    value,
+                    ts.clone(),
+                );
                 if state.focused {
                     shape(
                         &mut self.list,
-                        Rect::new(content.x + x - offset, caret_y, 1.5, caret_height),
+                        Rect::new(
+                            text_area.x + caret.x - offset,
+                            base_y + caret.y,
+                            1.5,
+                            height,
+                        ),
                         text_clip,
                         ShapePaint::fill(Color::TEXT),
                     );
@@ -316,16 +421,56 @@ impl Scene {
                         text_cmd(
                             &mut self.list,
                             Rect::new(
-                                content.x + x - offset,
-                                text_area.y,
-                                content.width,
-                                text_area.height,
+                                text_area.x + caret.x - offset,
+                                base_y + caret.y,
+                                text_area.width,
+                                height,
                             ),
                             text_clip,
                             preedit,
                             ts,
                         );
                     }
+                }
+            }
+            Widget::Progress { value } => {
+                let track = Rect::new(
+                    content.x,
+                    content.y + content.height * 0.5,
+                    content.width,
+                    4.0,
+                );
+                shape(&mut self.list, track, clip, ShapePaint::fill(style.hover));
+                let phase = (self.clock.as_millis() % 1600) as f32 / 1600.0;
+                let width = value.map_or(track.width * 0.25, |v| track.width * v as f32);
+                let x = value.map_or(track.x + (track.width - width) * phase, |_| track.x);
+                shape(
+                    &mut self.list,
+                    Rect::new(x, track.y, width, track.height),
+                    clip,
+                    ShapePaint::fill(style.focus),
+                );
+            }
+            Widget::Spinner => {
+                let phase = (self.clock.as_millis() / 100 % 8) as usize;
+                let radius = 9.0;
+                let center = [content.x + 12.0, text_area.y + text_area.height / 2.0];
+                for n in 0..8 {
+                    let angle = n as f32 * std::f32::consts::TAU / 8.0;
+                    let mut paint = ShapePaint::fill(style.focus);
+                    paint.opacity = if n == phase { 1.0 } else { 0.25 };
+                    paint.radii = CornerRadii::uniform(2.0);
+                    shape(
+                        &mut self.list,
+                        Rect::new(
+                            center[0] + angle.cos() * radius - 2.0,
+                            center[1] + angle.sin() * radius - 2.0,
+                            4.0,
+                            4.0,
+                        ),
+                        clip,
+                        paint,
+                    );
                 }
             }
             Widget::Separator => shape(

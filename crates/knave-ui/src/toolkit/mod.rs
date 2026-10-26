@@ -1,8 +1,28 @@
-//! Retained shell UI scenes. Coordinates are logical pixels; no desktop IPC is performed here.
+//! Retained application UI scenes. Coordinates are logical pixels; no desktop IPC is performed here.
+mod collection;
+mod collection_paint;
+mod color_picker;
+mod combo;
+mod components;
+mod context_menu;
 mod cursor;
+mod snapshot;
+pub use snapshot::*;
+mod navigation;
+pub use collection::*;
+pub use color_picker::*;
+pub use navigation::*;
+mod disclosure;
+mod feedback;
+pub use components::*;
+pub use disclosure::*;
 mod input;
 mod layout;
 mod model;
+mod selection;
+mod semantics;
+pub use selection::*;
+pub use semantics::*;
 mod paint;
 mod text_edit;
 
@@ -10,7 +30,7 @@ use crate::{Color, DisplayList, Rect};
 pub use input::{Action, EventResult, Input, Key, KeyModifiers};
 pub use model::*;
 use std::collections::BTreeMap;
-pub use text_edit::TextEdit;
+pub use text_edit::{InputMode, TextEdit, TextValidation};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SceneStats {
@@ -31,6 +51,8 @@ struct Node {
     scroll_max: f32,
     text: TextLayout,
     text_offset: f32,
+    text_scroll_y: f32,
+    toast_remaining: std::time::Duration,
 }
 #[derive(Clone, Copy, Debug)]
 struct Capture {
@@ -42,6 +64,7 @@ struct Capture {
 }
 #[derive(Clone, Debug)]
 struct MenuState {
+    anchor: Option<[f32; 2]>,
     owner: ElementId,
     highlighted: Option<usize>,
     pressed: Option<usize>,
@@ -51,6 +74,7 @@ struct MenuState {
 
 /// Owns scene structure, widget values and input state. Storage is bounded by `MAX_ELEMENTS`.
 pub struct Scene {
+    clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
     indices: BTreeMap<ElementId, usize>,
@@ -75,6 +99,7 @@ pub struct Scene {
 impl Scene {
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
+            clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
             indices: BTreeMap::new(),
@@ -118,6 +143,10 @@ impl Scene {
         let children = std::mem::take(&mut element.children);
         let index = self.nodes.len();
         self.indices.insert(element.id, index);
+        let toast_remaining = match element.widget {
+            Widget::Toast { lifetime, .. } => lifetime,
+            _ => std::time::Duration::ZERO,
+        };
         self.nodes.push(Node {
             element,
             parent,
@@ -129,6 +158,8 @@ impl Scene {
             scroll_max: 0.0,
             text: TextLayout::default(),
             text_offset: 0.0,
+            text_scroll_y: 0.0,
+            toast_remaining,
         });
         for child in children {
             let i = self.add(child, Some(index), depth + 1)?;
@@ -142,19 +173,37 @@ impl Scene {
         }
         let id = self.focus?;
         let node = &self.nodes[self.indices[&id]];
-        let Widget::TextInput(edit) = &node.element.widget else {
+        let (Widget::TextInput(edit) | Widget::ComboBox { edit, .. }) = &node.element.widget else {
             return None;
         };
-        let x = node.text.caret(edit.cursor()).map_or(0.0, |c| c.x);
+        let caret = node.text.caret(edit.cursor()).unwrap_or_default();
+        let x = caret.x;
+        let password = edit.mode() == InputMode::Password;
         let area = label_content(node.bounds, node.element.layout);
         Some(TextInputState {
+            purpose: match edit.mode() {
+                InputMode::Password => TextPurpose::Password,
+                InputMode::Multiline => TextPurpose::Multiline,
+                InputMode::Search => TextPurpose::Search,
+                InputMode::Numeric { .. } => TextPurpose::Number,
+                _ => TextPurpose::Normal,
+            },
             id,
-            text: edit.text().to_owned(),
-            cursor: edit.cursor(),
-            anchor: edit.anchor(),
+            text: if password {
+                String::new()
+            } else {
+                edit.text().to_owned()
+            },
+            cursor: if password { 0 } else { edit.cursor() },
+            anchor: if password { 0 } else { edit.anchor() },
             cursor_rectangle: Rect::new(
                 control_content(node.bounds, node.element.layout).x + x - node.text_offset,
-                area.y + ((area.height - node.element.style.text.line_height) / 2.0).max(0.0),
+                area.y
+                    + if edit.mode() == InputMode::Multiline {
+                        caret.y - node.text_scroll_y
+                    } else {
+                        ((area.height - node.element.style.text.line_height) / 2.0).max(0.0)
+                    },
                 2.0,
                 node.element
                     .style
@@ -210,6 +259,10 @@ impl Scene {
         validate(&next)?;
         self.dismiss_within(i);
         self.cancel_if_within(i);
+        self.nodes[i].toast_remaining = match next.widget {
+            Widget::Toast { lifetime, .. } => lifetime,
+            _ => std::time::Duration::ZERO,
+        };
         self.nodes[i].element = next;
         self.invalidate_layout();
         Ok(())
@@ -319,6 +372,8 @@ impl Scene {
             if let Some(previous) = self.indices.get(&node.element.id).map(|i| &self.nodes[*i]) {
                 node.scroll = previous.scroll;
                 node.text_offset = previous.text_offset;
+                node.text_scroll_y = previous.text_scroll_y;
+                node.toast_remaining = previous.toast_remaining;
             }
         }
         next.focus = self.focus;
@@ -333,6 +388,7 @@ impl Scene {
         next.scopes = std::mem::take(&mut self.scopes);
         next.stats = self.stats;
         next.inspect = self.inspect;
+        next.clock = self.clock;
         *self = next;
     }
     pub fn open_popup(&mut self, id: ElementId) -> Result<(), UiError> {
@@ -437,6 +493,7 @@ impl Scene {
             .enumerate()
             .filter(|(i, n)| {
                 n.element.widget.focusable()
+                    && self.group_tab_stop(*i)
                     && self.eligible(*i)
                     && root.is_none_or(|r| self.within(*i, r))
             })
@@ -510,6 +567,41 @@ impl Scene {
 }
 fn validate(e: &Element) -> Result<(), UiError> {
     let l = e.layout;
+    if matches!(e.widget, Widget::Pagination { page, pages } if pages == 0 || page >= pages || pages > MAX_COLLECTION_ITEMS)
+    {
+        return Err(UiError::InvalidRange);
+    }
+    if e.color_channel.is_some_and(|c| c.channel >= 4) {
+        return Err(UiError::InvalidRange);
+    }
+    if let Widget::Collection(c) = &e.widget {
+        c.validate()?;
+    }
+    if matches!(e.widget, Widget::Progress { value: Some(v) } if !v.is_finite() || !(0.0..=1.0).contains(&v))
+    {
+        return Err(UiError::InvalidRange);
+    }
+    if matches!(e.widget, Widget::Toast { lifetime, .. } if lifetime.is_zero() || lifetime > std::time::Duration::from_secs(86400))
+    {
+        return Err(UiError::InvalidRange);
+    }
+    if e.split_layout
+        .is_some_and(|s| !s.min_pane.is_finite() || s.min_pane < 0.0)
+    {
+        return Err(UiError::InvalidLayout);
+    }
+    if [&e.semantics.name, &e.semantics.description]
+        .iter()
+        .any(|s| s.as_ref().is_some_and(|s| s.len() > MAX_TEXT_BYTES))
+    {
+        return Err(UiError::TextTooLong);
+    }
+    if matches!(
+        e.selection_group,
+        Some(SelectionGroup::IconGrid { columns }) if columns == 0 || columns > MAX_ELEMENTS
+    ) {
+        return Err(UiError::InvalidLayout);
+    }
     if !e.style.radius.is_finite()
         || e.style.radius < 0.0
         || !e.style.text.font_size.is_finite()
@@ -550,6 +642,22 @@ fn validate(e: &Element) -> Result<(), UiError> {
         && spans.iter().map(|s| s.text.len()).sum::<usize>() > MAX_TEXT_BYTES
     {
         return Err(UiError::TextTooLong);
+    }
+    if let Widget::ComboBox { items, .. } = &e.widget {
+        if items.len() > MAX_MENU_ITEMS {
+            return Err(UiError::TooManyMenuItems);
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for item in items {
+            if let MenuItem::Option { id, label, .. } = item {
+                if label.len() > MAX_TEXT_BYTES {
+                    return Err(UiError::TextTooLong);
+                }
+                if !ids.insert(*id) {
+                    return Err(UiError::InvalidLayout);
+                }
+            }
+        }
     }
     if let Some(items) = e.widget.menu() {
         if items.len() > MAX_MENU_ITEMS {

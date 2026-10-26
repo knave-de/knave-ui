@@ -66,7 +66,7 @@ impl Scene {
                 return cursor;
             }
             match &node.element.widget {
-                Widget::TextInput(_) => return CursorShape::Text,
+                Widget::TextInput(_) | Widget::ComboBox { .. } => return CursorShape::Text,
                 Widget::Draggable(_) => {
                     return if captured {
                         CursorShape::Grabbing
@@ -74,7 +74,7 @@ impl Scene {
                         CursorShape::Grab
                     };
                 }
-                Widget::Slider(slider) => {
+                Widget::Slider(slider) | Widget::Splitter(slider) => {
                     return match slider.orientation {
                         Orientation::Horizontal => CursorShape::EwResize,
                         Orientation::Vertical => CursorShape::NsResize,

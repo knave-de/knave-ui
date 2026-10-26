@@ -867,3 +867,767 @@ fn shared_heading_presets_reach_scene_paint_with_measured_heights() {
     }
     assert_eq!(text[0].0, label);
 }
+
+#[test]
+fn selection_groups_have_one_tab_stop_skip_disabled_and_report_owner_and_item() {
+    let choice = |id, selected| {
+        Element::new(
+            id,
+            Widget::Selectable {
+                label: format!("Item {id}"),
+                selected,
+            },
+        )
+    };
+    let mut disabled = choice(12, false);
+    disabled.enabled = false;
+    let group = Element::selection_group(
+        10,
+        SelectionGroup::Tabs,
+        vec![choice(11, true), disabled, choice(13, true)],
+    );
+    let mut s = scene(vec![
+        group,
+        Element::new(20, Widget::Button("After".into())),
+    ]);
+    let press = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(press(Key::Tab));
+    assert_eq!(s.focus(), Some(ElementId(11)));
+    let result = s.event(press(Key::Right));
+    assert_eq!(result.action, Some(Action::Selected(ElementId(10), 13)));
+    assert_eq!(s.focus(), Some(ElementId(13)));
+    let snapshot = s.accessibility();
+    assert_eq!(
+        snapshot
+            .iter()
+            .find(|n| n.id == ElementId(10))
+            .unwrap()
+            .role,
+        Role::TabList
+    );
+    assert_eq!(
+        snapshot
+            .iter()
+            .find(|n| n.id == ElementId(13))
+            .unwrap()
+            .role,
+        Role::Tab
+    );
+    assert_eq!(snapshot.iter().filter(|n| n.selected).count(), 1);
+    assert!(
+        snapshot
+            .iter()
+            .find(|n| n.id == ElementId(12))
+            .unwrap()
+            .disabled
+    );
+    s.event(press(Key::Tab));
+    assert_eq!(s.focus(), Some(ElementId(20)));
+    s.set_focus(Some(ElementId(13))).unwrap();
+    s.event(press(Key::Home));
+    assert_eq!(s.focus(), Some(ElementId(11)));
+    s.event(press(Key::Left));
+    assert_eq!(s.focus(), Some(ElementId(13)));
+}
+
+#[test]
+fn group_semantics_exclude_hidden_content_and_validate_grid_columns() {
+    let mut hidden = Element::new(3, Widget::Button("Hidden".into()));
+    hidden.visible = false;
+    let s = scene(vec![Element::selection_group(
+        1,
+        SelectionGroup::List,
+        vec![hidden],
+    )]);
+    assert!(!s.accessibility().iter().any(|n| n.id == ElementId(3)));
+    assert!(matches!(
+        Scene::new(Element::selection_group(
+            0,
+            SelectionGroup::IconGrid { columns: 0 },
+            vec![]
+        )),
+        Err(UiError::InvalidLayout)
+    ));
+}
+
+#[test]
+fn password_is_masked_in_paint_clipboard_semantics_and_ime() {
+    let secret = "sëcret👩‍💻";
+    let edit = TextEdit::new(secret)
+        .unwrap()
+        .with_mode(InputMode::Password)
+        .unwrap();
+    let mut s = scene(vec![Element::new(1, Widget::TextInput(edit))]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let press = |key, control| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers {
+            control,
+            ..KeyModifiers::default()
+        },
+    };
+    s.event(press(Key::A, true));
+    assert_eq!(s.event(press(Key::C, true)).action, None);
+    assert_eq!(s.event(press(Key::X, true)).action, None);
+    let state = s.text_input_state().unwrap();
+    assert!(state.text.is_empty());
+    assert_eq!((state.cursor, state.anchor), (0, 0));
+    let a11y = s.accessibility();
+    assert_eq!(a11y[1].role, Role::PasswordInput);
+    assert!(a11y[1].name.is_empty());
+    let list = s.display_list([400.0, 400.0], &mut Metrics);
+    let labels: Vec<_> = list
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            knave_ui::DisplayCommand::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(labels, vec!["•••••••"]);
+}
+
+#[test]
+fn numeric_input_validates_submission_steps_and_rejects_non_numeric_paste() {
+    let edit = TextEdit::new("2")
+        .unwrap()
+        .with_mode(InputMode::Numeric {
+            min: 0.0,
+            max: 3.0,
+            step: 0.5,
+        })
+        .unwrap();
+    let mut s = scene(vec![Element::new(1, Widget::TextInput(edit))]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(
+        s.event(key(Key::Up)).action,
+        Some(Action::TextChanged(ElementId(1), "2.5".into()))
+    );
+    assert_eq!(s.event(Input::Paste("abc".into())).action, None);
+    s.set_widget(
+        ElementId(1),
+        Widget::TextInput(
+            TextEdit::new("99")
+                .unwrap()
+                .with_mode(InputMode::Numeric {
+                    min: 0.0,
+                    max: 3.0,
+                    step: 1.0,
+                })
+                .unwrap(),
+        ),
+    )
+    .unwrap();
+    s.set_focus(Some(ElementId(1))).unwrap();
+    assert!(matches!(
+        s.event(key(Key::Enter)).action,
+        Some(Action::ValidationFailed(ElementId(1), _))
+    ));
+    assert!(s.accessibility()[1].invalid);
+}
+
+#[test]
+fn multiline_preserves_newlines_and_enter_edits_instead_of_submitting() {
+    let edit = TextEdit::multiline("first\nsecond").unwrap();
+    let mut s = scene(vec![Element::new(1, Widget::TextInput(edit))]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let enter = |control| Input::Key {
+        key: Key::Enter,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers {
+            control,
+            ..KeyModifiers::default()
+        },
+    };
+    assert_eq!(
+        s.event(enter(false)).action,
+        Some(Action::TextChanged(ElementId(1), "first\nsecond\n".into()))
+    );
+    assert_eq!(
+        s.event(enter(true)).action,
+        Some(Action::Submitted(ElementId(1), "first\nsecond\n".into()))
+    );
+}
+
+#[test]
+fn mixed_checkbox_and_link_report_typed_effects_and_loading_prevents_activation() {
+    let mut s = scene(vec![
+        Element::new(
+            1,
+            Widget::MixedCheckbox {
+                label: "All".into(),
+                state: CheckState::Mixed,
+            },
+        ),
+        Element::new(
+            2,
+            Widget::Link {
+                label: "Docs".into(),
+                target: "https://example.org".into(),
+            },
+        ),
+        Element::loading_button(3, "Saving"),
+    ]);
+    assert_eq!(s.accessibility()[1].checked, Some(CheckState::Mixed));
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let key = |pressed| Input::Key {
+        key: Key::Space,
+        pressed,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(key(true));
+    assert_eq!(
+        s.event(key(false)).action,
+        Some(Action::CheckChanged(ElementId(1), CheckState::Checked))
+    );
+    s.set_focus(Some(ElementId(2))).unwrap();
+    s.event(key(true));
+    assert_eq!(
+        s.event(key(false)).action,
+        Some(Action::OpenLink(ElementId(2), "https://example.org".into()))
+    );
+    assert!(s.set_focus(Some(ElementId(3))).is_err());
+    assert!(s.accessibility()[3].busy);
+}
+
+#[test]
+fn accordion_closes_other_sections_and_excludes_collapsed_content_from_focus() {
+    let mut s = scene(vec![Element::accordion(
+        1,
+        vec![
+            Element::expander(
+                2,
+                3,
+                "First",
+                Element::new(4, Widget::Button("Inside first".into())),
+                true,
+            ),
+            Element::expander(
+                5,
+                6,
+                "Second",
+                Element::new(7, Widget::Button("Inside second".into())),
+                false,
+            ),
+        ],
+    )]);
+    assert!(s.set_focus(Some(ElementId(7))).is_err());
+    s.set_focus(Some(ElementId(6))).unwrap();
+    let key = |pressed| Input::Key {
+        key: Key::Space,
+        pressed,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(key(true));
+    assert_eq!(
+        s.event(key(false)).action,
+        Some(Action::Toggled(ElementId(6), true))
+    );
+    assert!(s.set_focus(Some(ElementId(4))).is_err());
+    assert!(s.set_focus(Some(ElementId(7))).is_ok());
+    assert_eq!(
+        s.accessibility()
+            .iter()
+            .find(|n| n.id == ElementId(3))
+            .unwrap()
+            .expanded,
+        Some(false)
+    );
+}
+
+#[test]
+fn split_view_keyboard_and_cancel_rearrange_panes_with_minimums() {
+    let root = Element::split_view(
+        0,
+        3,
+        Element::new(1, Widget::Text("Left".into())),
+        Element::new(2, Widget::Text("Right".into())),
+        Orientation::Horizontal,
+        0.5,
+        60.0,
+    )
+    .unwrap();
+    let mut s = Scene::new(root).unwrap();
+    s.layout([400.0, 200.0], &mut Metrics);
+    let before = s.bounds(ElementId(1)).unwrap().width;
+    s.set_focus(Some(ElementId(3))).unwrap();
+    s.event(Input::Key {
+        key: Key::Right,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    });
+    s.layout([400.0, 200.0], &mut Metrics);
+    assert!(s.bounds(ElementId(1)).unwrap().width > before);
+    let handle = s.bounds(ElementId(3)).unwrap();
+    s.event(Input::PointerDown([handle.x + 3.0, 30.0]));
+    s.event(Input::PointerMove([390.0, 30.0]));
+    s.layout([400.0, 200.0], &mut Metrics);
+    assert!(s.bounds(ElementId(2)).unwrap().width >= 60.0);
+    s.event(Input::Cancel);
+    s.layout([400.0, 200.0], &mut Metrics);
+    assert!(s.bounds(ElementId(2)).unwrap().width > 60.0);
+}
+
+#[test]
+fn toast_lifetime_pauses_on_focus_and_animation_has_bounded_deadlines() {
+    use std::time::Duration;
+    let mut s = scene(vec![
+        Element::toast(1, "Saved", Duration::from_secs(5))
+            .children(vec![Element::new(2, Widget::Button("Dismiss".into()))]),
+    ]);
+    assert_eq!(s.next_wakeup(), Some(Duration::from_secs(5)));
+    s.advance(Duration::from_secs(2));
+    s.set_focus(Some(ElementId(2))).unwrap();
+    s.advance(Duration::from_secs(20));
+    assert_eq!(s.next_wakeup(), None);
+    s.set_focus(None).unwrap();
+    assert_eq!(
+        s.advance(Duration::from_secs(23)),
+        vec![Action::ToastDismissed(ElementId(1))]
+    );
+    assert!(s.accessibility().iter().all(|n| n.id != ElementId(1)));
+    let mut spinner = scene(vec![Element::new(3, Widget::Spinner)]);
+    spinner.display_list([400.0, 400.0], &mut Metrics);
+    spinner.advance(Duration::from_micros(10));
+    assert!(!spinner.needs_frame());
+    assert_eq!(spinner.next_wakeup(), Some(Duration::from_millis(50)));
+    spinner.advance(Duration::from_millis(50));
+    assert!(spinner.needs_frame());
+    spinner.event(Input::FocusLost);
+    assert_eq!(spinner.next_wakeup(), None);
+}
+
+#[test]
+fn virtual_list_retains_ten_thousand_items_but_only_paints_visible_rows() {
+    let data = (0..10_000)
+        .map(|id| CollectionItem::new(id, format!("Row {id}")))
+        .collect();
+    let collection = Collection::new(CollectionKind::List, data).unwrap();
+    let mut s = scene(vec![Element::new(1, Widget::Collection(collection))]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    s.event(Input::Key {
+        key: Key::End,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    });
+    let list = s.display_list([400.0, 400.0], &mut Metrics);
+    assert!(
+        list.commands.len() < 30,
+        "virtual rows must not become retained scene nodes"
+    );
+    assert!(
+        list.commands
+            .iter()
+            .filter(|command| matches!(command, knave_ui::DisplayCommand::Text { .. }))
+            .count()
+            >= 5,
+        "the default viewport must show multiple rows"
+    );
+    assert!(list.commands.iter().any(|command| matches!(command, knave_ui::DisplayCommand::Text { text, .. } if text == "Row 9999")));
+    let a11y = s.accessibility();
+    assert_eq!(a11y[1].role, Role::List);
+    assert!(a11y[1].items.len() < 10);
+    assert!(
+        a11y[1]
+            .items
+            .iter()
+            .any(|item| item.id == 9999 && item.selected)
+    );
+    assert!(a11y[1].items.iter().all(|item| item.set_size == 10_000));
+}
+
+#[test]
+fn tree_navigation_expands_and_collapses_without_selecting_hidden_children() {
+    let root = CollectionItem::new(1, "Root");
+    let mut child = CollectionItem::new(2, "Child");
+    child.parent = Some(1);
+    let tree = Collection::new(CollectionKind::Tree, vec![root, child]).unwrap();
+    let mut s = scene(vec![Element::new(10, Widget::Collection(tree))]);
+    s.set_focus(Some(ElementId(10))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(s.accessibility()[1].items.len(), 1);
+    assert_eq!(
+        s.event(key(Key::Right)).action,
+        Some(Action::Expanded(ElementId(10), 1, true))
+    );
+    assert_eq!(
+        s.event(key(Key::Down)).action,
+        Some(Action::Selected(ElementId(10), 2))
+    );
+    assert_eq!(
+        s.event(key(Key::Left)).action,
+        Some(Action::Selected(ElementId(10), 1))
+    );
+    assert_eq!(
+        s.event(key(Key::Left)).action,
+        Some(Action::Expanded(ElementId(10), 1, false))
+    );
+    assert!(s.select_collection_item(ElementId(10), 2).is_err());
+}
+
+#[test]
+fn table_sorts_by_keyboard_column_without_changing_row_identity() {
+    let mut a = CollectionItem::new(1, "Z");
+    a.cells.push("2".into());
+    let mut b = CollectionItem::new(2, "A");
+    b.cells.push("1".into());
+    let table = Collection::new(
+        CollectionKind::Table {
+            headers: vec!["Name".into(), "Count".into()],
+        },
+        vec![a, b],
+    )
+    .unwrap();
+    let mut s = scene(vec![Element::new(10, Widget::Collection(table))]);
+    s.set_focus(Some(ElementId(10))).unwrap();
+    s.event(Input::Key {
+        key: Key::Right,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    });
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Space,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers {
+                control: true,
+                ..KeyModifiers::default()
+            }
+        })
+        .action,
+        Some(Action::Sorted(ElementId(10), 1, false))
+    );
+    let Some(Widget::Collection(table)) = s.widget(ElementId(10)) else {
+        panic!()
+    };
+    assert_eq!(table.items()[0].id, 2);
+    assert_eq!(table.selected(), Some(1));
+}
+
+#[test]
+fn editable_combo_filters_and_selects_options_while_caret_editing_still_works() {
+    let combo = Element::combo_box(
+        1,
+        "",
+        vec![MenuItem::option(10, "Alpha"), MenuItem::option(20, "Beta")],
+    )
+    .unwrap();
+    let mut s = scene(vec![combo]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    s.event(Input::Text("Bet".into()));
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(key(Key::Backspace));
+    let Some(Widget::ComboBox {
+        edit, suggestions, ..
+    }) = s.widget(ElementId(1))
+    else {
+        panic!()
+    };
+    assert_eq!(edit.text(), "Be");
+    assert_eq!(suggestions.len(), 1);
+    assert_eq!(
+        s.event(key(Key::Enter)).action,
+        Some(Action::Selected(ElementId(1), 20))
+    );
+    let Some(Widget::ComboBox { edit, .. }) = s.widget(ElementId(1)) else {
+        panic!()
+    };
+    assert_eq!(edit.text(), "Beta");
+}
+
+#[test]
+fn color_picker_keyboard_updates_typed_color_and_swatch() {
+    let mut s = scene(vec![Element::color_picker(
+        1,
+        2,
+        [3, 4, 5, 6],
+        knave_ui::Color::rgba(0, 10, 20, 255),
+    )]);
+    s.set_focus(Some(ElementId(3))).unwrap();
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Right,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers::default()
+        })
+        .action,
+        Some(Action::ColorChanged(
+            ElementId(1),
+            knave_ui::Color::rgba(1, 10, 20, 255),
+            true
+        ))
+    );
+    assert_eq!(
+        s.color_value(ElementId(1)),
+        Some(knave_ui::Color::rgba(1, 10, 20, 255))
+    );
+    assert!(matches!(s.widget(ElementId(2)), Some(Widget::ColorSwatch(color)) if color.red == 1));
+}
+
+#[test]
+fn context_menu_keyboard_skips_disabled_options_and_restores_owner_focus() {
+    let mut s = scene(vec![Element::new(
+        1,
+        Widget::ContextMenu {
+            label: "Context target".into(),
+            items: vec![
+                MenuItem::Option {
+                    id: 10,
+                    label: "Unavailable".into(),
+                    enabled: false,
+                },
+                MenuItem::option(20, "Open"),
+            ],
+        },
+    )]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(key(Key::ContextMenu));
+    assert_eq!(
+        s.event(key(Key::Enter)).action,
+        Some(Action::Selected(ElementId(1), 20))
+    );
+    assert_eq!(s.focus(), Some(ElementId(1)));
+}
+
+#[test]
+fn command_palette_filters_activates_and_restores_its_opener() {
+    let palette = CommandPalette::new(
+        PaletteIds {
+            popup: 10,
+            title: 11,
+            query: 12,
+            results: 13,
+        },
+        vec![
+            CollectionItem::new(100, "Open file"),
+            CollectionItem::new(200, "Save file"),
+        ],
+    )
+    .unwrap();
+    let mut s = scene(vec![
+        Element::new(1, Widget::Button("Open palette".into())),
+        palette.element("Commands").unwrap(),
+    ]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    palette.open(&mut s).unwrap();
+    let change = s.event(Input::Text("Save".into())).action.unwrap();
+    palette.handle(&mut s, &change).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    s.event(key(Key::Down));
+    assert_eq!(s.focus(), Some(ElementId(13)));
+    let action = s.event(key(Key::Enter)).action.unwrap();
+    assert_eq!(palette.handle(&mut s, &action).unwrap(), Some(200));
+    assert_eq!(s.focus(), Some(ElementId(1)));
+}
+
+#[test]
+fn pagination_clamps_endpoints_and_breadcrumbs_report_current_location() {
+    let mut s = scene(vec![
+        Element::pagination(1, 0, 10).unwrap(),
+        Element::breadcrumbs(
+            2,
+            vec![
+                Breadcrumb {
+                    id: 3,
+                    label: "Root".into(),
+                    target: "/".into(),
+                },
+                Breadcrumb {
+                    id: 4,
+                    label: "Current".into(),
+                    target: "/current".into(),
+                },
+            ],
+        ),
+    ]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(s.event(key(Key::Left)).action, None);
+    assert_eq!(
+        s.event(key(Key::End)).action,
+        Some(Action::PageChanged(ElementId(1), 9))
+    );
+    assert_eq!(s.event(key(Key::Right)).action, None);
+    assert!(
+        s.accessibility()
+            .iter()
+            .find(|n| n.id == ElementId(4))
+            .unwrap()
+            .current
+    );
+}
+
+#[test]
+fn grid_navigation_uses_physical_columns_when_a_cell_is_disabled() {
+    let cells = (0..6)
+        .map(|id| {
+            let mut e = Element::new(
+                id + 10,
+                Widget::Selectable {
+                    label: id.to_string(),
+                    selected: id == 0,
+                },
+            );
+            e.enabled = id != 1;
+            e
+        })
+        .collect();
+    let mut s = scene(vec![Element::selection_group(
+        1,
+        SelectionGroup::IconGrid { columns: 3 },
+        cells,
+    )]);
+    s.set_focus(Some(ElementId(10))).unwrap();
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Down,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers::default()
+        })
+        .action,
+        Some(Action::Selected(ElementId(1), 13))
+    );
+}
+
+#[test]
+fn color_cancellation_reports_the_restored_color_to_the_application() {
+    let initial = knave_ui::Color::rgba(0, 10, 20, 255);
+    let mut s = scene(vec![Element::color_picker(1, 2, [3, 4, 5, 6], initial)]);
+    let slider = s.bounds(ElementId(3)).unwrap();
+    s.event(Input::PointerDown([slider.x + 40.0, slider.y + 10.0]));
+    s.event(Input::PointerMove([slider.x + 200.0, slider.y + 10.0]));
+    assert_ne!(s.color_value(ElementId(1)), Some(initial));
+    assert_eq!(
+        s.event(Input::Cancel).action,
+        Some(Action::ColorCancelled(ElementId(1), initial))
+    );
+}
+
+#[test]
+fn tree_right_enters_children_and_leaf_navigation_never_leaves_the_collection() {
+    let mut parent = CollectionItem::new(1, "Parent");
+    parent.expanded = true;
+    let mut child = CollectionItem::new(2, "Leaf");
+    child.parent = Some(1);
+    let mut s = scene(vec![
+        Element::new(
+            10,
+            Widget::Collection(Collection::new(CollectionKind::Tree, vec![parent, child]).unwrap()),
+        ),
+        Element::new(20, Widget::Button("Outside".into())),
+    ]);
+    s.set_focus(Some(ElementId(10))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(
+        s.event(key(Key::Right)).action,
+        Some(Action::Selected(ElementId(10), 2))
+    );
+    assert_eq!(s.event(key(Key::Right)).action, None);
+    assert_eq!(s.focus(), Some(ElementId(10)));
+    let mut parent = CollectionItem::new(1, "Disabled parent");
+    parent.expanded = true;
+    parent.enabled = false;
+    let mut child = CollectionItem::new(2, "Leaf");
+    child.parent = Some(1);
+    s.set_widget(
+        ElementId(10),
+        Widget::Collection(Collection::new(CollectionKind::Tree, vec![parent, child]).unwrap()),
+    )
+    .unwrap();
+    s.set_focus(Some(ElementId(10))).unwrap();
+    assert_eq!(s.event(key(Key::Left)).action, None);
+    let Some(Widget::Collection(tree)) = s.widget(ElementId(10)) else {
+        panic!()
+    };
+    assert_eq!(tree.selected(), Some(2));
+}
+
+#[test]
+fn numeric_endpoints_do_not_emit_false_changes_and_icon_size_can_be_overridden() {
+    let edit = TextEdit::new("10")
+        .unwrap()
+        .with_mode(InputMode::Numeric {
+            min: 0.0,
+            max: 10.0,
+            step: 1.0,
+        })
+        .unwrap();
+    let icon = Icon {
+        image: knave_ui::UiImage::from_rgba(1, 1, vec![255; 4]).unwrap(),
+        name: "Icon".into(),
+    };
+    let mut s = scene(vec![
+        Element::new(1, Widget::TextInput(edit)),
+        icon.element(2).layout(Layout {
+            width: Length::Px(48.0),
+            height: Length::Px(48.0),
+            ..Layout::default()
+        }),
+    ]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Up,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers::default()
+        })
+        .action,
+        None
+    );
+    let list = s.display_list([400.0, 400.0], &mut Metrics);
+    assert!(list.commands.iter().any(|command| matches!(command, knave_ui::DisplayCommand::Image { bounds, .. } if bounds.width == 48.0 && bounds.height == 48.0)));
+}

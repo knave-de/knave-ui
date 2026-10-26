@@ -20,6 +20,10 @@ pub type AppResult<T = ()> = Result<T, Box<dyn Error>>;
 
 /// Application state and service integration stay outside the UI scene.
 pub trait Application {
+    /// Called after the common text engine is available, before the first frame.
+    fn ready(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
+        Ok(())
+    }
     fn scene(&mut self) -> &mut Scene;
     /// Clipboard effects are handled before delivery; cut also reports the edited value.
     fn action(&mut self, action: Action) -> AppResult;
@@ -29,7 +33,8 @@ pub trait Application {
     }
 }
 
-/// Run one window until it closes. No polling timer or background worker is created.
+/// Run one window until it closes. Feedback uses explicit scene deadlines;
+/// inactive scenes sleep without polling or background workers.
 pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppResult {
     if size.iter().any(|v| !v.is_finite() || *v <= 0.0) {
         return Err("window dimensions must be finite and positive".into());
@@ -45,6 +50,7 @@ pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppR
         pointer: [0.0; 2],
         composing: false,
         error: None,
+        epoch: std::time::Instant::now(),
     };
     event_loop.run_app(&mut host)?;
     match host.error {
@@ -214,6 +220,7 @@ fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
 }
 
 struct Host<A> {
+    epoch: std::time::Instant,
     title: String,
     size: [f64; 2],
     app: A,
@@ -276,6 +283,12 @@ impl<A: Application> Host<A> {
         let state = scene.text_input_state();
         gpu.window.set_ime_allowed(state.is_some());
         if let Some(state) = state {
+            gpu.window
+                .set_ime_purpose(if state.purpose == TextPurpose::Password {
+                    winit::window::ImePurpose::Password
+                } else {
+                    winit::window::ImePurpose::Normal
+                });
             let r = state.cursor_rectangle;
             gpu.window.set_ime_cursor_area(
                 LogicalPosition::new(r.x, r.y),
@@ -288,6 +301,9 @@ impl<A: Application> Host<A> {
         }
     }
     fn event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) -> AppResult {
+        for action in self.app.scene().advance(self.epoch.elapsed()) {
+            self.app.action(action)?;
+        }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
@@ -330,6 +346,11 @@ impl<A: Application> Host<A> {
                 self.input(Input::PointerMove(self.pointer))?;
             }
             WindowEvent::CursorLeft { .. } => self.input(Input::PointerLeave)?,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => self.input(Input::ContextMenu(self.pointer))?,
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,
@@ -402,6 +423,25 @@ impl<A: Application> Host<A> {
     }
 }
 impl<A: Application> ApplicationHandler for Host<A> {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let actions = self.app.scene().advance(self.epoch.elapsed());
+        for action in actions {
+            if let Err(error) = self.app.action(action) {
+                self.fail(event_loop, error);
+                return;
+            }
+        }
+        self.sync(true);
+        event_loop.set_control_flow(
+            self.app
+                .scene()
+                .next_wakeup()
+                .map_or(ControlFlow::Wait, |delay| {
+                    ControlFlow::WaitUntil(std::time::Instant::now() + delay)
+                }),
+        );
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.gpu.is_some() {
             return;
@@ -414,7 +454,8 @@ impl<A: Application> ApplicationHandler for Host<A> {
                         .with_inner_size(LogicalSize::new(self.size[0], self.size[1])),
                 )?,
             );
-            let gpu = Gpu::new(window)?;
+            let mut gpu = Gpu::new(window)?;
+            self.app.ready(&mut gpu.painter)?;
             gpu.window.request_redraw();
             self.gpu = Some(gpu);
             self.sync(true);
@@ -466,6 +507,8 @@ fn translate_key(key: &NativeKey) -> Key {
             NamedKey::End => Key::End,
             NamedKey::Backspace => Key::Backspace,
             NamedKey::Delete => Key::Delete,
+            NamedKey::ContextMenu => Key::ContextMenu,
+            NamedKey::F10 => Key::F10,
             _ => Key::Other,
         },
         NativeKey::Character(text) => match text.to_lowercase().as_str() {
