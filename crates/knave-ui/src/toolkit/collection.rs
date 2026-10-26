@@ -245,14 +245,34 @@ impl Scene {
                     key == Key::Right,
                 )));
             }
-            if key == Key::Left
-                && let Some(parent) = item.parent
-            {
-                collection.selected = Some(parent);
+            let next = if key == Key::Right {
+                visible
+                    .iter()
+                    .map(|(index, _)| &collection.items[*index])
+                    .find(|child| child.parent == Some(id) && child.enabled)
+                    .map(|child| child.id)
+            } else {
+                let mut parent = item.parent;
+                let mut next = None;
+                while let Some(id) = parent {
+                    let ancestor = collection.items.iter().find(|item| item.id == id)?;
+                    if ancestor.enabled {
+                        next = Some(id);
+                        break;
+                    }
+                    parent = ancestor.parent;
+                }
+                next
+            };
+            if let Some(next) = next {
+                collection.selected = Some(next);
+                self.reveal_collection_selection(i);
                 self.paint_dirty = true;
-                return Some(Some(Action::Selected(self.nodes[i].element.id, parent)));
+                return Some(Some(Action::Selected(owner, next)));
             }
+            return Some(None);
         }
+
         if let CollectionKind::Table { headers } = &collection.kind {
             if matches!(key, Key::Left | Key::Right) {
                 collection.active_column =
@@ -331,6 +351,30 @@ impl Scene {
         }
         self.paint_dirty = true;
         Some(Some(Action::Selected(self.nodes[i].element.id, id)))
+    }
+    fn reveal_collection_selection(&mut self, i: usize) {
+        let node = &self.nodes[i];
+        let Widget::Collection(collection) = &node.element.widget else {
+            return;
+        };
+        let Some(position) = collection
+            .visible_items()
+            .iter()
+            .position(|(index, _)| Some(collection.items[*index].id) == collection.selected)
+        else {
+            return;
+        };
+        let area = node.element.layout.insets().apply(node.bounds);
+        let height = (area.height - collection.header_height()).max(0.0);
+        let y = (position / collection.columns()) as f32 * COLLECTION_ROW_HEIGHT;
+        let mut scroll = node.scroll;
+        if y < scroll {
+            scroll = y;
+        }
+        if y + COLLECTION_ROW_HEIGHT > scroll + height {
+            scroll = (y + COLLECTION_ROW_HEIGHT - height).max(0.0);
+        }
+        self.nodes[i].scroll = scroll;
     }
     pub(super) fn collection_click(&mut self, i: usize, p: [f32; 2]) -> Option<Action> {
         let n = &self.nodes[i];

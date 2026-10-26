@@ -51,7 +51,8 @@ the owner and stable item identity. Tabs expose their controlled page IDs.
 
 Virtual collections keep focus on their owner and reveal the selected row during
 keyboard navigation. Home/End reaches the first/last enabled visible item.
-Tree Right expands and Left collapses or selects the parent. Table Left/Right
+Tree Right expands or enters children; Left collapses or selects the nearest
+enabled parent. Leaf navigation keeps focus inside the tree. Table Left/Right
 chooses a column; Ctrl+Space or a header click toggles its sort order. Enter
 activates a collection item; ordinary pointer selection does not activate it
 unless the collection explicitly opts in (as the command palette does).

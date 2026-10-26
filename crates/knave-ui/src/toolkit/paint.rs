@@ -118,7 +118,7 @@ impl Scene {
         let mut label = None;
         match &e.widget {
             Widget::Icon(icon) => {
-                let size = 24.0f32.min(b.width).min(b.height);
+                let size = b.width.min(b.height);
                 self.list.commands.push(DisplayCommand::Image {
                     bounds: Rect::new(
                         b.x + (b.width - size) / 2.0,

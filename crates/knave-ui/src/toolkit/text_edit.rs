@@ -130,8 +130,12 @@ impl TextEdit {
         if !next.is_finite() {
             return false;
         }
+        let text = next.to_string();
+        if text == self.text {
+            return false;
+        }
         self.select_all();
-        self.insert(&next.to_string())
+        self.insert(&text)
     }
     pub fn text(&self) -> &str {
         &self.text

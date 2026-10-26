@@ -1550,3 +1550,84 @@ fn color_cancellation_reports_the_restored_color_to_the_application() {
         Some(Action::ColorCancelled(ElementId(1), initial))
     );
 }
+
+#[test]
+fn tree_right_enters_children_and_leaf_navigation_never_leaves_the_collection() {
+    let mut parent = CollectionItem::new(1, "Parent");
+    parent.expanded = true;
+    let mut child = CollectionItem::new(2, "Leaf");
+    child.parent = Some(1);
+    let mut s = scene(vec![
+        Element::new(
+            10,
+            Widget::Collection(Collection::new(CollectionKind::Tree, vec![parent, child]).unwrap()),
+        ),
+        Element::new(20, Widget::Button("Outside".into())),
+    ]);
+    s.set_focus(Some(ElementId(10))).unwrap();
+    let key = |key| Input::Key {
+        key,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(
+        s.event(key(Key::Right)).action,
+        Some(Action::Selected(ElementId(10), 2))
+    );
+    assert_eq!(s.event(key(Key::Right)).action, None);
+    assert_eq!(s.focus(), Some(ElementId(10)));
+    let mut parent = CollectionItem::new(1, "Disabled parent");
+    parent.expanded = true;
+    parent.enabled = false;
+    let mut child = CollectionItem::new(2, "Leaf");
+    child.parent = Some(1);
+    s.set_widget(
+        ElementId(10),
+        Widget::Collection(Collection::new(CollectionKind::Tree, vec![parent, child]).unwrap()),
+    )
+    .unwrap();
+    s.set_focus(Some(ElementId(10))).unwrap();
+    assert_eq!(s.event(key(Key::Left)).action, None);
+    let Some(Widget::Collection(tree)) = s.widget(ElementId(10)) else {
+        panic!()
+    };
+    assert_eq!(tree.selected(), Some(2));
+}
+
+#[test]
+fn numeric_endpoints_do_not_emit_false_changes_and_icon_size_can_be_overridden() {
+    let edit = TextEdit::new("10")
+        .unwrap()
+        .with_mode(InputMode::Numeric {
+            min: 0.0,
+            max: 10.0,
+            step: 1.0,
+        })
+        .unwrap();
+    let icon = Icon {
+        image: knave_ui::UiImage::from_rgba(1, 1, vec![255; 4]).unwrap(),
+        name: "Icon".into(),
+    };
+    let mut s = scene(vec![
+        Element::new(1, Widget::TextInput(edit)),
+        icon.element(2).layout(Layout {
+            width: Length::Px(48.0),
+            height: Length::Px(48.0),
+            ..Layout::default()
+        }),
+    ]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Up,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers::default()
+        })
+        .action,
+        None
+    );
+    let list = s.display_list([400.0, 400.0], &mut Metrics);
+    assert!(list.commands.iter().any(|command| matches!(command, knave_ui::DisplayCommand::Image { bounds, .. } if bounds.width == 48.0 && bounds.height == 48.0)));
+}
