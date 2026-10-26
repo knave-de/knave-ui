@@ -12,6 +12,17 @@ service and requires no running Knave session.
 Applications implement `Application`, retain their own `Scene`, and handle typed
 `Action`s. `run` creates one window and GPU surface. Input and layout use logical
 pixels; the host scales display commands and clips to physical output pixels.
+Winit reports content-motion scroll deltas, while Scene accepts scroll offsets.
+The host negates both axes once and converts physical pixel deltas to logical
+pixels; line deltas use 40 logical pixels per line. The platform already applies
+natural-scroll direction. The host must not read Knave configuration or invert
+that preference a second time. Shell receives raw Wayland offsets directly and
+does not use this winit conversion.
+
+Window decorations remain negotiated by winit: it requests compositor decorations
+when available and uses its platform client-decoration fallback otherwise. There
+is no custom Knave titlebar in the host.
+
 The event loop waits when idle, renders on scene invalidation or window exposure,
 and releases window/GPU resources on suspension and exit. Application actions
 can mutate the scene synchronously. Background application work and multiwindow

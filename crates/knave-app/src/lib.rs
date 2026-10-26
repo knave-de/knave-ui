@@ -343,13 +343,7 @@ impl<A: Application> Host<A> {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.gpu.as_ref().map_or(1.0, |g| g.window.scale_factor());
-                let delta = match delta {
-                    MouseScrollDelta::LineDelta(x, y) => [x * 40.0, y * 40.0],
-                    MouseScrollDelta::PixelDelta(p) => {
-                        let p = p.to_logical::<f32>(scale);
-                        [p.x, p.y]
-                    }
-                };
+                let delta = scroll_delta(delta, scale);
                 self.input(Input::Scroll {
                     position: self.pointer,
                     delta,
@@ -445,6 +439,18 @@ impl<A: Application> ApplicationHandler for Host<A> {
         }
     }
 }
+// Winit reports content motion; Scene expects movement of the scroll offset.
+// Natural scrolling has already been applied by the platform. Do not invert it again.
+fn scroll_delta(delta: MouseScrollDelta, scale: f64) -> [f32; 2] {
+    match delta {
+        MouseScrollDelta::LineDelta(x, y) => [-x * 40.0, -y * 40.0],
+        MouseScrollDelta::PixelDelta(position) => {
+            let logical = position.to_logical::<f32>(scale);
+            [-logical.x, -logical.y]
+        }
+    }
+}
+
 fn translate_key(key: &NativeKey) -> Key {
     match key {
         NativeKey::Named(named) => match named {
@@ -528,6 +534,79 @@ mod tests {
         );
         assert_eq!(*clip, Some(Rect::new(15.0, 7.5, 120.0, 30.0)));
         assert_eq!(*bounds, Rect::new(0.0, 0.0, 100.0, 20.0));
+    }
+
+    #[test]
+    fn scroll_conversion_preserves_platform_direction_and_logical_distance() {
+        use winit::dpi::PhysicalPosition;
+        // Conventional wheel down and its platform-inverted counterpart.
+        assert_eq!(
+            scroll_delta(MouseScrollDelta::LineDelta(0.0, -1.0), 2.0),
+            [0.0, 40.0]
+        );
+        assert_eq!(
+            scroll_delta(MouseScrollDelta::LineDelta(0.0, 1.0), 2.0),
+            [0.0, -40.0]
+        );
+        // Smooth input is physical pixels in winit, logical offsets in Scene.
+        assert_eq!(
+            scroll_delta(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(-30.0, -60.0)),
+                1.5
+            ),
+            [20.0, 40.0]
+        );
+        assert_eq!(
+            scroll_delta(
+                MouseScrollDelta::PixelDelta(PhysicalPosition::new(30.0, 60.0)),
+                1.5
+            ),
+            [-20.0, -40.0]
+        );
+    }
+
+    #[test]
+    fn platform_wheel_down_advances_content_and_reverse_restores_it() {
+        struct NoText;
+        impl TextMeasurer for NoText {
+            fn measure(&mut self, _: &str, _: &TextStyle, _: f32) -> TextLayout {
+                panic!("no text in scene")
+            }
+            fn measure_spans(
+                &mut self,
+                _: &[knave_ui::TextSpan],
+                _: &TextStyle,
+                _: f32,
+            ) -> TextLayout {
+                panic!("no text in scene")
+            }
+        }
+        let mut scene = Scene::new(
+            Element::new(0, Widget::Scroll)
+                .layout(Layout {
+                    height: Length::Fill,
+                    ..Default::default()
+                })
+                .children(vec![Element::new(1, Widget::Panel).layout(Layout {
+                    height: Length::Px(300.0),
+                    ..Default::default()
+                })]),
+        )
+        .unwrap();
+        scene.layout([200.0, 100.0], &mut NoText);
+        let initial = scene.bounds(ElementId(1)).unwrap().y;
+        scene.event(Input::Scroll {
+            position: [20.0, 20.0],
+            delta: scroll_delta(MouseScrollDelta::LineDelta(0.0, -1.0), 1.0),
+        });
+        scene.layout([200.0, 100.0], &mut NoText);
+        assert_eq!(scene.bounds(ElementId(1)).unwrap().y, initial - 40.0);
+        scene.event(Input::Scroll {
+            position: [20.0, 20.0],
+            delta: scroll_delta(MouseScrollDelta::LineDelta(0.0, 1.0), 1.0),
+        });
+        scene.layout([200.0, 100.0], &mut NoText);
+        assert_eq!(scene.bounds(ElementId(1)).unwrap().y, initial);
     }
 
     #[test]
