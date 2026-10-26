@@ -63,6 +63,7 @@ struct Gpu {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     painter: WgpuPainter,
+    occluded: bool,
 }
 impl Gpu {
     fn new(window: Arc<Window>) -> AppResult<Self> {
@@ -95,6 +96,7 @@ impl Gpu {
             queue,
             config,
             painter,
+            occluded: false,
         })
     }
     fn resize(&mut self) {
@@ -259,10 +261,10 @@ impl<A: Application> Host<A> {
             }
             self.app.action(action)?;
         }
-        self.sync();
+        self.sync(true);
         Ok(())
     }
-    fn sync(&mut self) {
+    fn sync(&mut self, redraw: bool) {
         let Some(gpu) = &mut self.gpu else {
             return;
         };
@@ -280,7 +282,8 @@ impl<A: Application> Host<A> {
                 LogicalSize::new(r.width, r.height),
             );
         }
-        if scene.needs_frame() {
+        let size = gpu.window.inner_size();
+        if redraw && !gpu.occluded && size.width > 0 && size.height > 0 && scene.needs_frame() {
             gpu.window.request_redraw();
         }
     }
@@ -292,17 +295,20 @@ impl<A: Application> Host<A> {
                     gpu.resize();
                     gpu.window.request_redraw();
                 }
-                self.sync();
+                self.sync(true);
             }
             WindowEvent::RedrawRequested => {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.draw(self.app.scene())?;
                 }
-                self.sync();
+                self.sync(false);
             }
-            WindowEvent::Occluded(false) => {
-                if let Some(gpu) = &self.gpu {
-                    gpu.window.request_redraw();
+            WindowEvent::Occluded(occluded) => {
+                if let Some(gpu) = &mut self.gpu {
+                    gpu.occluded = occluded;
+                    if !occluded {
+                        gpu.window.request_redraw();
+                    }
                 }
             }
             WindowEvent::Focused(focused) => {
@@ -417,7 +423,7 @@ impl<A: Application> ApplicationHandler for Host<A> {
             let gpu = Gpu::new(window)?;
             gpu.window.request_redraw();
             self.gpu = Some(gpu);
-            self.sync();
+            self.sync(true);
             Ok(())
         })();
         if let Err(error) = result {
