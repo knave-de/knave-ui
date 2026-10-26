@@ -2,8 +2,14 @@ use super::collection::COLLECTION_ROW_HEIGHT as ROW;
 use super::*;
 use crate::{DisplayCommand, ImageStyle, ShapePaint, TextWrap, Transform2D};
 
-pub(super) fn paint_collection(list: &mut DisplayList, node: &Node, collection: &Collection) {
-    let area = node.element.layout.insets().apply(node.bounds);
+pub(super) fn paint_collection(
+    list: &mut DisplayList,
+    node: &Node,
+    collection: &Collection,
+    computed: &Style,
+    layout: Layout,
+) {
+    let area = layout.insets().apply(node.bounds);
     let clip = node.clip.and_then(|clip| clip.intersection(area));
     let header = collection.header_height();
     let content = Rect::new(
@@ -13,7 +19,7 @@ pub(super) fn paint_collection(list: &mut DisplayList, node: &Node, collection: 
         (area.height - header).max(0.0),
     );
     let content_clip = clip.and_then(|clip| clip.intersection(content));
-    let mut style = node.element.style.text.clone();
+    let mut style = computed.text.clone();
     style.wrap = TextWrap::None;
     if let CollectionKind::Table { headers } = &collection.kind {
         let width = area.width / headers.len() as f32;
@@ -58,7 +64,7 @@ pub(super) fn paint_collection(list: &mut DisplayList, node: &Node, collection: 
         if collection.selected == Some(item.id) {
             list.commands.push(DisplayCommand::Shape {
                 bounds,
-                paint: ShapePaint::fill(node.element.style.selected),
+                paint: ShapePaint::fill(computed.selected),
                 transform: Transform2D::IDENTITY,
                 clip: item_clip,
             });

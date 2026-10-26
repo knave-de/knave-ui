@@ -155,6 +155,9 @@ impl Scene {
     pub(super) fn auxiliary_style(&self, kind: &str) -> ComputedStyle {
         css::auxiliary(self, kind)
     }
+    pub(super) fn theme_color(&self, name: &str) -> Option<Color> {
+        css::theme_color(self, name)
+    }
     pub(super) fn effective_layout(&self, index: usize) -> Layout {
         let mut layout = self.nodes[index].element.layout;
         if let Some(style) = self.computed_style(self.nodes[index].element.id) {
@@ -246,10 +249,14 @@ impl Scene {
         let (Widget::TextInput(edit) | Widget::ComboBox { edit, .. }) = &node.element.widget else {
             return None;
         };
+        let layout = self.effective_layout(self.indices[&id]);
+        let style = self
+            .computed_style(id)
+            .map_or_else(|| node.element.style.clone(), |style| style.style);
         let caret = node.text.caret(edit.cursor()).unwrap_or_default();
         let x = caret.x;
         let password = edit.mode() == InputMode::Password;
-        let area = label_content(node.bounds, node.element.layout);
+        let area = label_content(node.bounds, layout);
         Some(TextInputState {
             purpose: match edit.mode() {
                 InputMode::Password => TextPurpose::Password,
@@ -267,20 +274,15 @@ impl Scene {
             cursor: if password { 0 } else { edit.cursor() },
             anchor: if password { 0 } else { edit.anchor() },
             cursor_rectangle: Rect::new(
-                control_content(node.bounds, node.element.layout).x + x - node.text_offset,
+                control_content(node.bounds, layout).x + x - node.text_offset,
                 area.y
                     + if edit.mode() == InputMode::Multiline {
                         caret.y - node.text_scroll_y
                     } else {
-                        ((area.height - node.element.style.text.line_height) / 2.0).max(0.0)
+                        ((area.height - style.text.line_height) / 2.0).max(0.0)
                     },
                 2.0,
-                node.element
-                    .style
-                    .text
-                    .line_height
-                    .min(area.height)
-                    .max(1.0),
+                style.text.line_height.min(area.height).max(1.0),
             ),
         })
     }
@@ -507,6 +509,35 @@ impl Scene {
             selected,
             expanded: self.menu.as_ref().is_some_and(|m| m.owner == id),
         })
+    }
+    pub(super) fn interaction_style_snapshot(&self) -> Vec<Option<ComputedStyle>> {
+        self.nodes
+            .iter()
+            .map(|node| self.computed_style(node.element.id))
+            .collect()
+    }
+    pub(super) fn finish_interaction_style_change(&mut self, previous: Vec<Option<ComputedStyle>>) {
+        let metrics_changed = previous.iter().enumerate().any(|(index, before)| {
+            before
+                .as_ref()
+                .zip(self.computed_style(self.nodes[index].element.id).as_ref())
+                .is_some_and(|(before, after)| {
+                    before.padding != after.padding
+                        || before.margin != after.margin
+                        || before.gap != after.gap
+                        || before.style.text.font_family != after.style.text.font_family
+                        || before.style.text.font_size != after.style.text.font_size
+                        || before.style.text.line_height != after.style.text.line_height
+                        || before.style.text.weight != after.style.text.weight
+                        || before.style.text.wrap != after.style.text.wrap
+                        || before.style.text.align != after.style.text.align
+                })
+        });
+        if metrics_changed {
+            self.invalidate_layout();
+        } else {
+            self.paint_dirty = true;
+        }
     }
     fn invalidate_layout(&mut self) {
         self.measure_dirty = true;

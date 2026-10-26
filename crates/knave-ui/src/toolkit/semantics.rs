@@ -81,6 +81,7 @@ impl Scene {
             .filter(|(i, _)| self.visible(*i) && scope.is_none_or(|root| self.within(*i, root)))
             .map(|(i, node)| {
                 let e = &node.element;
+                let layout = self.effective_layout(i);
                 let state = self.interaction(e.id).unwrap();
                 let role = e.semantics.role.unwrap_or_else(|| match e.widget {
                     Widget::Pagination { .. } => Role::Navigation,
@@ -144,7 +145,7 @@ impl Scene {
                     current: e.semantics.current,
                     invalid: e.semantics.invalid || matches!(&e.widget, Widget::TextInput(edit) if edit.validation_message().is_some()),
                     busy: e.semantics.busy || matches!(e.widget, Widget::Spinner | Widget::Progress { value: None }),
-                    items: match &e.widget { Widget::Collection(c) => c.accessibility(e.layout.insets().apply(node.bounds), node.scroll), _ => self.menu_accessibility(e.id) },
+                    items: match &e.widget { Widget::Collection(c) => c.accessibility(layout.insets().apply(node.bounds), node.scroll), _ => self.menu_accessibility(e.id) },
                     value: match e.widget {
                         Widget::Progress { value } => value,
                         Widget::Slider(s) | Widget::Splitter(s) => Some(s.value()),

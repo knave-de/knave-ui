@@ -10,7 +10,13 @@ impl Scene {
         }
         self.list.commands.clear();
         self.list.revision = self.list.revision.wrapping_add(1);
-        self.list.clear_color = Color::BACKGROUND;
+        self.list.clear_color = self
+            .auxiliary_style("canvas")
+            .style
+            .background
+            .and_then(|paint| paint.fill)
+            .or_else(|| self.theme_color("--canvas"))
+            .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
         for i in order {
@@ -45,11 +51,17 @@ impl Scene {
                     w,
                     h,
                 );
-                let mut tip_paint = tooltip
-                    .style
-                    .background
-                    .clone()
-                    .unwrap_or_else(|| ShapePaint::fill(Color::rgba(45, 61, 80, 255)));
+                let mut tip_paint = tooltip.style.background.clone().unwrap_or_else(|| {
+                    self.auxiliary_style("surface")
+                        .style
+                        .background
+                        .or_else(|| {
+                            self.theme_color("--surface-tooltip")
+                                .or_else(|| self.theme_color("--surface"))
+                                .map(ShapePaint::fill)
+                        })
+                        .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
+                });
                 tip_paint.radii = tooltip
                     .style
                     .radii
@@ -82,18 +94,24 @@ impl Scene {
             style.text.color.alpha = 105;
         }
         if matches!(e.widget, Widget::Popup { modal: true }) {
-            shape(
-                &mut self.list,
-                self.viewport,
-                Some(self.viewport),
-                ShapePaint::fill(Color::rgba(0, 0, 0, 135)),
-            );
+            let overlay = self
+                .auxiliary_style("modal-overlay")
+                .style
+                .background
+                .or_else(|| self.theme_color("--surface-overlay").map(ShapePaint::fill))
+                .unwrap_or_else(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+            shape(&mut self.list, self.viewport, Some(self.viewport), overlay);
         }
         let control = e.widget.focusable() || matches!(e.widget, Widget::Popup { .. });
-        let mut background = style
-            .background
-            .clone()
-            .or_else(|| control.then(|| ShapePaint::fill(Color::rgba(33, 44, 60, 255))));
+        let mut background = style.background.clone().or_else(|| {
+            control.then(|| {
+                self.auxiliary_style("surface")
+                    .style
+                    .background
+                    .or_else(|| self.theme_color("--surface").map(ShapePaint::fill))
+                    .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
+            })
+        });
         if let Some(paint) = &mut background {
             paint.radii = style.radii.unwrap_or_else(|| {
                 if style.background.is_some() {
@@ -115,10 +133,14 @@ impl Scene {
                 paint.opacity *= 0.5;
             }
             if state.focused && self.focus_visible && !state.disabled {
-                paint.border = Some(Border {
-                    color: style.focus,
-                    width: 1.0,
-                });
+                paint.border = Some(
+                    self.computed_style(e.id)
+                        .and_then(|computed| computed.focus_border)
+                        .unwrap_or(Border {
+                            color: style.focus,
+                            width: 1.0,
+                        }),
+                );
             }
             shape(&mut self.list, b, clip, paint.clone());
         }
@@ -164,9 +186,13 @@ impl Scene {
                     style.text.clone(),
                 );
             }
-            Widget::Collection(collection) => {
-                super::collection_paint::paint_collection(&mut self.list, node, collection)
-            }
+            Widget::Collection(collection) => super::collection_paint::paint_collection(
+                &mut self.list,
+                node,
+                collection,
+                &style,
+                layout,
+            ),
             Widget::Toast { label: value, .. } | Widget::Text(value) => text_cmd(
                 &mut self.list,
                 layout.insets().apply(b),
@@ -521,10 +547,13 @@ impl Scene {
             .style;
         let b = menu.bounds;
         let clip = Some(b);
-        let mut menu_paint = menu_style
-            .background
-            .clone()
-            .unwrap_or_else(|| ShapePaint::fill(Color::rgba(28, 39, 55, 255)));
+        let mut menu_paint = menu_style.background.clone().unwrap_or_else(|| {
+            self.auxiliary_style("menu")
+                .style
+                .background
+                .or_else(|| self.theme_color("--surface-menu").map(ShapePaint::fill))
+                .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
+        });
         menu_paint.radii = menu_style
             .radii
             .unwrap_or(CornerRadii::uniform(menu_style.radius));

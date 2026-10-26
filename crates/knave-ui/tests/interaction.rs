@@ -114,6 +114,125 @@ fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
     assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0x11,0x22,0x33,255)))));
 }
 #[test]
+fn hover_spacing_relayouts_bounds_and_pointer_targets() {
+    let first = Element::new(1, Widget::Button("First".into())).class("action");
+    let second = Element::new(2, Widget::Button("Second".into()));
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![first, second])).unwrap();
+    s.set_stylesheet(".action:hover { padding: 12px; margin: 24px; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let second_before = s.bounds(ElementId(2)).unwrap();
+
+    s.event(Input::PointerMove([20.0, 20.0]));
+    s.layout([400.0, 400.0], &mut Metrics);
+
+    let first_after = s.bounds(ElementId(1)).unwrap();
+    let second_after = s.bounds(ElementId(2)).unwrap();
+    assert_eq!(first_after.y, 24.0);
+    assert!(second_after.y > second_before.y);
+    assert_ne!(s.hit_test([20.0, 20.0]), Some(ElementId(1)));
+    assert_eq!(
+        s.hit_test([first_after.x + 4.0, first_after.y + 4.0]),
+        Some(ElementId(1))
+    );
+}
+#[test]
+fn collection_paint_uses_computed_color_selection_and_padding() {
+    let mut disabled = CollectionItem::new(3, "Disabled");
+    disabled.enabled = false;
+    let collection = Collection::new(
+        CollectionKind::List,
+        vec![
+            CollectionItem::new(1, "Selected"),
+            CollectionItem::new(2, "Other"),
+            disabled,
+        ],
+    )
+    .unwrap();
+    let mut s = Scene::new(Element::new(1, Widget::Collection(collection))).unwrap();
+    s.set_stylesheet("collection { color: #ff0000; selected-color: #00ff00; padding: 12px; }")
+        .unwrap();
+    let mut metrics = Metrics;
+    let list = s.display_list([240.0, 160.0], &mut metrics).clone();
+
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Text { bounds, text, style, .. }
+            if text == "Selected" && bounds.x == 12.0 && style.color == knave_ui::Color::rgba(255, 0, 0, 255)
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if bounds.x == 12.0 && paint.fill == Some(knave_ui::Color::rgba(0, 255, 0, 255))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Disabled" && style.color == knave_ui::Color::rgba(255, 0, 0, 105)
+    )));
+}
+#[test]
+fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
+    let mut s = Scene::new(Element::new(
+        1,
+        Widget::TextInput(TextEdit::new("abc").unwrap()),
+    ))
+    .unwrap();
+    s.set_stylesheet("text-input { padding: 20px; font-size: 20px; line-height: 24px; }")
+        .unwrap();
+    s.layout([240.0, 120.0], &mut Metrics);
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    let click = [bounds.x + 28.0, bounds.y + bounds.height / 2.0];
+    s.event(Input::PointerDown(click));
+    s.layout([240.0, 120.0], &mut Metrics);
+
+    let state = s.text_input_state().unwrap();
+    assert_eq!(state.cursor, 1);
+    assert_eq!(state.cursor_rectangle.x, bounds.x + 28.0);
+    assert_eq!(state.cursor_rectangle.height, 24.0);
+    assert_eq!(
+        state.cursor_rectangle.y,
+        bounds.y + 20.0 + ((bounds.height - 40.0 - 24.0) / 2.0).max(0.0)
+    );
+}
+#[test]
+fn focused_border_color_and_width_follow_css_cascade() {
+    let field = Element::new(1, Widget::TextInput(TextEdit::new("value").unwrap())).class("field");
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![field])).unwrap();
+    s.set_stylesheet(".field:focus { border-color: #ff0000; border-width: 3px; }")
+        .unwrap();
+    s.layout([240.0, 120.0], &mut Metrics);
+    s.event(Input::Key {
+        key: Key::Tab,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    });
+    let list = s.display_list([240.0, 120.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.border.is_some_and(|border|
+                border.width == 3.0 && border.color == knave_ui::Color::rgba(255, 0, 0, 255))
+    )));
+}
+#[test]
+fn root_theme_variables_style_canvas_and_control_fallbacks() {
+    let mut s = Scene::new(
+        Element::new(0, Widget::Panel)
+            .children(vec![Element::new(1, Widget::Button("Theme".into()))]),
+    )
+    .unwrap();
+    s.set_stylesheet(":root { --canvas: #112233; --surface: #445566; }")
+        .unwrap();
+    let list = s.display_list([240.0, 120.0], &mut Metrics).clone();
+
+    assert_eq!(
+        list.clear_color,
+        knave_ui::Color::rgba(0x11, 0x22, 0x33, 255)
+    );
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x44, 0x55, 0x66, 255))
+    )));
+}
+#[test]
 fn bundled_stylesheet_preserves_default_control_insets() {
     let mut s = scene(vec![leaf(1, Widget::Button("Run".into()))]);
     let bounds = s.bounds(ElementId(1)).unwrap();

@@ -4,6 +4,7 @@ use crate::{Border, Color, CornerRadii, ShapePaint};
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
     pub style: Style,
+    pub(super) focus_border: Option<Border>,
     pub padding: Insets,
     pub margin: Insets,
     pub gap: f32,
@@ -13,6 +14,7 @@ impl From<&Element> for ComputedStyle {
     fn from(element: &Element) -> Self {
         Self {
             style: element.style.clone(),
+            focus_border: None,
             padding: element.layout.insets(),
             margin: element.layout.margin,
             gap: element.layout.gap,
@@ -62,26 +64,29 @@ impl Stylesheet {
     }
     pub fn default_sheet() -> Self {
         Self::parse(r#"
-            :root { --accent: accent; --warning: warning; --danger: danger; --surface: #212c3c; --surface-hover: #314053; --surface-pressed: #1c283a; }
+            :root { --accent: accent; --warning: warning; --danger: danger; --canvas: background; --panel-surface: #151d28; --surface: #212c3c; --surface-hover: #314053; --surface-pressed: #1c283a; --surface-selected: #2a5870; --surface-menu: #1c2737; --surface-tooltip: #2d3d50; --surface-overlay: #00000087; --text-disabled: #78818d; --control-muted: #505c6f; }
             :hover { background-color: var(--surface-hover); }
             :pressed { background-color: var(--surface-pressed); }
-            :selected { background-color: #2a5870; }
+            :selected { background-color: var(--surface-selected); }
             :focus { focus-color: var(--accent); }
-            :disabled { color: #78818d; }
+            :disabled { color: var(--text-disabled); }
             .warning { color: var(--warning); }
             .danger { color: var(--danger); }
-            panel, scene-snapshot { background-color: #151d28; }
-            button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination { background-color: #212c3c; }
-            button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: #314053; }
-            button:pressed, link:pressed, selectable:pressed { background-color: #1c283a; }
-            button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: #2a5870; }
-            button:disabled, link:disabled, text-input:disabled { color: #78818d; }
+            canvas { background-color: var(--canvas); }
+            surface { background-color: var(--surface); }
+            modal-overlay { background-color: var(--surface-overlay); }
+            panel, scene-snapshot { background-color: var(--panel-surface); }
+            button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { background-color: var(--surface); }
+            button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
+            button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
+            button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
+            button:disabled, link:disabled, text-input:disabled { color: var(--text-disabled); }
             button:focus, link:focus, text-input:focus, dropdown:focus { border-color: var(--accent); border-width: 1px; }
-            menu, context-menu { background-color: #1c2737; }
+            menu, context-menu { background-color: var(--surface-menu); }
             text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: text; }
-            progress, spinner { focus-color: var(--accent); hover-color: #505c6f; }
-            separator { hover-color: #505c6f; }
-            tooltip { color: text; background-color: #2d3d50; padding: 8px; }
+            progress, spinner { focus-color: var(--accent); hover-color: var(--control-muted); }
+            separator { hover-color: var(--control-muted); }
+            tooltip { color: text; background-color: var(--surface-tooltip); padding: 8px; }
             text, paragraph, heading { color: text; }
         "#).expect("bundled stylesheet is valid")
     }
@@ -179,6 +184,7 @@ impl Stylesheet {
                 apply_decl(
                     &mut ComputedStyle {
                         style: Style::default(),
+                        focus_border: None,
                         padding: Insets::default(),
                         margin: Insets::default(),
                         gap: 0.0,
@@ -343,9 +349,11 @@ pub(super) fn compute(
                     let name = if name == "background-color" && !state_property.is_empty() {
                         state_property
                     } else if state_name == Some("focus") && name == "border-color" {
-                        "focus-color"
+                        "focus-border-color"
                     } else if state_name == Some("focus") && name == "border-width" {
-                        continue;
+                        "focus-border-width"
+                    } else if state_name == Some("focus") && name == "border" {
+                        "focus-border"
                     } else {
                         name.as_str()
                     };
@@ -366,6 +374,7 @@ pub(super) fn compute(
             vars.insert(name.clone(), value.clone());
         }
     }
+    let mut focus_border_color_explicit = false;
     for (name, (_, _, raw)) in declarations {
         if name.starts_with("--") {
             continue;
@@ -376,13 +385,49 @@ pub(super) fn compute(
             continue;
         }
         let value = resolve_vars(&raw, &vars, 0).ok()?;
+        match name.as_str() {
+            "focus-border-color" => {
+                let border = result.focus_border.get_or_insert(Border {
+                    color: result.style.focus,
+                    width: 1.0,
+                });
+                border.color = parse_color(&value).ok()?;
+                focus_border_color_explicit = true;
+                continue;
+            }
+            "focus-border-width" => {
+                let border = result.focus_border.get_or_insert(Border {
+                    color: result.style.focus,
+                    width: 1.0,
+                });
+                border.width = px(&value).ok()?;
+                continue;
+            }
+            "focus-border" => {
+                let parts = value.split_whitespace().collect::<Vec<_>>();
+                if parts.len() != 3 || parts[1] != "solid" {
+                    return None;
+                }
+                result.focus_border = Some(Border {
+                    color: parse_color(parts[2]).ok()?,
+                    width: px(parts[0]).ok()?,
+                });
+                focus_border_color_explicit = true;
+                continue;
+            }
+            _ => {}
+        }
         apply_decl(&mut result, &name, &value).ok()?;
+    }
+    if !focus_border_color_explicit && let Some(border) = &mut result.focus_border {
+        border.color = result.style.focus;
     }
     Some(result)
 }
 pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
     let mut result = ComputedStyle {
         style: Style::default(),
+        focus_border: None,
         padding: Insets::all(8.0),
         margin: Insets::default(),
         gap: 0.0,
@@ -428,6 +473,11 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
         }
     }
     result
+}
+pub(super) fn theme_color(scene: &Scene, name: &str) -> Option<Color> {
+    let vars = inherited_vars(scene, 0, InteractionState::default());
+    let value = resolve_vars(&format!("var({name})"), &vars, 0).ok()?;
+    parse_color(&value).ok()
 }
 fn inherited_vars(
     scene: &Scene,
