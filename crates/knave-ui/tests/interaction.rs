@@ -1233,6 +1233,14 @@ fn virtual_list_retains_ten_thousand_items_but_only_paints_visible_rows() {
         list.commands.len() < 30,
         "virtual rows must not become retained scene nodes"
     );
+    assert!(
+        list.commands
+            .iter()
+            .filter(|command| matches!(command, knave_ui::DisplayCommand::Text { .. }))
+            .count()
+            >= 5,
+        "the default viewport must show multiple rows"
+    );
     assert!(list.commands.iter().any(|command| matches!(command, knave_ui::DisplayCommand::Text { text, .. } if text == "Row 9999")));
     let a11y = s.accessibility();
     assert_eq!(a11y[1].role, Role::List);

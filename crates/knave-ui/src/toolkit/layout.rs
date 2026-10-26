@@ -99,7 +99,7 @@ impl Scene {
             widget
                 if widget.focusable()
                     && self.nodes[i].element.style.text.wrap != crate::TextWrap::None
-                    && !matches!(widget, Widget::Slider(_)) =>
+                    && !matches!(widget, Widget::Slider(_) | Widget::Collection(_)) =>
             {
                 let value = widget.display_label().to_owned();
                 let reserve = widget.label_reserve();
