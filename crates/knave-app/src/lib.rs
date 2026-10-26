@@ -43,7 +43,7 @@ pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppR
         gpu: None,
         modifiers: ModifiersState::empty(),
         pointer: [0.0; 2],
-        ime: false,
+        composing: false,
         error: None,
     };
     event_loop.run_app(&mut host)?;
@@ -150,6 +150,27 @@ impl Gpu {
         scale_list(&mut list, scale);
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let [r, g, b, a] = list.clear_color.to_linear_rgba();
+        {
+            let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("knave-app-clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: r.into(),
+                            g: g.into(),
+                            b: b.into(),
+                            a: a.into(),
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+        }
         self.painter.encode(
             &self.device,
             &self.queue,
@@ -197,7 +218,7 @@ struct Host<A> {
     gpu: Option<Gpu>,
     modifiers: ModifiersState,
     pointer: [f32; 2],
-    ime: bool,
+    composing: bool,
     error: Option<Box<dyn Error>>,
 }
 impl<A: Application> Host<A> {
@@ -215,20 +236,26 @@ impl<A: Application> Host<A> {
                     .as_mut()
                     .expect("active window")
                     .clipboard
-                    .store(text.clone()),
-                Action::RequestPaste(target) => {
-                    match self.gpu.as_mut().expect("active window").clipboard.load() {
-                        Ok(text) => self.input(Input::PasteTo {
+                    .store(text.clone())
+                    .map(|()| None),
+                Action::RequestPaste(target) => self
+                    .gpu
+                    .as_mut()
+                    .expect("active window")
+                    .clipboard
+                    .load()
+                    .map(|text| {
+                        Some(Input::PasteTo {
                             target: *target,
                             text,
-                        }),
-                        Err(error) => Err(error),
-                    }
-                }
-                _ => Ok(()),
+                        })
+                    }),
+                _ => Ok(None),
             };
-            if let Err(error) = clipboard_result {
-                self.app.clipboard_error(error.as_ref());
+            match clipboard_result {
+                Ok(Some(input)) => self.input(input)?,
+                Ok(None) => {}
+                Err(error) => self.app.clipboard_error(error.as_ref()),
             }
             self.app.action(action)?;
         }
@@ -259,7 +286,7 @@ impl<A: Application> Host<A> {
     }
     fn event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) -> AppResult {
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested | WindowEvent::Destroyed => event_loop.exit(),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 if let Some(gpu) = &mut self.gpu {
                     gpu.resize();
@@ -281,7 +308,7 @@ impl<A: Application> Host<A> {
             WindowEvent::Focused(focused) => {
                 if !focused {
                     self.modifiers = ModifiersState::empty();
-                    self.ime = false;
+                    self.composing = false;
                 }
                 self.input(if focused {
                     Input::FocusGained
@@ -323,13 +350,19 @@ impl<A: Application> Host<A> {
                 })?;
             }
             WindowEvent::Ime(ime) => match ime {
-                Ime::Enabled => self.ime = true,
+                Ime::Enabled => {}
                 Ime::Disabled => {
-                    self.ime = false;
+                    self.composing = false;
                     self.input(Input::Preedit(String::new()))?;
                 }
-                Ime::Preedit(text, _) => self.input(Input::Preedit(text))?,
-                Ime::Commit(text) => self.input(Input::Text(text))?,
+                Ime::Preedit(text, _) => {
+                    self.composing = !text.is_empty();
+                    self.input(Input::Preedit(text))?;
+                }
+                Ime::Commit(text) => {
+                    self.composing = false;
+                    self.input(Input::Text(text))?;
+                }
             },
             WindowEvent::KeyboardInput {
                 event,
@@ -348,7 +381,7 @@ impl<A: Application> Host<A> {
                     },
                 })?;
                 if event.state == ElementState::Pressed
-                    && !self.ime
+                    && !self.composing
                     && !self.modifiers.control_key()
                     && !self.modifiers.super_key()
                     && let Some(text) = event.text
@@ -394,7 +427,7 @@ impl<A: Application> ApplicationHandler for Host<A> {
     fn suspended(&mut self, _: &ActiveEventLoop) {
         self.app.scene().event(Input::FocusLost);
         self.gpu = None;
-        self.ime = false;
+        self.composing = false;
         self.modifiers = ModifiersState::empty();
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
