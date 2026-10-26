@@ -84,9 +84,9 @@ fn core() -> Result<Vec<Element>, UiError> {
             100,
             "Typography and display · primitives",
             vec![
-                sized_heading(102, "Aa · Heading 1", 32.0, 40.0),
-                sized_heading(108, "Aa · Heading 2", 24.0, 32.0),
-                sized_heading(109, "Aa · Heading 3", 18.0, 26.0),
+                sized_heading(102, "Aa · Heading 1", 24.0, 32.0),
+                sized_heading(108, "Aa · Heading 2", 20.0, 28.0),
+                sized_heading(109, "Aa · Heading 3", 16.0, 24.0),
                 text(
                     104,
                     "Body text follows the measured width of its container.",
