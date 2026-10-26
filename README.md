@@ -21,8 +21,11 @@ Run the interactive gallery in an existing Wayland or X11 desktop:
 cargo run -p knave-app --example widget-gallery --locked
 ```
 
-The gallery demonstrates controls, text entry, menus, scrolling, dragging and
-modal popups. Tab/Shift+Tab moves focus; the status line shows resulting actions.
+The gallery has Core, Layout, Navigation, Overlays, States and Coverage pages.
+It distinguishes existing primitives, application compositions and missing features,
+with side-by-side selection/disabled states and live focus/pressed/expanded states.
+Tab/Shift+Tab moves focus; page switching preserves values and per-page scrolling.
+See the [coverage matrix](docs/architecture/widget-catalog.md) for remaining gaps.
 It runs independently of Knave Shell.
 
 To build an app, depend on `knave-app` and `knave-ui`, implement
