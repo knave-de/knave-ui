@@ -1,7 +1,7 @@
 //! Catalog of existing primitives and app-level compositions. Missing widgets are
 //! documented as gaps rather than imitated with differently labelled buttons.
 use knave_app::{AppResult, Application};
-use knave_ui::{Color, HeadingLevel, ShapePaint, TextSpan, TextWrap, toolkit::*};
+use knave_ui::{HeadingLevel, TextSpan, TextStyle, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
@@ -15,14 +15,8 @@ const PAGES: [(u64, &str); 6] = [
 ];
 const NAV: u64 = 9000;
 
-fn control(id: u64, widget: Widget) -> Element {
-    Element::new(id, widget).layout(Layout {
-        height: Length::Px(44.0),
-        ..Default::default()
-    })
-}
 fn text(id: u64, value: &str) -> Element {
-    Element::new(id, Widget::Text(value.into())).text_wrap(TextWrap::WordOrGlyph)
+    Element::new(id, Widget::Text(value.into()))
 }
 fn disabled(mut element: Element) -> Element {
     element.enabled = false;
@@ -39,16 +33,7 @@ fn grid(id: u64, columns: usize, children: Vec<Element>) -> Element {
 fn section(id: u64, title: &str, children: Vec<Element>) -> Element {
     let mut items = vec![Element::heading(id + 1, title, HeadingLevel::H2)];
     items.extend(children);
-    let mut panel = Element::new(id, Widget::Panel)
-        .layout(Layout {
-            padding: 16.0,
-            gap: 12.0,
-            ..Default::default()
-        })
-        .children(items);
-    panel.style.background = Some(ShapePaint::fill(Color::rgba(28, 39, 53, 255)));
-    panel.style.radii = Some(knave_ui::CornerRadii::uniform(12.0));
-    panel
+    Element::new(id, Widget::Panel).children(items)
 }
 fn choices() -> Vec<MenuItem> {
     vec![
@@ -63,12 +48,11 @@ fn choices() -> Vec<MenuItem> {
     ]
 }
 fn core() -> Result<Vec<Element>, UiError> {
-    let mut tooltip = control(11, Widget::Button("Hover for tooltip".into()));
+    let mut tooltip = Element::new(11, Widget::Button("Hover for tooltip".into()));
     tooltip.tooltip =
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
-    let mut caption = text(103, "Caption · smaller supporting text");
-    caption.style.text.font_size = 12.0;
-    caption.style.text.line_height = 16.0;
+    let supporting_text = text(103, "Supporting text · toolkit defaults");
+    let text_style = TextStyle::default();
     Ok(vec![
         section(
             100,
@@ -81,23 +65,23 @@ fn core() -> Result<Vec<Element>, UiError> {
                     104,
                     "Body text follows the measured width of its container.",
                 ),
-                caption,
+                supporting_text,
                 Element::new(
                     105,
                     Widget::Paragraph(vec![
                         TextSpan {
                             text: "Rich text: ".into(),
-                            color: Color::TEXT,
-                            weight: 400,
+                            color: text_style.color,
+                            weight: text_style.weight,
                         },
                         TextSpan {
-                            text: "weight and color".into(),
-                            color: Color::ACCENT,
-                            weight: 700,
+                            text: "spans using toolkit defaults".into(),
+                            color: text_style.color,
+                            weight: text_style.weight,
                         },
                     ]),
                 ),
-                control(106, Widget::Separator),
+                Element::new(106, Widget::Separator),
                 Element::new(
                     107,
                     Widget::Image(
@@ -127,20 +111,20 @@ fn core() -> Result<Vec<Element>, UiError> {
                 grid(
                     112,
                     2,
-                    vec![control(10, Widget::Button("Press me".into())), tooltip],
+                    vec![Element::new(10, Widget::Button("Press me".into())), tooltip],
                 ),
                 grid(
                     113,
                     2,
                     vec![
-                        control(
+                        Element::new(
                             13,
                             Widget::Toggle {
                                 label: "Notifications".into(),
                                 checked: true,
                             },
                         ),
-                        control(
+                        Element::new(
                             14,
                             Widget::Checkbox {
                                 label: "Remember my choice".into(),
@@ -149,7 +133,7 @@ fn core() -> Result<Vec<Element>, UiError> {
                         ),
                     ],
                 ),
-                control(
+                Element::new(
                     15,
                     Widget::Selectable {
                         label: "Selectable row".into(),
@@ -162,18 +146,18 @@ fn core() -> Result<Vec<Element>, UiError> {
             120,
             "Inputs · primitives",
             vec![
-                control(
+                Element::new(
                     16,
                     Widget::Slider(
                         Slider::new(0.0, 100.0, 40.0, Some(1.0))?
                             .with_scroll(Some(SliderScroll::default()))?,
                     ),
                 ),
-                control(
+                Element::new(
                     17,
                     Widget::TextInput(TextEdit::new("Edit me — Unicode works")?),
                 ),
-                control(
+                Element::new(
                     18,
                     Widget::Dropdown {
                         label: "Choose an option".into(),
@@ -194,22 +178,22 @@ fn layout() -> Vec<Element> {
         section(2100, "Rows, columns and grids · existing layout primitives", vec![
             text(2102, "Each row below is a composition of ordinary panels and controls. Grid items share available width."),
             Element::new(2103, Widget::Panel).layout(Layout { flow: Flow::Row, ..Default::default() })
-                .children(vec![control(2110, Widget::Button("Row A".into())), control(2111, Widget::Button("Row B".into()))]),
-            grid(2104, 3, vec![control(2120, Widget::Button("Grid A".into())),
-                control(2121, Widget::Button("Grid B".into())), control(2122, Widget::Button("Grid C".into()))]),
+                .children(vec![Element::new(2110, Widget::Button("Row A".into())), Element::new(2111, Widget::Button("Row B".into()))]),
+            grid(2104, 3, vec![Element::new(2120, Widget::Button("Grid A".into())),
+                Element::new(2121, Widget::Button("Grid B".into())), Element::new(2122, Widget::Button("Grid C".into()))]),
         ]),
-        section(2200, "Surfaces, cards and spacing · compositions", vec![
-            section(2210, "A card is a styled panel", vec![text(2212, "Padding, gaps, margins, backgrounds, borders and corner radii belong to the existing layout and paint system.")]),
+        section(2200, "Panels and cards · compositions", vec![
+            section(2210, "Card composition · panel and content", vec![text(2212, "This composition uses the toolkit defaults. Global styling and custom overrides will be added later.")]),
             text(2202, "Resize the window to inspect wrapping and fixed versus fill lengths. The fixed-width panel below is clipped at its parent."),
-            Element::new(2203, Widget::Panel).layout(Layout { width: Length::Px(520.0), padding: 20.0, ..Default::default() })
+            Element::new(2203, Widget::Panel).layout(Layout { width: Length::Px(520.0), ..Default::default() })
                 .children(vec![text(2204, "A longer sentence in a 520 logical-pixel panel. At narrow window sizes, ancestor clipping still applies.")]),
         ]),
         section(2300, "Scroll and overlay behavior · primitives", vec![
             text(2302, "This page is a scroll view. Scroll in both directions without moving keyboard focus. Direction comes from the platform; the app does not read or invert natural-scroll preferences."),
             Element::new(2303, Widget::Panel).layout(Layout { flow: Flow::Overlay, height: Length::Px(90.0), ..Default::default() })
-                .children(vec![control(2304, Widget::Button("Background".into())),
-                    control(2305, Widget::Button("Overlay".into())).layout(Layout { width: Length::Px(180.0), height: Length::Px(44.0), offset: [30.0, 30.0], ..Default::default() })]),
-            control(26, Widget::Draggable("Drag this control · Escape cancels".into())),
+                .children(vec![Element::new(2304, Widget::Button("Background".into())),
+                    Element::new(2305, Widget::Button("Overlay".into())).layout(Layout { width: Length::Px(180.0), offset: [30.0, 30.0], ..Default::default() })]),
+            Element::new(26, Widget::Draggable("Drag this control · Escape cancels".into())),
             text(2306, "Split views and expanders need additional behavior; they are not supplied by the row/grid layout itself."),
         ]),
     ]
@@ -240,21 +224,21 @@ fn navigation() -> Vec<Element> {
                                 ..Default::default()
                             })
                             .children(vec![
-                                control(
+                                Element::new(
                                     3110,
                                     Widget::Selectable {
                                         label: "General".into(),
                                         selected: true,
                                     },
                                 ),
-                                control(
+                                Element::new(
                                     3111,
                                     Widget::Selectable {
                                         label: "Appearance".into(),
                                         selected: false,
                                     },
                                 ),
-                                control(
+                                Element::new(
                                     3112,
                                     Widget::Selectable {
                                         label: "Input".into(),
@@ -274,14 +258,14 @@ fn navigation() -> Vec<Element> {
                     3202,
                     "Selectable rows and a grid provide small collections. These retain every node; they do not virtualize large lists.",
                 ),
-                control(
+                Element::new(
                     3210,
                     Widget::Selectable {
                         label: "Network A".into(),
                         selected: true,
                     },
                 ),
-                control(
+                Element::new(
                     3211,
                     Widget::Selectable {
                         label: "Network B".into(),
@@ -292,9 +276,9 @@ fn navigation() -> Vec<Element> {
                     3220,
                     3,
                     vec![
-                        control(3221, Widget::Button("▣ Files".into())),
-                        control(3222, Widget::Button("▣ Settings".into())),
-                        control(3223, Widget::Button("▣ Browser".into())),
+                        Element::new(3221, Widget::Button("▣ Files".into())),
+                        Element::new(3222, Widget::Button("▣ Settings".into())),
+                        Element::new(3223, Widget::Button("▣ Browser".into())),
                     ],
                 ),
                 text(
@@ -311,14 +295,14 @@ fn overlays() -> Vec<Element> {
             4100,
             "Menus and modal dialogs · primitives and compositions",
             vec![
-                control(
+                Element::new(
                     19,
                     Widget::Menu {
                         label: "Open menu".into(),
                         items: choices(),
                     },
                 ),
-                control(27, Widget::Button("Open modal dialog".into())),
+                Element::new(27, Widget::Button("Open modal dialog".into())),
                 text(
                     4102,
                     "Check release-to-select, disabled rows, separators and Escape. Modal dialogs trap Tab, block the page and restore opener focus. Outside presses dismiss without activating background controls.",
@@ -334,7 +318,7 @@ fn overlays() -> Vec<Element> {
                     4203,
                     "An empty state combines text, a surface and an action.",
                 ),
-                control(4204, Widget::Button("Example action".into())),
+                Element::new(4204, Widget::Button("Example action".into())),
                 text(
                     4205,
                     "Alerts, progress bars, spinners and toast lifecycles are not implemented primitives. This catalog does not imply they exist by drawing static imitations.",
@@ -346,42 +330,42 @@ fn overlays() -> Vec<Element> {
 fn states() -> Result<Vec<Element>, UiError> {
     Ok(vec![
         section(5100, "Buttons · default and disabled", vec![
-            grid(5102, 2, vec![control(5110, Widget::Button("Default".into())), disabled(control(5111, Widget::Button("Disabled".into())))]),
+            grid(5102, 2, vec![Element::new(5110, Widget::Button("Default".into())), disabled(Element::new(5111, Widget::Button("Disabled".into())))]),
             text(5103, "Use the enabled button for real hover, keyboard focus and pressed/release states. Only the actually focused/pressed control displays that state; these are not painted replicas."),
         ]),
         section(5200, "Selection · unchecked, checked, selected, disabled", vec![
             grid(5202, 2, vec![
-                control(5210, Widget::Checkbox { label: "Unchecked".into(), checked: false }),
-                control(5211, Widget::Checkbox { label: "Checked".into(), checked: true }),
-                disabled(control(5212, Widget::Checkbox { label: "Disabled unchecked".into(), checked: false })),
-                disabled(control(5213, Widget::Checkbox { label: "Disabled checked".into(), checked: true })),
-                control(5220, Widget::Toggle { label: "Off".into(), checked: false }),
-                control(5221, Widget::Toggle { label: "On".into(), checked: true }),
-                disabled(control(5222, Widget::Toggle { label: "Disabled off".into(), checked: false })),
-                disabled(control(5223, Widget::Toggle { label: "Disabled on".into(), checked: true })),
-                control(5230, Widget::Selectable { label: "Unselected".into(), selected: false }),
-                control(5231, Widget::Selectable { label: "Selected".into(), selected: true }),
-                disabled(control(5232, Widget::Selectable { label: "Disabled selected".into(), selected: true })),
+                Element::new(5210, Widget::Checkbox { label: "Unchecked".into(), checked: false }),
+                Element::new(5211, Widget::Checkbox { label: "Checked".into(), checked: true }),
+                disabled(Element::new(5212, Widget::Checkbox { label: "Disabled unchecked".into(), checked: false })),
+                disabled(Element::new(5213, Widget::Checkbox { label: "Disabled checked".into(), checked: true })),
+                Element::new(5220, Widget::Toggle { label: "Off".into(), checked: false }),
+                Element::new(5221, Widget::Toggle { label: "On".into(), checked: true }),
+                disabled(Element::new(5222, Widget::Toggle { label: "Disabled off".into(), checked: false })),
+                disabled(Element::new(5223, Widget::Toggle { label: "Disabled on".into(), checked: true })),
+                Element::new(5230, Widget::Selectable { label: "Unselected".into(), selected: false }),
+                Element::new(5231, Widget::Selectable { label: "Selected".into(), selected: true }),
+                disabled(Element::new(5232, Widget::Selectable { label: "Disabled selected".into(), selected: true })),
             ]),
         ]),
         section(5300, "Input states and boundaries", vec![
-            grid(5302, 2, vec![control(5310, Widget::TextInput(TextEdit::new("Editable")?)),
-                disabled(control(5311, Widget::TextInput(TextEdit::new("Disabled")?))),
-                control(5320, Widget::Slider(Slider::new(0.0, 100.0, 0.0, Some(1.0))?)),
-                disabled(control(5321, Widget::Slider(Slider::new(0.0, 100.0, 100.0, Some(1.0))?))),
-                control(5330, Widget::Dropdown { label: "Choose".into(), items: choices(), selected: None }),
-                disabled(control(5331, Widget::Dropdown { label: "Disabled".into(), items: choices(), selected: Some(2) })),
-                control(5340, Widget::Menu { label: "Menu".into(), items: choices() }),
-                disabled(control(5341, Widget::Menu { label: "Disabled menu".into(), items: choices() })),
+            grid(5302, 2, vec![Element::new(5310, Widget::TextInput(TextEdit::new("Editable")?)),
+                disabled(Element::new(5311, Widget::TextInput(TextEdit::new("Disabled")?))),
+                Element::new(5320, Widget::Slider(Slider::new(0.0, 100.0, 0.0, Some(1.0))?)),
+                disabled(Element::new(5321, Widget::Slider(Slider::new(0.0, 100.0, 100.0, Some(1.0))?))),
+                Element::new(5330, Widget::Dropdown { label: "Choose".into(), items: choices(), selected: None }),
+                disabled(Element::new(5331, Widget::Dropdown { label: "Disabled".into(), items: choices(), selected: Some(2) })),
+                Element::new(5340, Widget::Menu { label: "Menu".into(), items: choices() }),
+                disabled(Element::new(5341, Widget::Menu { label: "Disabled menu".into(), items: choices() })),
             ]),
             text(5303, "Open the menu/dropdown to inspect expanded state and disabled options. Switch to another window to inspect inactive focus. Mixed, invalid and loading states do not exist in the current widget model."),
         ]),
         section(5400, "Long text and constrained width", vec![
-            control(5410, Widget::Button("A deliberately long button label that wraps instead of assuming every application has a wide window".into()))
-                .text_wrap(TextWrap::WordOrGlyph).layout(Layout { height: Length::Auto, padding: 12.0, ..Default::default() }),
+            Element::new(5410, Widget::Button("A deliberately long button label for inspecting default overflow behavior in a narrow window".into()))
+,
             Element::new(5411, Widget::Panel).layout(Layout { width: Length::Px(240.0), ..Default::default() })
                 .children(vec![text(5412, "LongUnbrokenTextAlsoNeedsWrapping_abcdefghijklmnopqrstuvwxyz_0123456789")]),
-            text(5402, "Resize to narrow widths; use output scaling and keyboard-only navigation. This catalog currently has a dark palette. Light/high-contrast themes and automated side-by-side hover/pressed fixtures remain explicit gaps."),
+            text(5402, "Resize to narrow widths to inspect default wrapping/clipping; use output scaling and keyboard-only navigation. Appearance currently comes from toolkit defaults. Light/high-contrast themes and automated side-by-side hover/pressed fixtures remain explicit gaps."),
         ]),
     ])
 }
@@ -445,34 +429,27 @@ fn gallery() -> Result<Scene, UiError> {
             page
         })
         .collect();
-    let mut popup = Element::new(POPUP.0, Widget::Popup { modal: true })
-        .layout(Layout {
-            width: Length::Px(440.0),
-            height: Length::Px(260.0),
-            padding: 24.0,
-            ..Default::default()
-        })
-        .children(vec![
-            Element::heading(31, "Confirm example action?", HeadingLevel::H2),
-            text(
-                32,
-                "This is a focus/dismissal demonstration. No data is changed.",
-            ),
-            grid(
-                34,
-                2,
-                vec![
-                    control(33, Widget::Button("Cancel".into())),
-                    control(35, Widget::Button("Confirm".into())),
-                ],
-            ),
-        ]);
+    let mut popup = Element::new(POPUP.0, Widget::Popup { modal: true }).children(vec![
+        Element::heading(31, "Confirm example action?", HeadingLevel::H2),
+        text(
+            32,
+            "This is a focus/dismissal demonstration. No data is changed.",
+        ),
+        grid(
+            34,
+            2,
+            vec![
+                Element::new(33, Widget::Button("Cancel".into())),
+                Element::new(35, Widget::Button("Confirm".into())),
+            ],
+        ),
+    ]);
     popup.visible = false;
     let nav = PAGES
         .iter()
         .enumerate()
         .map(|(i, (_, label))| {
-            control(
+            Element::new(
                 NAV + i as u64,
                 Widget::Selectable {
                     label: (*label).into(),
@@ -481,7 +458,7 @@ fn gallery() -> Result<Scene, UiError> {
             )
         })
         .collect();
-    Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, padding: 20.0, ..Default::default() })
+    Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             text(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             grid(4, 3, nav),

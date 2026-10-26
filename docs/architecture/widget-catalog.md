@@ -6,6 +6,19 @@ application compositions. It is not a claim that every component below exists.
 Page switching retains widget values and per-page scrolling. The catalog uses
 ordinary selectable controls for page navigation, not a dedicated tab widget.
 
+## Appearance policy
+
+The catalog uses toolkit defaults and shared heading presets. It supplies no
+custom panel backgrounds, radii, padding, gaps, control heights, caption metrics
+or text-wrap/color/weight overrides. Rich spans currently require explicit color
+and weight values, so these are initialized from `TextStyle::default()`.
+
+Rows, columns, grids, scrolling and the explicit size/offset fixtures used to
+demonstrate layout remain structural examples. Image pixels are sample content.
+Global CSS styling with per-component custom overrides is planned for a later
+stage; this change does not introduce a CSS engine. Existing toolkit defaults
+still determine appearance until that system exists.
+
 ## Shared heading presets
 
 `knave-ui` exports `HeadingLevel::{H1, H2, H3}` and
@@ -24,11 +37,11 @@ are preserved. They introduce no configuration or persisted-data changes.
 
 | Area | Available primitives | Demonstrated compositions | Gaps |
 | --- | --- | --- | --- |
-| Typography/display | Text, rich paragraphs, images, tooltips, separators | Three heading levels (24/20/16 logical pixels), body/caption styles | Semantic links, icon system, badges |
+| Typography/display | Text, rich paragraphs, images, tooltips, separators | Three heading levels (24/20/16 logical pixels), default body/supporting text | Semantic links, icon system, badges |
 | Actions | Button, toggle, selectable label | Styled actions can use existing paint/layout | Defined primary/secondary/ghost/destructive/icon/split/loading variants |
 | Selection | Checkbox, toggle, selectable | Selected rows | Radio groups, segmented controls, chips, mixed state |
 | Inputs | Single-line text editing, sliders, dropdown | Labelled input sections | Password, multiline, search/numeric behavior, editable combo box, color picker, validation states |
-| Layout | Row, column, grid, overlay, panel, scroll, margins/padding/clipping | Cards and spacing examples | Resizable split views, expanders/accordions |
+| Layout | Row, column, grid, overlay, panel, scroll, margins/padding/clipping | Panel/card structure | Resizable split views, expanders/accordions |
 | Navigation/collections | Selectable controls and layout | Catalog page selection, sidebar/detail area, small lists and labelled grid items | Dedicated tabs/sidebar/list/icon-grid contracts; breadcrumbs, tree, table, context-menu triggers, pagination, command palette, virtualization |
 | Feedback/overlays | Menu, popup, tooltip | Modal confirmation, information and empty state | Progress, spinner, toast lifetime, semantic alerts/status indicators |
 
@@ -48,11 +61,11 @@ need behavior and state specifications before being advertised as supported.
 | Expanded | Open menus/dropdowns; includes disabled options and separators |
 | Modal | Tab trap, confirmation/cancel, Escape/outside dismissal and opener restoration |
 | Inactive window | Switch focus to another window; focus visuals and late text/paste are governed by Scene |
-| Long labels/narrow width | Wrapped button and paragraph examples; constrained-width clipping |
+| Long labels/narrow width | Default overflow/wrapping for long labels and paragraphs; constrained-width clipping |
 | Output scaling | Host converts physical input and painting to logical scene coordinates; exercise fractional scaling externally |
 | Keyboard-only | Page selection retains focus; hidden-page and disabled controls are excluded from Tab |
 | Mixed/invalid/loading | Missing from the current widget model; not drawn as if supported |
-| Light/high contrast | Not implemented as coherent themes; the catalog currently uses a dark palette |
+| Light/high contrast | Not implemented as coherent themes; the catalog currently uses toolkit defaults |
 | Frozen hover/pressed reference matrix | Still missing; should use isolated real Scene fixtures and the common painter rather than duplicate widget painting |
 
 A reusable theme/token system and isolated interaction-state fixtures are needed
