@@ -25,9 +25,12 @@ fn text(id: u64, value: &str) -> Element {
     Element::new(id, Widget::Text(value.into())).text_wrap(TextWrap::WordOrGlyph)
 }
 fn heading(id: u64, value: &str) -> Element {
+    sized_heading(id, value, 22.0, 28.0)
+}
+fn sized_heading(id: u64, value: &str, font_size: f32, line_height: f32) -> Element {
     let mut element = text(id, value);
-    element.style.text.font_size = 22.0;
-    element.style.text.line_height = 28.0;
+    element.style.text.font_size = font_size;
+    element.style.text.line_height = line_height;
     element.style.text.weight = 700;
     element
 }
@@ -81,7 +84,9 @@ fn core() -> Result<Vec<Element>, UiError> {
             100,
             "Typography and display · primitives",
             vec![
-                heading(102, "Aa · Heading"),
+                sized_heading(102, "Aa · Heading 1", 32.0, 40.0),
+                sized_heading(108, "Aa · Heading 2", 24.0, 32.0),
+                sized_heading(109, "Aa · Heading 3", 18.0, 26.0),
                 text(
                     104,
                     "Body text follows the measured width of its container.",

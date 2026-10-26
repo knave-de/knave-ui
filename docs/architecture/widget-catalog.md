@@ -10,7 +10,7 @@ ordinary selectable controls for page navigation, not a dedicated tab widget.
 
 | Area | Available primitives | Demonstrated compositions | Gaps |
 | --- | --- | --- | --- |
-| Typography/display | Text, rich paragraphs, images, tooltips, separators | Headings, body/caption styles | Semantic links, icon system, badges |
+| Typography/display | Text, rich paragraphs, images, tooltips, separators | Three heading levels (32/24/18 logical pixels), body/caption styles | Semantic links, icon system, badges |
 | Actions | Button, toggle, selectable label | Styled actions can use existing paint/layout | Defined primary/secondary/ghost/destructive/icon/split/loading variants |
 | Selection | Checkbox, toggle, selectable | Selected rows | Radio groups, segmented controls, chips, mixed state |
 | Inputs | Single-line text editing, sliders, dropdown | Labelled input sections | Password, multiline, search/numeric behavior, editable combo box, color picker, validation states |
