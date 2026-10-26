@@ -825,3 +825,45 @@ fn focus_outline_is_for_keyboard_and_disappears_when_control_is_disabled() {
     assert_eq!(s.focus(), None);
     assert!(!outlined(&mut s));
 }
+
+#[test]
+fn shared_heading_presets_reach_scene_paint_with_measured_heights() {
+    use knave_ui::{DisplayCommand, HeadingLevel, TextWrap};
+    let label = "A_very_long_heading_that_must_fit_the_constrained_width";
+    let root = Element::new(0, Widget::Panel).children(vec![
+        Element::heading(1, label, HeadingLevel::H1),
+        Element::heading(2, "Section", HeadingLevel::H2),
+        Element::heading(3, "Subsection", HeadingLevel::H3),
+    ]);
+    let mut scene = Scene::new(root).unwrap();
+    let list = scene.display_list([180.0, 400.0], &mut Metrics);
+    let text: Vec<_> = list
+        .commands
+        .iter()
+        .filter_map(|command| {
+            if let DisplayCommand::Text {
+                text,
+                style,
+                bounds,
+                ..
+            } = command
+            {
+                Some((text.as_str(), style, bounds))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(text.len(), 3);
+    for ((_, style, bounds), (size, height)) in
+        text.iter().zip([(24.0, 32.0), (20.0, 28.0), (16.0, 24.0)])
+    {
+        assert_eq!(style.font_size, size);
+        assert_eq!(style.line_height, height);
+        assert_eq!(style.weight, 700);
+        assert_eq!(style.wrap, TextWrap::WordOrGlyph);
+        assert_eq!(bounds.height, height);
+        assert!(bounds.width <= 180.0);
+    }
+    assert_eq!(text[0].0, label);
+}

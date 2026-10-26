@@ -294,6 +294,25 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
         warm.image_buffer_allocations
     );
     use knave_ui::toolkit::TextMeasurer;
+    // Heading construction must use the same real shaping/wrapping path as plain text.
+    for level in [
+        knave_ui::HeadingLevel::H1,
+        knave_ui::HeadingLevel::H2,
+        knave_ui::HeadingLevel::H3,
+    ] {
+        let style = TextStyle::heading(level);
+        let heading = "Headingwithaverylongunbrokentextvalue";
+        let narrow = painter.measure(heading, &style, 80.0);
+        let wide = painter.measure(heading, &style, 1024.0);
+        assert!(
+            narrow.size[1] > wide.size[1],
+            "heading must wrap at constrained width"
+        );
+        assert!(
+            narrow.size[0] <= 80.01,
+            "heading must stay within wrap width"
+        );
+    }
     for value in ["office", "e\u{301}", "नेपाली", "abc אבג"] {
         let layout = painter.measure(value, &TextStyle::default(), 400.0);
         use unicode_segmentation::UnicodeSegmentation;

@@ -6,6 +6,20 @@ application compositions. It is not a claim that every component below exists.
 Page switching retains widget values and per-page scrolling. The catalog uses
 ordinary selectable controls for page navigation, not a dedicated tab widget.
 
+## Shared heading presets
+
+`knave-ui` exports `HeadingLevel::{H1, H2, H3}` and
+`TextStyle::heading(level)`. `Element::heading(id, text, level)` applies these
+presets with automatic height and word-or-glyph wrapping. All three use weight
+700 and the default font family/color. Sizes and line heights are H1 24/32,
+H2 20/28 and H3 16/24 logical pixels.
+
+The catalog uses H1 for its page title, H2 for section and dialog titles, and H3
+for subordinate empty-state text. Typography samples use those same public
+constructors. Applications can override color or other styling after construction.
+These are additive source APIs; existing text defaults and renderer/host contracts
+are preserved. They introduce no configuration or persisted-data changes.
+
 ## Component coverage
 
 | Area | Available primitives | Demonstrated compositions | Gaps |

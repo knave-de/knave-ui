@@ -447,6 +447,18 @@ impl Element {
             cursor: None,
         }
     }
+    /// Create text with the shared H1, H2 or H3 typography and automatic height.
+    /// Colors, font family and other style properties can be customized afterward.
+    ///
+    /// ```
+    /// use knave_ui::{HeadingLevel, toolkit::Element};
+    /// let title = Element::heading(1, "Preferences", HeadingLevel::H1);
+    /// ```
+    pub fn heading(id: u64, text: impl Into<String>, level: crate::HeadingLevel) -> Self {
+        let mut element = Self::new(id, Widget::Text(text.into()));
+        element.style.text = TextStyle::heading(level);
+        element
+    }
     /// Wrapping for text, paragraphs and control labels. Use Auto height to grow with the text.
     /// Text inputs and popup menu rows remain single-line.
     pub fn text_wrap(mut self, wrap: crate::TextWrap) -> Self {

@@ -1,7 +1,7 @@
 //! Catalog of existing primitives and app-level compositions. Missing widgets are
 //! documented as gaps rather than imitated with differently labelled buttons.
 use knave_app::{AppResult, Application};
-use knave_ui::{Color, ShapePaint, TextSpan, TextWrap, toolkit::*};
+use knave_ui::{Color, HeadingLevel, ShapePaint, TextSpan, TextWrap, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
@@ -24,16 +24,6 @@ fn control(id: u64, widget: Widget) -> Element {
 fn text(id: u64, value: &str) -> Element {
     Element::new(id, Widget::Text(value.into())).text_wrap(TextWrap::WordOrGlyph)
 }
-fn heading(id: u64, value: &str) -> Element {
-    sized_heading(id, value, 22.0, 28.0)
-}
-fn sized_heading(id: u64, value: &str, font_size: f32, line_height: f32) -> Element {
-    let mut element = text(id, value);
-    element.style.text.font_size = font_size;
-    element.style.text.line_height = line_height;
-    element.style.text.weight = 700;
-    element
-}
 fn disabled(mut element: Element) -> Element {
     element.enabled = false;
     element
@@ -47,7 +37,7 @@ fn grid(id: u64, columns: usize, children: Vec<Element>) -> Element {
         .children(children)
 }
 fn section(id: u64, title: &str, children: Vec<Element>) -> Element {
-    let mut items = vec![heading(id + 1, title)];
+    let mut items = vec![Element::heading(id + 1, title, HeadingLevel::H2)];
     items.extend(children);
     let mut panel = Element::new(id, Widget::Panel)
         .layout(Layout {
@@ -84,9 +74,9 @@ fn core() -> Result<Vec<Element>, UiError> {
             100,
             "Typography and display · primitives",
             vec![
-                sized_heading(102, "Aa · Heading 1", 24.0, 32.0),
-                sized_heading(108, "Aa · Heading 2", 20.0, 28.0),
-                sized_heading(109, "Aa · Heading 3", 16.0, 24.0),
+                Element::heading(102, "Aa · Heading 1", HeadingLevel::H1),
+                Element::heading(108, "Aa · Heading 2", HeadingLevel::H2),
+                Element::heading(109, "Aa · Heading 3", HeadingLevel::H3),
                 text(
                     104,
                     "Body text follows the measured width of its container.",
@@ -339,7 +329,7 @@ fn overlays() -> Vec<Element> {
             4200,
             "Information and empty state · compositions",
             vec![
-                heading(4202, "No items yet"),
+                Element::heading(4202, "No items yet", HeadingLevel::H3),
                 text(
                     4203,
                     "An empty state combines text, a surface and an action.",
@@ -463,7 +453,7 @@ fn gallery() -> Result<Scene, UiError> {
             ..Default::default()
         })
         .children(vec![
-            heading(31, "Confirm example action?"),
+            Element::heading(31, "Confirm example action?", HeadingLevel::H2),
             text(
                 32,
                 "This is a focus/dismissal demonstration. No data is changed.",
@@ -492,7 +482,7 @@ fn gallery() -> Result<Scene, UiError> {
         })
         .collect();
     Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, padding: 20.0, ..Default::default() })
-        .children(vec![heading(1, "Knave UI · Component catalog"),
+        .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             text(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             grid(4, 3, nav),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
