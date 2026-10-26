@@ -90,11 +90,12 @@ fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
     let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![button, menu])).unwrap();
     s.layout([400.0, 400.0], &mut Metrics);
     let original_height = s.bounds(ElementId(1)).unwrap().height;
-    s.set_stylesheet("button { padding: 20px; background-color: #334455; } button:hover { background-color: #556677; } tooltip { color: #eeeeee; background-color: #abcdef; padding: 12px; } menu { background-color: #112233; }").unwrap();
+    s.set_stylesheet("button { padding: 20px; margin: 8px; background-color: #334455; } button:hover { background-color: #556677; } tooltip { color: #eeeeee; background-color: #abcdef; padding: 12px; } menu { background-color: #112233; }").unwrap();
     s.layout([400.0, 400.0], &mut Metrics);
     let b = s.bounds(ElementId(1)).unwrap();
     assert!(b.height > original_height);
     assert!(b.height >= 76.0);
+    assert_eq!((b.x, b.y), (8.0, 8.0));
     s.event(Input::PointerMove([20.0, b.y + b.height - 2.0]));
     assert!(s.interaction(ElementId(1)).unwrap().hovered);
     assert_eq!(

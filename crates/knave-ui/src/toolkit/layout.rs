@@ -288,27 +288,17 @@ impl Scene {
         let scroll = matches!(self.nodes[i].element.widget, Widget::Scroll);
         let content_h = match l.flow {
             Flow::Column => {
-                active
-                    .iter()
-                    .map(|c| outer(&self.nodes[*c], 1))
-                    .sum::<f32>()
+                active.iter().map(|c| self.outer(*c, 1)).sum::<f32>()
                     + l.gap * (active.len() - 1) as f32
             }
             Flow::Grid { columns } => {
                 active
                     .chunks(columns)
-                    .map(|row| {
-                        row.iter()
-                            .map(|c| outer(&self.nodes[*c], 1))
-                            .fold(0.0, f32::max)
-                    })
+                    .map(|row| row.iter().map(|c| self.outer(*c, 1)).fold(0.0, f32::max))
                     .sum::<f32>()
                     + l.gap * (active.len().div_ceil(columns) - 1) as f32
             }
-            _ => active
-                .iter()
-                .map(|c| outer(&self.nodes[*c], 1))
-                .fold(0.0, f32::max),
+            _ => active.iter().map(|c| self.outer(*c, 1)).fold(0.0, f32::max),
         };
         self.nodes[i].scroll_max = if scroll {
             (content_h - inner.height).max(0.0)
@@ -333,7 +323,7 @@ impl Scene {
         let fixed: f32 = active
             .iter()
             .filter(|c| scroll || dimension(&self.nodes[**c], axis) != Length::Fill)
-            .map(|c| outer(&self.nodes[*c], axis))
+            .map(|c| self.outer(*c, axis))
             .sum();
         let fills = active
             .iter()
@@ -356,8 +346,8 @@ impl Scene {
             1
         };
         for (position, c) in active.iter().copied().enumerate() {
+            let cl = self.effective_layout(c);
             let node = &self.nodes[c];
-            let cl = node.element.layout;
             let margin = cl.margin;
             let available_w = (inner.width - margin.horizontal()).max(0.0);
             let available_h = (inner.height - margin.vertical()).max(0.0);
@@ -395,7 +385,7 @@ impl Scene {
                         let start = position + 1 - grid_columns;
                         grid_y += active[start..=position]
                             .iter()
-                            .map(|j| outer(&self.nodes[*j], 1))
+                            .map(|j| self.outer(*j, 1))
                             .fold(0.0, f32::max)
                             + l.gap;
                     }
@@ -436,6 +426,15 @@ impl Scene {
             self.arrange(c, r, clip);
         }
     }
+    fn outer(&self, index: usize, axis: usize) -> f32 {
+        let layout = self.effective_layout(index);
+        self.nodes[index].natural[axis]
+            + if axis == 0 {
+                layout.margin.horizontal()
+            } else {
+                layout.margin.vertical()
+            }
+    }
 }
 fn dimension(n: &Node, axis: usize) -> Length {
     if axis == 0 {
@@ -457,13 +456,4 @@ fn align(a: Align, available: f32, size: f32) -> f32 {
         Align::End => (available - size).max(0.0),
         _ => 0.0,
     }
-}
-
-fn outer(node: &Node, axis: usize) -> f32 {
-    node.natural[axis]
-        + if axis == 0 {
-            node.element.layout.margin.horizontal()
-        } else {
-            node.element.layout.margin.vertical()
-        }
 }
