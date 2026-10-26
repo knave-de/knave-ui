@@ -1,4 +1,4 @@
-use knave_ui::{DisplayCommand, TextSpan, TextStyle, toolkit::*};
+use knave_ui::{DisplayCommand, Rect, TextSpan, TextStyle, toolkit::*};
 struct Metrics;
 impl TextMeasurer for Metrics {
     fn measure(&mut self, text: &str, style: &TextStyle, width: f32) -> TextLayout {
@@ -232,6 +232,148 @@ fn root_theme_variables_style_canvas_and_control_fallbacks() {
             if paint.fill == Some(knave_ui::Color::rgba(0x44, 0x55, 0x66, 255))
     )));
 }
+
+#[test]
+fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
+    let mut button = Element::new(1, Widget::Button("Theme".into()))
+        .class("note")
+        .class("clear");
+    button.tooltip = Some("Tip".into());
+    let menu = Element::new(
+        2,
+        Widget::Menu {
+            label: "Menu".into(),
+            items: vec![MenuItem::option(1, "First")],
+        },
+    );
+    let surface_button = Element::new(3, Widget::Button("Surface".into()));
+    let mut s =
+        Scene::new(Element::new(0, Widget::Panel).children(vec![button, menu, surface_button]))
+            .unwrap();
+    s.set_stylesheet("text { color: #eeeeee; } .note { color: #eeeeee; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let button_bounds = s.bounds(ElementId(1)).unwrap();
+    s.event(Input::PointerMove([
+        button_bounds.x + 5.0,
+        button_bounds.y + 5.0,
+    ]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == button_bounds
+                && paint.fill == Some(knave_ui::Color::rgba(0x31, 0x40, 0x53, 255))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x2d, 0x3d, 0x50, 255))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == s.bounds(ElementId(3)).unwrap()
+                && paint.fill == Some(knave_ui::Color::rgba(0x21, 0x2c, 0x3c, 255))
+    )));
+
+    let menu_bounds = s.bounds(ElementId(2)).unwrap();
+    let menu_point = [menu_bounds.x + 5.0, menu_bounds.y + 5.0];
+    s.event(Input::PointerDown(menu_point));
+    s.event(Input::PointerUp(menu_point));
+    s.event(Input::PointerMove([399.0, 399.0]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x1c, 0x27, 0x37, 255))
+    )));
+
+    let popup = Element::new(10, Widget::Popup { modal: true }).layout(Layout {
+        width: Length::Px(180.0),
+        height: Length::Px(100.0),
+        ..Layout::default()
+    });
+    let mut modal = Scene::new(Element::new(0, Widget::Panel).children(vec![popup])).unwrap();
+    modal.set_stylesheet(".note { color: #eeeeee; }").unwrap();
+    modal.open_popup(ElementId(10)).unwrap();
+    let list = modal.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == Rect::new(0.0, 0.0, 400.0, 400.0)
+                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0x87))
+    )));
+
+    s.set_stylesheet(
+        ":root { --surface: #445566; --surface-menu: #112233; --surface-tooltip: #667788; --surface-overlay: transparent; } .clear { background-color: transparent; } tooltip { background-color: transparent; }",
+    )
+    .unwrap();
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == s.bounds(ElementId(1)).unwrap()
+                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x11, 0x22, 0x33, 255))
+    )));
+    assert!(s.set_stylesheet("button { color: nonsense; }").is_err());
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == s.bounds(ElementId(1)).unwrap()
+                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0))
+    )));
+
+    let mut palette = Scene::new(
+        Element::new(30, Widget::Panel)
+            .children(vec![Element::new(31, Widget::Button("Palette".into()))]),
+    )
+    .unwrap();
+    palette
+        .set_stylesheet(":root { --surface: #445566; }")
+        .unwrap();
+    let list = palette.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x44, 0x55, 0x66, 255))
+    )));
+    assert!(
+        palette
+            .set_stylesheet("button { color: nonsense; }")
+            .is_err()
+    );
+    let list = palette.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x44, 0x55, 0x66, 255))
+    )));
+
+    let mut tip_button = Element::new(21, Widget::Button("Tip".into()));
+    tip_button.tooltip = Some("Transparent tip".into());
+    let mut tip = Scene::new(Element::new(20, Widget::Panel).children(vec![tip_button])).unwrap();
+    tip.set_stylesheet(":root { --surface-tooltip: transparent; }")
+        .unwrap();
+    tip.layout([400.0, 400.0], &mut Metrics);
+    tip.event(Input::PointerMove([5.0, 5.0]));
+    let list = tip.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0))
+    )));
+
+    modal
+        .set_stylesheet(":root { --surface-overlay: transparent; }")
+        .unwrap();
+    let list = modal.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds, paint, .. }
+            if *bounds == Rect::new(0.0, 0.0, 400.0, 400.0)
+                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0))
+    )));
+}
+
 #[test]
 fn bundled_stylesheet_preserves_default_control_insets() {
     let mut s = scene(vec![leaf(1, Widget::Button("Run".into()))]);

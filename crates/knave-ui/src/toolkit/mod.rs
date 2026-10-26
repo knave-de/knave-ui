@@ -101,9 +101,10 @@ pub struct Scene {
     pub inspect: bool,
 }
 impl Scene {
-    /// Atomically replace the scene stylesheet. Invalid replacements preserve the active sheet.
+    /// Atomically replace scene CSS rules over built-in appearance defaults.
+    /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
     pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::parse(source)?;
+        let next = Stylesheet::replacement(source)?;
         if !self.stylesheet.same_as(&next) {
             let old = self
                 .nodes

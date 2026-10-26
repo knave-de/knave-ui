@@ -1,6 +1,33 @@
 use super::*;
 use crate::{Border, Color, CornerRadii, ShapePaint};
 
+const DEFAULT_STYLESHEET: &str = r#"
+    :root { --accent: accent; --warning: warning; --danger: danger; --canvas: background; --panel-surface: #151d28; --surface: #212c3c; --surface-hover: #314053; --surface-pressed: #1c283a; --surface-selected: #2a5870; --surface-menu: #1c2737; --surface-tooltip: #2d3d50; --surface-overlay: #00000087; --text-disabled: #78818d; --control-muted: #505c6f; }
+    :hover { background-color: var(--surface-hover); }
+    :pressed { background-color: var(--surface-pressed); }
+    :selected { background-color: var(--surface-selected); }
+    :focus { focus-color: var(--accent); }
+    :disabled { color: var(--text-disabled); }
+    .warning { color: var(--warning); }
+    .danger { color: var(--danger); }
+    canvas { background-color: var(--canvas); }
+    surface { background-color: var(--surface); }
+    modal-overlay { background-color: var(--surface-overlay); }
+    panel, scene-snapshot { background-color: var(--panel-surface); }
+    button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { background-color: var(--surface); }
+    button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
+    button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
+    button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
+    button:disabled, link:disabled, text-input:disabled { color: var(--text-disabled); }
+    button:focus, link:focus, text-input:focus, dropdown:focus { border-color: var(--accent); border-width: 1px; }
+    menu, context-menu { background-color: var(--surface-menu); }
+    text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: text; }
+    progress, spinner { focus-color: var(--accent); hover-color: var(--control-muted); }
+    separator { hover-color: var(--control-muted); }
+    tooltip { color: text; background-color: var(--surface-tooltip); padding: 8px; }
+    text, paragraph, heading { color: text; }
+"#;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
     pub style: Style,
@@ -63,34 +90,27 @@ impl Stylesheet {
         self.rules == other.rules
     }
     pub fn default_sheet() -> Self {
-        Self::parse(r#"
-            :root { --accent: accent; --warning: warning; --danger: danger; --canvas: background; --panel-surface: #151d28; --surface: #212c3c; --surface-hover: #314053; --surface-pressed: #1c283a; --surface-selected: #2a5870; --surface-menu: #1c2737; --surface-tooltip: #2d3d50; --surface-overlay: #00000087; --text-disabled: #78818d; --control-muted: #505c6f; }
-            :hover { background-color: var(--surface-hover); }
-            :pressed { background-color: var(--surface-pressed); }
-            :selected { background-color: var(--surface-selected); }
-            :focus { focus-color: var(--accent); }
-            :disabled { color: var(--text-disabled); }
-            .warning { color: var(--warning); }
-            .danger { color: var(--danger); }
-            canvas { background-color: var(--canvas); }
-            surface { background-color: var(--surface); }
-            modal-overlay { background-color: var(--surface-overlay); }
-            panel, scene-snapshot { background-color: var(--panel-surface); }
-            button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { background-color: var(--surface); }
-            button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
-            button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
-            button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
-            button:disabled, link:disabled, text-input:disabled { color: var(--text-disabled); }
-            button:focus, link:focus, text-input:focus, dropdown:focus { border-color: var(--accent); border-width: 1px; }
-            menu, context-menu { background-color: var(--surface-menu); }
-            text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: text; }
-            progress, spinner { focus-color: var(--accent); hover-color: var(--control-muted); }
-            separator { hover-color: var(--control-muted); }
-            tooltip { color: text; background-color: var(--surface-tooltip); padding: 8px; }
-            text, paragraph, heading { color: text; }
-        "#).expect("bundled stylesheet is valid")
+        Self::parse(DEFAULT_STYLESHEET).expect("bundled stylesheet is valid")
+    }
+    pub fn replacement(source: &str) -> Result<Self, StylesheetError> {
+        let mut sheet = Self::parse_rules(DEFAULT_STYLESHEET)?;
+        let custom = Self::parse_rules(source)?;
+        if sheet.rules.len() + custom.rules.len() > 256 {
+            return Err(StylesheetError::Syntax);
+        }
+        for mut rule in custom.rules {
+            rule.order = sheet.rules.len();
+            sheet.rules.push(rule);
+        }
+        sheet.validate()?;
+        Ok(sheet)
     }
     pub fn parse(source: &str) -> Result<Self, StylesheetError> {
+        let sheet = Self::parse_rules(source)?;
+        sheet.validate()?;
+        Ok(sheet)
+    }
+    fn parse_rules(source: &str) -> Result<Self, StylesheetError> {
         if source.len() > 64 * 1024 {
             return Err(StylesheetError::Syntax);
         }
@@ -161,7 +181,6 @@ impl Stylesheet {
             }
             rest = &rest_trim[close + 1..];
         }
-        sheet.validate()?;
         Ok(sheet)
     }
     fn validate(&self) -> Result<(), StylesheetError> {

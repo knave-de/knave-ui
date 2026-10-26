@@ -16,6 +16,8 @@ rows, columns, grids, clipping and scrolling demonstrate structural layout.
 The toolkit bundles a bounded CSS subset for widget appearance, semantic
 interaction states and inherited color/typography. Applications can replace the
 scene stylesheet atomically and target elements by widget, class or style ID.
+Built-in appearance rules remain beneath replacement rules, so omitted
+declarations retain default palette values and fallback surfaces.
 Action variants remain semantic intent and share the default button appearance;
 light/high-contrast palettes and theme installation remain deferred.
 
