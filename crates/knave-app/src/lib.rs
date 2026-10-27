@@ -30,6 +30,10 @@ pub trait Application {
     fn theme_changed(&mut self, _theme: Theme) -> AppResult {
         Ok(())
     }
+    /// Rebuild theme-dependent cached content using the text engine after a live update.
+    fn refresh_theme(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
+        Ok(())
+    }
     fn scene(&mut self) -> &mut Scene;
     /// Clipboard effects are handled before delivery; cut also reports the edited value.
     fn action(&mut self, action: Action) -> AppResult;
@@ -483,7 +487,7 @@ impl<A: Application> ApplicationHandler for Host<A> {
                 Ok((theme, true)) => {
                     let result = self.app.theme_changed(theme).and_then(|()| {
                         if let Some(gpu) = &mut self.gpu {
-                            self.app.ready(&mut gpu.painter)
+                            self.app.refresh_theme(&mut gpu.painter)
                         } else {
                             Ok(())
                         }

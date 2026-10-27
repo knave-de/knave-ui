@@ -1032,6 +1032,10 @@ impl Application for Gallery {
         Ok(())
     }
 
+    fn refresh_theme(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
+        self.ready(text)
+    }
+
     fn scene(&mut self) -> &mut Scene {
         &mut self.scene
     }
