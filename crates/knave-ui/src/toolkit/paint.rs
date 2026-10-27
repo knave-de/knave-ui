@@ -224,13 +224,13 @@ impl Scene {
                     style.text.clone(),
                 );
             }
-            Widget::Collection(collection) => super::collection_paint::paint_collection(
-                &mut self.list,
-                node,
-                collection,
-                &style,
-                layout,
-            ),
+            Widget::Collection(collection) => {
+                let mut list = std::mem::take(&mut self.list);
+                super::collection_paint::paint_collection(
+                    &mut list, self, i, collection, &style, layout,
+                );
+                self.list = list;
+            }
             Widget::Toast { label: value, .. } | Widget::Text(value) => text_cmd(
                 &mut self.list,
                 layout.insets().apply(b),
@@ -292,38 +292,71 @@ impl Scene {
                         .unwrap_or(Color::rgba(80, 92, 111, 255))
                 });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
+                let part = if toggle {
+                    "switch-track"
+                } else {
+                    "checkbox-indicator"
+                };
+                let part_state = part_hover_state(self, i, part, state, rect);
+                let paint = part_paint(self, i, part, part_state, &style, paint);
                 shape(&mut self.list, rect, clip, paint);
                 if toggle {
-                    shape(
-                        &mut self.list,
-                        Rect::new(
-                            rect.x + if toggle && checked { 17.0 } else { 3.0 },
-                            rect.y + 3.0,
-                            12.0,
-                            12.0,
-                        ),
-                        clip,
+                    let thumb_rect = Rect::new(
+                        rect.x + if checked { 17.0 } else { 3.0 },
+                        rect.y + 3.0,
+                        12.0,
+                        12.0,
+                    );
+                    let thumb_state = part_hover_state(self, i, "switch-thumb", state, thumb_rect);
+                    let thumb = part_paint(
+                        self,
+                        i,
+                        "switch-thumb",
+                        thumb_state,
+                        &style,
                         ShapePaint {
                             radii: CornerRadii::uniform(6.0),
                             ..ShapePaint::fill(style.text.color)
                         },
                     );
+                    shape(&mut self.list, thumb_rect, clip, thumb);
                 }
                 if checked && !toggle {
+                    let mut mark_style = TextStyle {
+                        font_size: 16.0,
+                        line_height: 18.0,
+                        weight: 700,
+                        align: crate::TextAlign::Center,
+                        color: style.text.color,
+                        wrap: TextWrap::None,
+                        ..style.text.clone()
+                    };
+                    let mut mark_base = style.clone();
+                    mark_base.text = mark_style.clone();
+                    mark_base.background = None;
+                    let mark_state = part_hover_state(self, i, "checkbox-mark", state, rect);
+                    if let Some(part) =
+                        css::part_style(self, i, "checkbox-mark", mark_state, mark_base.clone())
+                    {
+                        if part.background_explicit || has_borders(&part.computed) {
+                            let paint = part_background(
+                                self,
+                                i,
+                                "checkbox-mark",
+                                mark_state,
+                                &mark_base,
+                                ShapePaint::fill(Color::rgba(0, 0, 0, 0)),
+                            );
+                            shape(&mut self.list, rect, clip, paint);
+                        }
+                        mark_style = part.computed.style.text;
+                    }
                     text_cmd(
                         &mut self.list,
                         rect,
                         clip,
                         if mixed { "−" } else { "✓" }.into(),
-                        TextStyle {
-                            font_size: 16.0,
-                            line_height: 18.0,
-                            weight: 700,
-                            align: crate::TextAlign::Center,
-                            color: style.text.color,
-                            wrap: TextWrap::None,
-                            ..style.text.clone()
-                        },
+                        mark_style,
                     );
                 }
                 text_cmd(
@@ -364,7 +397,15 @@ impl Scene {
                     .as_ref()
                     .and_then(|paint| paint.fill)
                     .unwrap_or(Color::rgba(80, 92, 111, 255));
-                shape(&mut self.list, track, clip, ShapePaint::fill(track_color));
+                let track_paint = part_paint(
+                    self,
+                    i,
+                    "slider-track",
+                    part_hover_state(self, i, "slider-track", state, track),
+                    &style,
+                    ShapePaint::fill(track_color),
+                );
+                shape(&mut self.list, track, clip, track_paint);
                 let fill = if vertical {
                     Rect::new(
                         track.x,
@@ -376,12 +417,15 @@ impl Scene {
                     Rect::new(track.x, track.y, track.width * f, track.height)
                 };
                 if fill.is_finite_positive() {
-                    shape(
-                        &mut self.list,
-                        fill,
-                        clip,
+                    let fill_paint = part_paint(
+                        self,
+                        i,
+                        "slider-fill",
+                        part_hover_state(self, i, "slider-fill", state, fill),
+                        &style,
                         ShapePaint::fill(style.text.color),
                     );
+                    shape(&mut self.list, fill, clip, fill_paint);
                 }
                 let center = if vertical {
                     [
@@ -396,12 +440,10 @@ impl Scene {
                 };
                 let mut paint = ShapePaint::fill(style.text.color);
                 paint.radii = CornerRadii::uniform(9.0);
-                shape(
-                    &mut self.list,
-                    Rect::new(center[0] - 9.0, center[1] - 9.0, 18.0, 18.0),
-                    clip,
-                    paint,
-                );
+                let thumb_rect = Rect::new(center[0] - 9.0, center[1] - 9.0, 18.0, 18.0);
+                let thumb_state = part_hover_state(self, i, "slider-thumb", state, thumb_rect);
+                let paint = part_paint(self, i, "slider-thumb", thumb_state, &style, paint);
+                shape(&mut self.list, thumb_rect, clip, paint);
             }
             Widget::TextInput(edit) | Widget::ComboBox { edit, .. } => {
                 let multiline = edit.mode() == InputMode::Multiline;
@@ -451,17 +493,23 @@ impl Scene {
                             } else {
                                 (pair[1].x - pair[0].x).abs()
                             };
-                            shape(
-                                &mut self.list,
-                                Rect::new(
-                                    text_area.x + pair[0].x.min(pair[1].x) - offset,
-                                    base_y + pair[0].y,
-                                    width,
-                                    height,
-                                ),
-                                text_clip,
+                            let selection_rect = Rect::new(
+                                text_area.x + pair[0].x.min(pair[1].x) - offset,
+                                base_y + pair[0].y,
+                                width,
+                                height,
+                            );
+                            let selection_state =
+                                part_hover_state(self, i, "text-selection", state, selection_rect);
+                            let selection_paint = part_paint(
+                                self,
+                                i,
+                                "text-selection",
+                                selection_state,
+                                &style,
                                 ShapePaint::fill(style.selected),
                             );
+                            shape(&mut self.list, selection_rect, text_clip, selection_paint);
                         }
                     }
                 }
@@ -488,17 +536,22 @@ impl Scene {
                     ts.clone(),
                 );
                 if state.focused {
-                    shape(
-                        &mut self.list,
-                        Rect::new(
-                            text_area.x + caret.x - offset,
-                            base_y + caret.y,
-                            1.5,
-                            height,
-                        ),
-                        text_clip,
+                    let caret_rect = Rect::new(
+                        text_area.x + caret.x - offset,
+                        base_y + caret.y,
+                        1.5,
+                        height,
+                    );
+                    let caret_state = part_hover_state(self, i, "text-caret", state, caret_rect);
+                    let caret_paint = part_paint(
+                        self,
+                        i,
+                        "text-caret",
+                        caret_state,
+                        &style,
                         ShapePaint::fill(style.text.color),
                     );
+                    shape(&mut self.list, caret_rect, text_clip, caret_paint);
                     if !preedit.is_empty() {
                         text_cmd(
                             &mut self.list,
@@ -527,16 +580,29 @@ impl Scene {
                     .as_ref()
                     .and_then(|paint| paint.fill)
                     .unwrap_or(Color::rgba(80, 92, 111, 255));
-                shape(&mut self.list, track, clip, ShapePaint::fill(track_color));
+                let track_paint = part_paint(
+                    self,
+                    i,
+                    "progress-track",
+                    part_hover_state(self, i, "progress-track", state, track),
+                    &style,
+                    ShapePaint::fill(track_color),
+                );
+                shape(&mut self.list, track, clip, track_paint);
                 let phase = (self.clock.as_millis() % 1600) as f32 / 1600.0;
                 let width = value.map_or(track.width * 0.25, |v| track.width * v as f32);
                 let x = value.map_or(track.x + (track.width - width) * phase, |_| track.x);
-                shape(
-                    &mut self.list,
-                    Rect::new(x, track.y, width, track.height),
-                    clip,
+                let fill_rect = Rect::new(x, track.y, width, track.height);
+                let fill_state = part_hover_state(self, i, "progress-fill", state, fill_rect);
+                let fill_paint = part_paint(
+                    self,
+                    i,
+                    "progress-fill",
+                    fill_state,
+                    &style,
                     ShapePaint::fill(style.text.color),
                 );
+                shape(&mut self.list, fill_rect, clip, fill_paint);
             }
             Widget::Spinner => {
                 let phase = (self.clock.as_millis() / 100 % 8) as usize;
@@ -547,17 +613,15 @@ impl Scene {
                     let mut paint = ShapePaint::fill(style.text.color);
                     paint.opacity = if n == phase { 1.0 } else { 0.25 };
                     paint.radii = CornerRadii::uniform(2.0);
-                    shape(
-                        &mut self.list,
-                        Rect::new(
-                            center[0] + angle.cos() * radius - 2.0,
-                            center[1] + angle.sin() * radius - 2.0,
-                            4.0,
-                            4.0,
-                        ),
-                        clip,
-                        paint,
+                    let dot_rect = Rect::new(
+                        center[0] + angle.cos() * radius - 2.0,
+                        center[1] + angle.sin() * radius - 2.0,
+                        4.0,
+                        4.0,
                     );
+                    let dot_state = part_hover_state(self, i, "spinner-dot", state, dot_rect);
+                    let paint = part_paint(self, i, "spinner-dot", dot_state, &style, paint);
+                    shape(&mut self.list, dot_rect, clip, paint);
                 }
             }
             Widget::Separator => shape(
@@ -578,10 +642,14 @@ impl Scene {
                     .max(12.0)
                     .min(area.height);
                 let y = area.y + (area.height - h) * node.scroll / node.scroll_max;
-                shape(
-                    &mut self.list,
-                    Rect::new(b.x + b.width - 5.0, y, 3.0, h),
-                    clip,
+                let thumb_rect = Rect::new(b.x + b.width - 5.0, y, 3.0, h);
+                let thumb_state = part_hover_state(self, i, "scrollbar-thumb", state, thumb_rect);
+                let paint = part_paint(
+                    self,
+                    i,
+                    "scrollbar-thumb",
+                    thumb_state,
+                    &style,
                     ShapePaint::fill(
                         style
                             .background
@@ -590,6 +658,7 @@ impl Scene {
                             .unwrap_or(Color::rgba(80, 92, 111, 255)),
                     ),
                 );
+                shape(&mut self.list, thumb_rect, clip, paint);
             }
             _ => {}
         }
@@ -613,7 +682,8 @@ impl Scene {
         let Some(menu) = &self.menu else {
             return;
         };
-        let node = &self.nodes[self.indices[&menu.owner]];
+        let owner = self.indices[&menu.owner];
+        let node = &self.nodes[owner];
         let menu_style = self
             .computed_style_for(node.element.id, InteractionState::default())
             .unwrap_or_else(|| ComputedStyle::from(&node.element))
@@ -646,6 +716,20 @@ impl Scene {
         menu_paint.radii = menu_style
             .radii
             .unwrap_or(CornerRadii::uniform(menu_style.radius));
+        let menu_state = InteractionState {
+            hovered: self.pointer_inside && contains(b, self.pointer),
+            focused: self.surface_focused,
+            expanded: true,
+            ..InteractionState::default()
+        };
+        let menu_paint = part_background(
+            self,
+            owner,
+            "menu-surface",
+            menu_state,
+            &menu_style,
+            menu_paint,
+        );
         shape(&mut self.list, b, clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
             return;
@@ -661,36 +745,65 @@ impl Scene {
                 continue;
             }
             match item {
-                MenuItem::Separator => shape(
-                    &mut self.list,
-                    Rect::new(b.x + 8.0, row.y + h / 2.0, (b.width - 16.0).max(0.0), 1.0),
-                    clip,
-                    ShapePaint::fill(separator_color),
-                ),
+                MenuItem::Separator => {
+                    let separator_rect =
+                        Rect::new(b.x + 8.0, row.y + h / 2.0, (b.width - 16.0).max(0.0), 1.0);
+                    let separator_state = part_hover_state(
+                        self,
+                        owner,
+                        "menu-separator",
+                        InteractionState::default(),
+                        separator_rect,
+                    );
+                    let paint = part_paint(
+                        self,
+                        owner,
+                        "menu-separator",
+                        separator_state,
+                        &menu_style,
+                        ShapePaint::fill(separator_color),
+                    );
+                    shape(&mut self.list, separator_rect, clip, paint);
+                }
                 MenuItem::Option { label, enabled, .. } => {
-                    if menu.highlighted == Some(index) {
-                        shape(
-                            &mut self.list,
-                            row,
-                            clip,
-                            ShapePaint::fill(
-                                highlighted_style
-                                    .background
-                                    .as_ref()
-                                    .and_then(|paint| paint.fill)
-                                    .unwrap_or(Color::rgba(49, 64, 83, 255)),
-                            ),
-                        );
+                    let highlighted = menu.highlighted == Some(index);
+                    let state = InteractionState {
+                        hovered: self.pointer_inside && contains(row, self.pointer),
+                        selected: highlighted,
+                        focused: highlighted && self.surface_focused,
+                        pressed: menu.pressed == Some(index),
+                        disabled: !enabled,
+                        ..InteractionState::default()
+                    };
+                    let mut base = menu_style.clone();
+                    base.background = highlighted.then(|| {
+                        highlighted_style
+                            .background
+                            .clone()
+                            .unwrap_or_else(|| ShapePaint::fill(Color::rgba(49, 64, 83, 255)))
+                    });
+                    let part = css::part_style(self, owner, "menu-item", state, base.clone());
+                    let part_has_shape = part
+                        .as_ref()
+                        .is_some_and(|p| p.background_explicit || has_borders(&p.computed));
+                    if highlighted || part_has_shape {
+                        let default = base
+                            .background
+                            .clone()
+                            .unwrap_or_else(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+                        let paint =
+                            part_background(self, owner, "menu-item", state, &base, default);
+                        shape(&mut self.list, row, clip, paint);
                     }
-                    let mut style = menu_style.text.clone();
-                    style.wrap = TextWrap::None;
+                    let mut text = part.map_or(base.text, |part| part.computed.style.text);
+                    text.wrap = TextWrap::None;
                     if !enabled {
-                        style.color.alpha = 100;
+                        text.color.alpha = 100;
                     }
                     labels.push((
                         Rect::new(row.x + 10.0, row.y, row.width - 20.0, row.height),
                         label.clone(),
-                        style,
+                        text,
                     ));
                 }
             }
@@ -699,6 +812,92 @@ impl Scene {
             text_cmd(&mut self.list, bounds, clip, label, style);
         }
     }
+}
+fn part_hover_state(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    mut state: InteractionState,
+    bounds: Rect,
+) -> InteractionState {
+    if scene.stylesheet.has_part_hover(kind) {
+        let over_owner = if kind.starts_with("menu-") {
+            scene
+                .menu
+                .as_ref()
+                .is_some_and(|menu| contains(menu.bounds, scene.pointer))
+        } else {
+            scene
+                .top_node(scene.pointer)
+                .is_some_and(|top| scene.within(top, owner))
+        };
+        state.hovered = scene.pointer_inside && contains(bounds, scene.pointer) && over_owner;
+    }
+    state
+}
+fn part_paint(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    state: InteractionState,
+    style: &Style,
+    default: ShapePaint,
+) -> ShapePaint {
+    styled_part_paint(scene, owner, kind, state, style, default, true)
+}
+pub(super) fn part_background(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    state: InteractionState,
+    style: &Style,
+    default: ShapePaint,
+) -> ShapePaint {
+    styled_part_paint(scene, owner, kind, state, style, default, false)
+}
+pub(super) fn has_borders(style: &ComputedStyle) -> bool {
+    [
+        style.borders.top.width,
+        style.borders.right.width,
+        style.borders.bottom.width,
+        style.borders.left.width,
+    ]
+    .iter()
+    .any(|width| *width > 0.0)
+}
+fn styled_part_paint(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    state: InteractionState,
+    style: &Style,
+    default: ShapePaint,
+    color_as_fill: bool,
+) -> ShapePaint {
+    let mut base = style.clone();
+    base.background = Some(default.clone());
+    base.radii = Some(default.radii);
+    let Some(part) = css::part_style(scene, owner, kind, state, base) else {
+        return default;
+    };
+    let mut paint = if part.background_explicit {
+        part.computed
+            .style
+            .background
+            .clone()
+            .unwrap_or_else(|| default.clone())
+    } else if part.color_explicit && color_as_fill {
+        ShapePaint::fill(part.computed.style.text.color)
+    } else {
+        default.clone()
+    };
+    paint.opacity = default.opacity;
+    paint.radii = part.computed.style.radii.unwrap_or(default.radii);
+    if has_borders(&part.computed) {
+        paint.edge_borders = Some(part.computed.borders);
+        paint.border = None;
+    }
+    paint
 }
 fn shape(list: &mut DisplayList, bounds: Rect, clip: Option<Rect>, paint: ShapePaint) {
     if clip.is_none() || !bounds.is_finite_positive() {

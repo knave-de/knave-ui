@@ -81,6 +81,7 @@ pub struct Scene {
     theme: Theme,
     stylesheet: Stylesheet,
     stylesheet_override: String,
+    desktop_stylesheet: String,
     clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -107,7 +108,7 @@ impl Scene {
     /// Atomically replace application CSS rules over the selected theme defaults.
     /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
     pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme(self.theme, source)?;
+        let next = Stylesheet::for_theme(self.theme, &self.desktop_stylesheet, source)?;
         self.update_stylesheet(next);
         self.stylesheet_override = source.to_owned();
         Ok(())
@@ -116,10 +117,25 @@ impl Scene {
     /// Select a bundled base palette while retaining and revalidating application CSS.
     /// Invalid combined styles leave the current theme and stylesheet active.
     pub fn set_theme(&mut self, theme: Theme) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme(theme, &self.stylesheet_override)?;
+        let next =
+            Stylesheet::for_theme(theme, &self.desktop_stylesheet, &self.stylesheet_override)?;
         self.update_stylesheet(next);
         self.theme = theme;
         Ok(())
+    }
+
+    /// Atomically apply a desktop palette and CSS below application overrides.
+    pub fn set_desktop_theme(&mut self, theme: Theme, source: &str) -> Result<(), StylesheetError> {
+        let next = Stylesheet::for_theme(theme, source, &self.stylesheet_override)?;
+        self.update_stylesheet(next);
+        self.theme = theme;
+        self.desktop_stylesheet = source.to_owned();
+        Ok(())
+    }
+
+    /// Returns the active desktop CSS layer.
+    pub fn desktop_stylesheet(&self) -> &str {
+        &self.desktop_stylesheet
     }
 
     /// Returns the currently selected bundled palette.
@@ -202,9 +218,10 @@ impl Scene {
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
             theme: Theme::Dark,
-            stylesheet: Stylesheet::for_theme(Theme::Dark, "")
+            stylesheet: Stylesheet::for_theme(Theme::Dark, "", "")
                 .expect("bundled dark stylesheet is valid"),
             stylesheet_override: String::new(),
+            desktop_stylesheet: String::new(),
             clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
@@ -482,6 +499,10 @@ impl Scene {
                 node.toast_remaining = previous.toast_remaining;
             }
         }
+        next.theme = self.theme;
+        next.stylesheet = std::mem::take(&mut self.stylesheet);
+        next.stylesheet_override = std::mem::take(&mut self.stylesheet_override);
+        next.desktop_stylesheet = std::mem::take(&mut self.desktop_stylesheet);
         next.focus = self.focus;
         next.surface_focused = self.surface_focused;
         next.focus_visible = self.focus_visible;
@@ -544,17 +565,22 @@ impl Scene {
             expanded: self.menu.as_ref().is_some_and(|m| m.owner == id),
         })
     }
-    pub(super) fn interaction_style_snapshot(&self) -> Vec<Option<ComputedStyle>> {
+    pub(super) fn interaction_style_snapshot(&self) -> Vec<(usize, Option<ComputedStyle>)> {
         self.nodes
             .iter()
-            .map(|node| self.computed_style(node.element.id))
+            .enumerate()
+            .filter(|(index, _)| self.visible(*index))
+            .map(|(index, node)| (index, self.computed_style(node.element.id)))
             .collect()
     }
-    pub(super) fn finish_interaction_style_change(&mut self, previous: Vec<Option<ComputedStyle>>) {
-        let metrics_changed = previous.iter().enumerate().any(|(index, before)| {
+    pub(super) fn finish_interaction_style_change(
+        &mut self,
+        previous: Vec<(usize, Option<ComputedStyle>)>,
+    ) {
+        let metrics_changed = previous.iter().any(|(index, before)| {
             before
                 .as_ref()
-                .zip(self.computed_style(self.nodes[index].element.id).as_ref())
+                .zip(self.computed_style(self.nodes[*index].element.id).as_ref())
                 .is_some_and(|(before, after)| {
                     before.padding != after.padding
                         || before.borders != after.borders

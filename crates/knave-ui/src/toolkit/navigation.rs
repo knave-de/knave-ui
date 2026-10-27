@@ -34,6 +34,7 @@ impl Element {
                 ..Layout::default()
             })
             .children(items);
+        result.component = Some(ComponentKind::Breadcrumbs);
         result.semantics.role = Some(Role::Navigation);
         result.semantics.name = Some("Breadcrumbs".into());
         result
@@ -108,6 +109,7 @@ impl CommandPalette {
             query,
             Element::new(self.ids.results, Widget::Collection(results)),
         ]);
+        popup.component = Some(ComponentKind::CommandPalette);
         popup.visible = false;
         Ok(popup)
     }

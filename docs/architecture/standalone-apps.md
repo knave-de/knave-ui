@@ -51,3 +51,13 @@ Run workspace formatting, all-target tests, strict Clippy and builds. Exercise
 the actual gallery on an isolated desktop, including click/keyboard activation,
 text editing, clipboard, menus, popups, scrolling, resize, close and idle behavior.
 Nested software rendering does not establish direct-TTY or hardware-GPU behavior.
+
+## Desktop themes
+
+On Linux `run` reads Knave's named theme and watches its configuration
+and selected CSS file. It wakes the window event loop on changes, preserves
+the last valid stylesheet on errors and joins the single watcher at shutdown.
+`run_unthemed` is available for applications independent of desktop theming. The desktop CSS layer sits
+between the bundled palette and `Scene::set_stylesheet` application rules.
+Applications with cached scene snapshots can invalidate them in `theme_changed`
+and rebuild them with a text engine in `refresh_theme`.

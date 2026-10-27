@@ -891,6 +891,7 @@ dependencies = [
  "knave-renderer",
  "knave-ui",
  "pollster",
+ "rustix 1.1.5",
  "smithay-clipboard",
  "wgpu",
  "winit",
@@ -899,7 +900,7 @@ dependencies = [
 [[package]]
 name = "knave-config"
 version = "0.1.0"
-source = "git+https://github.com/knave-de/knave.git?rev=ece467b47c942bdc0fe7e0dea73088a8c31ca98e#ece467b47c942bdc0fe7e0dea73088a8c31ca98e"
+source = "git+https://github.com/knave-de/knave.git?rev=c56a2b811e29d611e52965c1725629d1f28bb91e#c56a2b811e29d611e52965c1725629d1f28bb91e"
 dependencies = [
  "serde",
  "thiserror 2.0.21",

@@ -28,15 +28,19 @@ radius properties override it through the normal cascade. `outline`,
 layout; offsets may be negative. CSS lengths use logical pixels. Existing explicit
 Rust `ShapePaint::border` remains a painted stroke and does not reserve layout.
 
-Action variants remain semantic intent and share the default button appearance;
-light/high-contrast palettes and theme installation remain deferred.
+Action variants retain their semantic intent. See the [theme selector reference](theme-selectors.md)
+for desktop theme selectors, component parts and supported CSS values.
 
 ## Heading presets
 
 `HeadingLevel::{H1, H2, H3}`, `TextStyle::heading` and `Element::heading` supply
 24/32, 20/28 and 16/24 logical-pixel font-size/line-height presets. All use weight
 700 with the default font family/color. The gallery uses these same public
-constructors for its title, sections, subordinate headings and samples.
+constructors for its title, sections, subordinate headings and samples. Heading
+elements retain their level in `Semantics::heading_level`; CSS supports `h1`,
+`h2`, `h3` and `heading`, while `text` continues to match them too. Adding the
+field changes exhaustive `Semantics` struct literals; use `..Default::default()`
+when constructing one.
 
 ## Component coverage
 
@@ -98,7 +102,7 @@ Enter navigate/select them while clipboard and caret editing remain available.
 | Long text/narrow layouts | Shared wrapping/clipping and constrained-width samples |
 | Scaling | Logical coordinates; host scales input/paint together; fractional output scaling remains an external runtime check |
 | Keyboard only | Roving groups, retained page state, disabled/hidden exclusion and modal traversal |
-| Light/high contrast | Alternate bundled palettes remain deferred |
+| Light/high contrast | Light and dark palettes are available; high contrast remains deferred |
 
 `SceneSnapshot::capture` freezes a real scene display list using the common text
 measurer. The public snapshot widget renders it through the common painter;

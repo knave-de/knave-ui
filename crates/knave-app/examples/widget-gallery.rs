@@ -32,7 +32,9 @@ fn grid(id: u64, columns: usize, children: Vec<Element>) -> Element {
 fn section(id: u64, title: &str, children: Vec<Element>) -> Element {
     let mut items = vec![Element::heading(id + 1, title, HeadingLevel::H2)];
     items.extend(children);
-    Element::new(id, Widget::Panel).children(items)
+    Element::new(id, Widget::Panel)
+        .component(ComponentKind::Section)
+        .children(items)
 }
 fn choices() -> Vec<MenuItem> {
     vec![
@@ -327,7 +329,7 @@ fn layout() -> Vec<Element> {
                 Element::new(2121, Widget::Button("Grid B".into())), Element::new(2122, Widget::Button("Grid C".into()))]),
         ]),
         section(2200, "Panels and cards · compositions", vec![
-            section(2210, "Card composition · panel and content", vec![text(2212, "This composition uses the toolkit defaults. Global styling and custom overrides will be added later.")]),
+            section(2210, "Card composition · panel and content", vec![text(2212, "This composition uses the toolkit defaults. Global styling and custom overrides will be added later.")]).component(ComponentKind::Card),
             text(2202, "Resize the window to inspect wrapping and fixed versus fill lengths. The fixed-width panel below is clipped at its parent."),
             Element::new(2203, Widget::Panel).layout(Layout { width: Length::Px(520.0), ..Default::default() })
                 .children(vec![text(2204, "A longer sentence in a 520 logical-pixel panel. At narrow window sizes, ancestor clipping still applies.")]),
@@ -696,7 +698,7 @@ fn overlays() -> Vec<Element> {
                     "Progress, spinner, alert and expiring toast examples above use the shared widgets. Toast dismissal also supports an ordinary button.",
                 ),
             ],
-        ),
+        ).component(ComponentKind::EmptyState),
     ]
 }
 fn states() -> Result<Vec<Element>, UiError> {
@@ -835,7 +837,7 @@ fn gallery() -> Result<Scene, UiError> {
         .collect();
     Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
-            text(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
+            Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
             popup, command_palette()?.element("Commands")?]))
@@ -875,6 +877,7 @@ impl Application for Gallery {
         if self.fixtures_ready {
             return Ok(());
         }
+        let desktop_css = self.scene.desktop_stylesheet().to_owned();
         for (kind, title) in [
             "Button",
             "Checkbox",
@@ -938,7 +941,7 @@ impl Application for Gallery {
                 ];
                 let mut fixture =
                     Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
-                fixture.set_theme(self.theme)?;
+                fixture.set_desktop_theme(self.theme, &desktop_css)?;
                 fixture.layout(size, text);
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
@@ -1020,6 +1023,21 @@ impl Application for Gallery {
         Ok(())
     }
 
+    fn theme_changed(&mut self, theme: knave_ui::toolkit::Theme) -> AppResult {
+        if self.fixtures_ready {
+            for kind in 0..20 {
+                self.scene.remove(ElementId(5600 + kind * 20))?;
+            }
+            self.fixtures_ready = false;
+        }
+        self.theme = theme;
+        Ok(())
+    }
+
+    fn refresh_theme(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
+        self.ready(text)
+    }
+
     fn scene(&mut self) -> &mut Scene {
         &mut self.scene
     }
@@ -1099,13 +1117,8 @@ impl Application for Gallery {
     }
 }
 fn main() -> AppResult {
-    let config = knave_config::ConfigDocument::at_default_path()?;
-    let theme = match config.config().appearance.theme {
-        knave_config::Theme::Light => knave_ui::toolkit::Theme::Light,
-        knave_config::Theme::System | knave_config::Theme::Dark => knave_ui::toolkit::Theme::Dark,
-    };
-    let mut scene = gallery()?;
-    scene.set_theme(theme)?;
+    let theme = knave_ui::toolkit::Theme::Dark;
+    let scene = gallery()?;
     knave_app::run(
         "Knave UI · Component catalog",
         [960.0, 840.0],

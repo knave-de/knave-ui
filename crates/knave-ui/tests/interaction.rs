@@ -160,6 +160,37 @@ fn standard_hover_and_pressed_backgrounds_are_painted() {
     )));
 }
 #[test]
+fn paint_only_hover_updates_without_layout() {
+    let mut s = scene(vec![leaf(1, Widget::Button("Press".into()))]);
+    s.set_stylesheet("button:hover { background: #123456; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let before = s.stats().layouts;
+    s.event(Input::PointerMove([20.0, 20.0]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert_eq!(s.stats().layouts, before);
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. } if paint.fill == Some(knave_ui::Color::rgba(0x12, 0x34, 0x56, 255))
+    )));
+}
+
+#[test]
+fn hover_custom_property_can_still_relayout() {
+    let first = Element::new(1, Widget::Button("First".into()));
+    let second = Element::new(2, Widget::Button("Second".into()));
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![first, second])).unwrap();
+    s.set_stylesheet(
+        ":root { --space: 0px; } button:hover { --space: 24px; } button { padding: var(--space); }",
+    )
+    .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let before = s.bounds(ElementId(2)).unwrap().y;
+    s.event(Input::PointerMove([5.0, 5.0]));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert!(s.bounds(ElementId(2)).unwrap().y > before);
+}
+
+#[test]
 fn hover_spacing_relayouts_bounds_and_pointer_targets() {
     let first = Element::new(1, Widget::Button("First".into())).class("action");
     let second = Element::new(2, Widget::Button("Second".into()));
@@ -1175,6 +1206,46 @@ fn focus_outline_is_for_keyboard_and_disappears_when_control_is_disabled() {
         .unwrap();
     assert_eq!(s.focus(), None);
     assert!(!outlined(&mut s));
+}
+
+#[test]
+fn heading_selectors_match_levels_and_follow_the_text_cascade() {
+    use knave_ui::{Color, HeadingLevel};
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).children(vec![
+        Element::heading(1, "First", HeadingLevel::H1),
+        Element::heading(2, "Second", HeadingLevel::H2).class("accent"),
+        Element::heading(3, "Third", HeadingLevel::H3),
+        Element::new(4, Widget::Text("Body".into())),
+    ]))
+    .unwrap();
+    scene.set_desktop_theme(Theme::Dark, "text { color: #111111; } heading { font-weight: 500; } h1, h2, h3 { font-weight: 600; } h1 { color: #123456; font-size: 36px; line-height: 42px; } h2 { color: #334455; } h3 { color: #445566; } panel h2.accent { color: #abcdef; }").unwrap();
+    let style = |id| scene.computed_style(ElementId(id)).unwrap().style.text;
+    assert_eq!(style(1).color, Color::rgba(0x12, 0x34, 0x56, 255));
+    assert_eq!(style(1).font_size, 36.0);
+    assert_eq!(style(1).line_height, 42.0);
+    assert_eq!(style(2).color, Color::rgba(0xab, 0xcd, 0xef, 255));
+    assert_eq!(style(3).color, Color::rgba(0x44, 0x55, 0x66, 255));
+    assert_eq!(style(3).weight, 600);
+    assert_eq!(style(4).color, Color::rgba(0x11, 0x11, 0x11, 255));
+    scene.layout([400.0, 400.0], &mut Metrics);
+    let old_height = scene.bounds(ElementId(1)).unwrap().height;
+    scene
+        .set_desktop_theme(Theme::Dark, "h1 { font-size: 48px; line-height: 60px; }")
+        .unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    assert!(scene.bounds(ElementId(1)).unwrap().height > old_height);
+    scene
+        .insert(ElementId(0), Element::new(5, Widget::Text("Other".into())))
+        .unwrap();
+    assert_eq!(
+        scene
+            .computed_style(ElementId(1))
+            .unwrap()
+            .style
+            .text
+            .font_size,
+        48.0
+    );
 }
 
 #[test]

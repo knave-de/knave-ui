@@ -4,11 +4,13 @@ use crate::{DisplayCommand, ImageStyle, ShapePaint, TextWrap, Transform2D};
 
 pub(super) fn paint_collection(
     list: &mut DisplayList,
-    node: &Node,
+    scene: &Scene,
+    owner: usize,
     collection: &Collection,
     computed: &Style,
     layout: Layout,
 ) {
+    let node = &scene.nodes[owner];
     let area = layout.insets().apply(node.bounds);
     let clip = node.clip.and_then(|clip| clip.intersection(area));
     let header = collection.header_height();
@@ -32,10 +34,43 @@ pub(super) fn paint_collection(
             } else {
                 header.clone()
             };
+            let bounds = Rect::new(area.x + width * column as f32, area.y, width, ROW);
+            let state = InteractionState {
+                hovered: scene.pointer_inside
+                    && scene.hover == Some(node.element.id)
+                    && contains(bounds, scene.pointer),
+                selected: collection.sort.is_some_and(|(sorted, _)| sorted == column),
+                disabled: !node.element.enabled,
+                focused: scene.focus == Some(node.element.id),
+                ..InteractionState::default()
+            };
+            let mut base = computed.clone();
+            base.text = style.clone();
+            base.background = None;
+            let part = css::part_style(scene, owner, "table-header", state, base.clone());
+            if part.as_ref().is_some_and(|part| {
+                part.background_explicit || super::paint::has_borders(&part.computed)
+            }) {
+                let paint = super::paint::part_background(
+                    scene,
+                    owner,
+                    "table-header",
+                    state,
+                    &base,
+                    ShapePaint::fill(Color::rgba(0, 0, 0, 0)),
+                );
+                list.commands.push(DisplayCommand::Shape {
+                    bounds,
+                    paint,
+                    transform: Transform2D::IDENTITY,
+                    clip,
+                });
+            }
+            let header_style = part.map_or_else(|| style.clone(), |part| part.computed.style.text);
             list.commands.push(DisplayCommand::Text {
-                bounds: Rect::new(area.x + width * column as f32, area.y, width, ROW),
+                bounds,
                 text,
-                style: style.clone(),
+                style: header_style,
                 transform: Transform2D::IDENTITY,
                 clip,
             });
@@ -61,21 +96,51 @@ pub(super) fn paint_collection(
         if item_clip.is_none() {
             continue;
         }
-        if collection.selected == Some(item.id) {
-            let selected_background = computed
-                .background
-                .as_ref()
-                .and_then(|background| background.fill)
-                .unwrap_or(computed.selected);
+        let selected = collection.selected == Some(item.id);
+        let state = InteractionState {
+            hovered: scene.pointer_inside
+                && scene.hover == Some(node.element.id)
+                && scene.menu.is_none()
+                && contains(bounds, scene.pointer),
+            selected,
+            disabled: !item.enabled || !node.element.enabled,
+            focused: selected && scene.focus == Some(node.element.id),
+            ..InteractionState::default()
+        };
+        let mut base = computed.clone();
+        base.text = style.clone();
+        base.background = None;
+        let part = css::part_style(scene, owner, "collection-item", state, base.clone());
+        let has_part_shape = part.as_ref().is_some_and(|part| {
+            part.background_explicit || super::paint::has_borders(&part.computed)
+        });
+        if selected || has_part_shape {
+            let default = if selected {
+                computed
+                    .background
+                    .as_ref()
+                    .and_then(|background| background.fill)
+                    .unwrap_or(computed.selected)
+            } else {
+                Color::rgba(0, 0, 0, 0)
+            };
+            let paint = super::paint::part_background(
+                scene,
+                owner,
+                "collection-item",
+                state,
+                &base,
+                ShapePaint::fill(default),
+            );
             list.commands.push(DisplayCommand::Shape {
                 bounds,
-                paint: ShapePaint::fill(selected_background),
+                paint,
                 transform: Transform2D::IDENTITY,
                 clip: item_clip,
             });
         }
-        let mut style = style.clone();
-        if !item.enabled || !node.element.enabled {
+        let mut style = part.map_or_else(|| style.clone(), |part| part.computed.style.text);
+        if state.disabled {
             style.color.alpha = 105;
         }
         let mut label_bounds = bounds;
@@ -86,19 +151,39 @@ pub(super) fn paint_collection(
                 .take(headers.len())
                 .enumerate()
             {
+                let cell_bounds = Rect::new(bounds.x + column as f32 * width, bounds.y, width, ROW);
+                let cell_clip = item_clip.and_then(|clip| clip.intersection(cell_bounds));
+                let mut cell_state = state;
+                cell_state.hovered &= contains(cell_bounds, scene.pointer);
+                let mut cell_base = computed.clone();
+                cell_base.text = style.clone();
+                cell_base.background = None;
+                let cell =
+                    css::part_style(scene, owner, "table-cell", cell_state, cell_base.clone());
+                if cell.as_ref().is_some_and(|part| {
+                    part.background_explicit || super::paint::has_borders(&part.computed)
+                }) {
+                    let paint = super::paint::part_background(
+                        scene,
+                        owner,
+                        "table-cell",
+                        cell_state,
+                        &cell_base,
+                        ShapePaint::fill(Color::rgba(0, 0, 0, 0)),
+                    );
+                    list.commands.push(DisplayCommand::Shape {
+                        bounds: cell_bounds,
+                        paint,
+                        transform: Transform2D::IDENTITY,
+                        clip: cell_clip,
+                    });
+                }
                 list.commands.push(DisplayCommand::Text {
-                    bounds: Rect::new(bounds.x + column as f32 * width, bounds.y, width, ROW),
+                    bounds: cell_bounds,
                     text: text.clone(),
-                    style: style.clone(),
+                    style: cell.map_or_else(|| style.clone(), |part| part.computed.style.text),
                     transform: Transform2D::IDENTITY,
-                    clip: item_clip.and_then(|clip| {
-                        clip.intersection(Rect::new(
-                            bounds.x + column as f32 * width,
-                            bounds.y,
-                            width,
-                            ROW,
-                        ))
-                    }),
+                    clip: cell_clip,
                 });
             }
             continue;

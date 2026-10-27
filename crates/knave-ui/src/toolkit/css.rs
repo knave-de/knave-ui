@@ -90,14 +90,90 @@ struct Simple {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Stylesheet {
     rules: Vec<Rule>,
+    base_rule_count: usize,
 }
 impl Stylesheet {
-    pub(super) fn same_as(&self, other: &Self) -> bool {
-        self.rules == other.rules
+    /// Paint-only state rules cannot change layout, including via inheritance.
+    pub(super) fn interaction_affects_layout(&self) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector
+                    .parts
+                    .iter()
+                    .any(|part| part.states.iter().any(|state| state != "root"))
+            }) && rule.declarations.iter().any(|(name, _)| {
+                !matches!(
+                    name.as_str(),
+                    "color"
+                        | "background"
+                        | "background-color"
+                        | "border-top-color"
+                        | "border-right-color"
+                        | "border-bottom-color"
+                        | "border-left-color"
+                        | "outline-width"
+                        | "outline-color"
+                        | "outline-offset"
+                        | "border-top-left-radius"
+                        | "border-top-right-radius"
+                        | "border-bottom-right-radius"
+                        | "border-bottom-left-radius"
+                )
+            })
+        })
     }
-    pub fn for_theme(theme: Theme, source: &str) -> Result<Self, StylesheetError> {
+    pub(super) fn has_part_hover(&self, kind: &str) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector.parts.last().is_some_and(|part| {
+                    part.widget.as_deref() == Some(kind)
+                        && part.states.iter().any(|state| state == "hover")
+                })
+            })
+        })
+    }
+    pub(super) fn has_any_part_hover(&self) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector.parts.last().is_some_and(|part| {
+                    part.widget.as_deref().is_some_and(is_paint_part)
+                        && part.states.iter().any(|state| state == "hover")
+                })
+            })
+        })
+    }
+    pub(super) fn has_collection_part_hover(&self) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector.parts.last().is_some_and(|part| {
+                    matches!(
+                        part.widget.as_deref(),
+                        Some("collection-item" | "table-header" | "table-cell")
+                    ) && part.states.iter().any(|state| state == "hover")
+                })
+            })
+        })
+    }
+    pub(super) fn has_menu_part_hover(&self) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector.parts.last().is_some_and(|part| {
+                    matches!(
+                        part.widget.as_deref(),
+                        Some("menu-surface" | "menu-item" | "menu-separator")
+                    ) && part.states.iter().any(|state| state == "hover")
+                })
+            })
+        })
+    }
+    pub(super) fn same_as(&self, other: &Self) -> bool {
+        self.rules == other.rules && self.base_rule_count == other.base_rule_count
+    }
+    pub fn for_theme(theme: Theme, desktop: &str, source: &str) -> Result<Self, StylesheetError> {
         let mut sheet = Self::parse_rules(theme.stylesheet())?;
-        let custom = Self::parse_rules(source)?;
+        sheet.base_rule_count = sheet.rules.len();
+        let mut custom = Self::parse_rules(desktop)?;
+        custom.rules.extend(Self::parse_rules(source)?.rules);
         if sheet.rules.len() + custom.rules.len() > 256 {
             return Err(StylesheetError::Syntax);
         }
@@ -135,6 +211,35 @@ impl Stylesheet {
             if selectors.is_empty() {
                 return Err(StylesheetError::Syntax);
             }
+            for selector in &selectors {
+                for (index, part) in selector.parts.iter().enumerate() {
+                    if part.widget.as_deref().is_some_and(is_global_auxiliary)
+                        && (selector.parts.len() != 1
+                            || !part.classes.is_empty()
+                            || part.id.is_some()
+                            || !part.states.is_empty())
+                    {
+                        return Err(StylesheetError::UnsupportedSelector);
+                    }
+                    if part.widget.as_deref().is_some_and(is_paint_part)
+                        && !(part.widget.as_deref() == Some("menu-surface")
+                            && index + 2 == selector.parts.len()
+                            && selector
+                                .parts
+                                .last()
+                                .and_then(|p| p.widget.as_deref())
+                                .is_some_and(|kind| matches!(kind, "menu-item" | "menu-separator"))
+                            && part.classes.is_empty()
+                            && part.id.is_none()
+                            && part.states.is_empty())
+                        && (index + 1 != selector.parts.len()
+                            || !part.classes.is_empty()
+                            || part.id.is_some())
+                    {
+                        return Err(StylesheetError::UnsupportedSelector);
+                    }
+                }
+            }
             let mut declarations = Vec::new();
             for declaration in rest_trim[open + 1..close]
                 .split(';')
@@ -146,7 +251,32 @@ impl Stylesheet {
                 if value.is_empty() {
                     return Err(StylesheetError::InvalidValue);
                 }
-                declarations.extend(expand_declaration(&name, &value)?);
+                let expanded = expand_declaration(&name, &value)?;
+                for selector in &selectors {
+                    if let Some(auxiliary) = selector
+                        .parts
+                        .last()
+                        .and_then(|p| p.widget.as_deref())
+                        .filter(|name| is_global_auxiliary(name))
+                        && expanded
+                            .iter()
+                            .any(|(property, _)| !auxiliary_supports_property(auxiliary, property))
+                    {
+                        return Err(StylesheetError::UnsupportedProperty);
+                    }
+                    if let Some(part) = selector
+                        .parts
+                        .last()
+                        .and_then(|p| p.widget.as_deref())
+                        .filter(|name| is_paint_part(name))
+                        && expanded
+                            .iter()
+                            .any(|(property, _)| !part_supports_property(part, property))
+                    {
+                        return Err(StylesheetError::UnsupportedProperty);
+                    }
+                }
+                declarations.extend(expanded);
             }
             sheet.rules.push(Rule {
                 selectors,
@@ -215,6 +345,7 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
     let mut out = Vec::new();
     let mut push = |name: String, value: String| out.push((name, value));
     match name {
+        "background" => push("background-color".to_owned(), value.to_owned()),
         "border-radius" => {
             for corner in corners {
                 push(format!("border-{corner}-radius"), format!("@quad:{value}"));
@@ -294,7 +425,9 @@ fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
             match mode {
                 't' => {
                     simple.widget = Some(word.to_ascii_lowercase());
-                    specificity.2 += 1;
+                    if word != "*" {
+                        specificity.2 += 1;
+                    }
                 }
                 '.' => {
                     simple.classes.push(word.clone());
@@ -307,7 +440,19 @@ fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
                 ':' => {
                     if !matches!(
                         word.as_str(),
-                        "hover" | "pressed" | "selected" | "disabled" | "focus" | "root"
+                        "hover"
+                            | "pressed"
+                            | "active"
+                            | "selected"
+                            | "checked"
+                            | "indeterminate"
+                            | "expanded"
+                            | "invalid"
+                            | "busy"
+                            | "enabled"
+                            | "disabled"
+                            | "focus"
+                            | "root"
                     ) {
                         return Err(StylesheetError::UnsupportedSelector);
                     }
@@ -328,7 +473,12 @@ fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
             }
         }
         flush(&mut simple, &mut word, mode, &mut specificity)?;
-        if simple == Simple::default() {
+        if simple == Simple::default()
+            || simple
+                .widget
+                .as_deref()
+                .is_some_and(|name| !known_selector(name))
+        {
             return Err(StylesheetError::UnsupportedSelector);
         }
         parts.push(simple);
@@ -337,6 +487,180 @@ fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
         return Err(StylesheetError::Syntax);
     }
     Ok(Selector { parts, specificity })
+}
+fn is_global_auxiliary(name: &str) -> bool {
+    matches!(name, "canvas" | "surface" | "modal-overlay" | "tooltip")
+}
+fn auxiliary_supports_property(kind: &str, property: &str) -> bool {
+    property.starts_with("--")
+        || property == "background-color"
+        || (kind == "tooltip"
+            && (matches!(
+                property,
+                "color"
+                    | "padding"
+                    | "font-size"
+                    | "font-weight"
+                    | "line-height"
+                    | "font-family"
+                    | "text-align"
+                    | "text-wrap"
+            ) || property.ends_with("-radius")))
+}
+fn is_paint_part(name: &str) -> bool {
+    matches!(
+        name,
+        "checkbox-indicator"
+            | "checkbox-mark"
+            | "switch-track"
+            | "switch-thumb"
+            | "slider-track"
+            | "slider-fill"
+            | "slider-thumb"
+            | "progress-track"
+            | "progress-fill"
+            | "spinner-dot"
+            | "text-selection"
+            | "text-caret"
+            | "scrollbar-thumb"
+            | "menu-surface"
+            | "menu-item"
+            | "menu-separator"
+            | "collection-item"
+            | "table-header"
+            | "table-cell"
+    )
+}
+fn part_supports_property(part: &str, property: &str) -> bool {
+    property.starts_with("--")
+        || matches!(property, "background-color" | "color")
+        || (property.starts_with("border-")
+            && (property.ends_with("-width")
+                || property.ends_with("-color")
+                || property.ends_with("-radius")))
+        || (matches!(
+            part,
+            "checkbox-mark" | "menu-item" | "collection-item" | "table-header" | "table-cell"
+        ) && matches!(
+            property,
+            "font-size"
+                | "font-weight"
+                | "line-height"
+                | "font-family"
+                | "text-align"
+                | "text-wrap"
+        ))
+}
+/// Type selectors supported by the toolkit, including synthetic paint parts.
+fn known_selector(name: &str) -> bool {
+    matches!(
+        name,
+        "*" | "panel"
+            | "icon"
+            | "scene-snapshot"
+            | "pagination"
+            | "color-swatch"
+            | "collection"
+            | "progress"
+            | "spinner"
+            | "toast"
+            | "text"
+            | "paragraph"
+            | "image"
+            | "button"
+            | "link"
+            | "mixed-checkbox"
+            | "toggle"
+            | "switch"
+            | "checkbox"
+            | "slider"
+            | "splitter"
+            | "disclosure"
+            | "text-input"
+            | "combo-box"
+            | "dropdown"
+            | "context-menu"
+            | "menu"
+            | "selectable"
+            | "draggable"
+            | "separator"
+            | "scroll"
+            | "popup"
+            | "dialog"
+            | "heading"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "subtitle"
+            | "caption"
+            | "badge"
+            | "alert"
+            | "status"
+            | "section"
+            | "card"
+            | "empty-state"
+            | "split-button"
+            | "breadcrumbs"
+            | "navigation"
+            | "command-palette"
+            | "expander"
+            | "accordion"
+            | "split-view"
+            | "color-picker"
+            | "primary-button"
+            | "secondary-button"
+            | "ghost-button"
+            | "destructive-button"
+            | "icon-button"
+            | "loading-button"
+            | "password-input"
+            | "multiline-input"
+            | "search-input"
+            | "numeric-input"
+            | "tabs"
+            | "sidebar"
+            | "radio-group"
+            | "segmented-control"
+            | "chip-group"
+            | "list"
+            | "icon-grid"
+            | "tree"
+            | "table"
+            | "tab"
+            | "sidebar-item"
+            | "radio"
+            | "segment"
+            | "chip"
+            | "list-item"
+            | "grid-item"
+            | "row"
+            | "column"
+            | "grid"
+            | "overlay"
+            | "canvas"
+            | "surface"
+            | "modal-overlay"
+            | "tooltip"
+            | "checkbox-indicator"
+            | "checkbox-mark"
+            | "switch-track"
+            | "switch-thumb"
+            | "slider-track"
+            | "slider-fill"
+            | "slider-thumb"
+            | "progress-track"
+            | "progress-fill"
+            | "spinner-dot"
+            | "text-selection"
+            | "text-caret"
+            | "scrollbar-thumb"
+            | "menu-surface"
+            | "menu-item"
+            | "menu-separator"
+            | "collection-item"
+            | "table-header"
+            | "table-cell"
+    )
 }
 fn widget_name(w: &Widget) -> &'static str {
     match w {
@@ -372,6 +696,152 @@ fn widget_name(w: &Widget) -> &'static str {
         Widget::Popup { .. } => "popup",
     }
 }
+fn widget_matches(scene: &Scene, index: usize, selector: &str) -> bool {
+    let element = &scene.nodes[index].element;
+    if selector == "*" || widget_name(&element.widget) == selector {
+        return true;
+    }
+    let component = match selector {
+        "subtitle" => Some(ComponentKind::Subtitle),
+        "caption" => Some(ComponentKind::Caption),
+        "badge" => Some(ComponentKind::Badge),
+        "alert" => Some(ComponentKind::Alert),
+        "section" => Some(ComponentKind::Section),
+        "card" => Some(ComponentKind::Card),
+        "empty-state" => Some(ComponentKind::EmptyState),
+        "split-button" => Some(ComponentKind::SplitButton),
+        "breadcrumbs" => Some(ComponentKind::Breadcrumbs),
+        "command-palette" => Some(ComponentKind::CommandPalette),
+        "expander" => Some(ComponentKind::Expander),
+        "accordion" => Some(ComponentKind::Accordion),
+        "split-view" => Some(ComponentKind::SplitView),
+        "color-picker" => Some(ComponentKind::ColorPicker),
+        _ => None,
+    };
+    if component.is_some() && element.component == component {
+        return true;
+    }
+    if (selector == "status"
+        && (element.semantics.role == Some(Role::Status)
+            || matches!(element.widget, Widget::Toast { .. })))
+        || (selector == "alert" && element.semantics.role == Some(Role::Alert))
+        || (selector == "navigation"
+            && (element.semantics.role == Some(Role::Navigation)
+                || element.selection_group == Some(SelectionGroup::Sidebar)))
+    {
+        return true;
+    }
+    if element.semantics.role == Some(Role::Heading) {
+        let heading = match selector {
+            "heading" => true,
+            "h1" => element.semantics.heading_level == Some(crate::HeadingLevel::H1),
+            "h2" => element.semantics.heading_level == Some(crate::HeadingLevel::H2),
+            "h3" => element.semantics.heading_level == Some(crate::HeadingLevel::H3),
+            _ => false,
+        };
+        if heading {
+            return true;
+        }
+    }
+    if matches!(element.widget, Widget::Button(_)) {
+        let variant = match selector {
+            "primary-button" => Some(ButtonVariant::Primary),
+            "secondary-button" => Some(ButtonVariant::Secondary),
+            "ghost-button" => Some(ButtonVariant::Ghost),
+            "destructive-button" => Some(ButtonVariant::Destructive),
+            "icon-button" => Some(ButtonVariant::Icon),
+            _ => None,
+        };
+        if variant.is_some() && element.button_variant == variant {
+            return true;
+        }
+        if selector == "loading-button" && element.semantics.busy {
+            return true;
+        }
+    }
+    if let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } = &element.widget {
+        let mode_matches = match selector {
+            "password-input" => matches!(edit.mode(), InputMode::Password),
+            "multiline-input" => matches!(edit.mode(), InputMode::Multiline),
+            "search-input" => matches!(edit.mode(), InputMode::Search),
+            "numeric-input" => matches!(edit.mode(), InputMode::Numeric { .. }),
+            _ => false,
+        };
+        if mode_matches {
+            return true;
+        }
+    }
+    if matches!(element.widget, Widget::Toggle { .. }) && selector == "switch" {
+        return true;
+    }
+    if matches!(element.widget, Widget::Popup { modal: true }) && selector == "dialog" {
+        return true;
+    }
+    if let Widget::Collection(collection) = &element.widget
+        && matches!(
+            (&collection.kind, selector),
+            (CollectionKind::List, "list")
+                | (CollectionKind::IconGrid { .. }, "icon-grid")
+                | (CollectionKind::Tree, "tree")
+                | (CollectionKind::Table { .. }, "table")
+        )
+    {
+        return true;
+    }
+    if let Some(group) = element.selection_group
+        && matches!(
+            (group, selector),
+            (SelectionGroup::Tabs, "tabs")
+                | (SelectionGroup::Sidebar, "sidebar")
+                | (SelectionGroup::Radio, "radio-group")
+                | (SelectionGroup::Segmented, "segmented-control")
+                | (SelectionGroup::Chips, "chip-group")
+                | (SelectionGroup::List, "list")
+                | (SelectionGroup::IconGrid { .. }, "icon-grid")
+        )
+    {
+        return true;
+    }
+    if matches!(element.widget, Widget::Selectable { .. }) {
+        let group = scene.nodes[index]
+            .parent
+            .and_then(|p| scene.nodes[p].element.selection_group);
+        if matches!(
+            (group, selector),
+            (Some(SelectionGroup::Tabs), "tab")
+                | (Some(SelectionGroup::Sidebar), "sidebar-item")
+                | (Some(SelectionGroup::Radio), "radio")
+                | (Some(SelectionGroup::Segmented), "segment")
+                | (Some(SelectionGroup::Chips), "chip")
+                | (Some(SelectionGroup::List), "list-item")
+                | (Some(SelectionGroup::IconGrid { .. }), "grid-item")
+        ) {
+            return true;
+        }
+    }
+    if matches!(element.widget, Widget::Panel) {
+        return matches!(
+            (element.layout.flow, selector),
+            (Flow::Row, "row")
+                | (Flow::Column, "column")
+                | (Flow::Grid { .. }, "grid")
+                | (Flow::Overlay, "overlay")
+        );
+    }
+    false
+}
+fn class_matches(element: &Element, class: &str) -> bool {
+    element.classes.iter().any(|name| name == class)
+        || matches!(
+            (element.button_variant, class),
+            (Some(ButtonVariant::Primary), "primary")
+                | (Some(ButtonVariant::Secondary), "secondary")
+                | (Some(ButtonVariant::Ghost), "ghost")
+                | (Some(ButtonVariant::Destructive), "destructive")
+                | (Some(ButtonVariant::Icon), "icon")
+        )
+}
+
 pub(super) fn compute(
     scene: &Scene,
     id: ElementId,
@@ -432,11 +902,12 @@ pub(super) fn compute(
             vars.insert(name.clone(), value.clone());
         }
     }
-    for (name, (_, _, raw)) in declarations {
+    for (name, (_, order, raw)) in declarations {
         if name.starts_with("--") {
             continue;
         }
         if node.element.style.background.is_some()
+            && order < scene.stylesheet.base_rule_count
             && matches!(name.as_str(), "background" | "background-color")
         {
             continue;
@@ -461,7 +932,12 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
     let mut vars = std::collections::BTreeMap::<String, String>::new();
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
-            if selector.parts.len() == 1 && selector.parts[0].widget.as_deref() == Some(kind) {
+            if selector.parts.len() == 1
+                && selector.parts[0].widget.as_deref() == Some(kind)
+                && selector.parts[0].classes.is_empty()
+                && selector.parts[0].id.is_none()
+                && selector.parts[0].states.is_empty()
+            {
                 for (name, value) in &rule.declarations {
                     let key = (selector.specificity, rule.order);
                     if decl.get(name).is_none_or(|(s, o, _)| key >= (*s, *o)) {
@@ -543,53 +1019,99 @@ fn inherited_vars(
     }
     values
 }
+fn state_matches(element: &Element, state: InteractionState, name: &str, is_root: bool) -> bool {
+    match name {
+        "root" => is_root,
+        "hover" => state.hovered,
+        "pressed" | "active" => state.pressed,
+        "selected" => state.selected,
+        "checked" => matches!(
+            element.widget,
+            Widget::Checkbox { checked: true, .. }
+                | Widget::Toggle { checked: true, .. }
+                | Widget::MixedCheckbox {
+                    state: CheckState::Checked,
+                    ..
+                }
+                | Widget::Selectable { selected: true, .. }
+        ),
+        "indeterminate" => matches!(
+            element.widget,
+            Widget::MixedCheckbox {
+                state: CheckState::Mixed,
+                ..
+            } | Widget::Progress { value: None }
+        ),
+        "expanded" => {
+            state.expanded
+                || matches!(element.widget, Widget::Disclosure { expanded: true, .. })
+                || matches!(element.widget, Widget::Popup { .. } if element.visible)
+        }
+        "invalid" => {
+            element.semantics.invalid
+                || matches!(&element.widget, Widget::TextInput(edit) | Widget::ComboBox { edit, .. } if edit.validation_message().is_some())
+        }
+        "busy" => {
+            element.semantics.busy
+                || matches!(
+                    element.widget,
+                    Widget::Spinner | Widget::Progress { value: None }
+                )
+        }
+        "enabled" => !state.disabled,
+        "disabled" => state.disabled,
+        "focus" => state.focused,
+        _ => false,
+    }
+}
+fn matches_simple(
+    scene: &Scene,
+    index: usize,
+    target: usize,
+    state: InteractionState,
+    simple: &Simple,
+) -> bool {
+    let element = &scene.nodes[index].element;
+    let state = if index == target {
+        state
+    } else {
+        scene.interaction(element.id).unwrap_or_default()
+    };
+    simple
+        .widget
+        .as_deref()
+        .is_none_or(|name| widget_matches(scene, index, name))
+        && simple
+            .classes
+            .iter()
+            .all(|class| class_matches(element, class))
+        && simple
+            .id
+            .as_ref()
+            .is_none_or(|id| element.style_id.as_ref() == Some(id))
+        && simple
+            .states
+            .iter()
+            .all(|name| state_matches(element, state, name, index == 0))
+}
 fn selector_matches(
     scene: &Scene,
     index: usize,
     state: InteractionState,
     selector: &Selector,
 ) -> bool {
-    let matches_simple = |i: usize, s: &Simple| {
-        let e = &scene.nodes[i].element;
-        s.widget
-            .as_deref()
-            .is_none_or(|w| widget_name(&e.widget) == w)
-            && s.classes.iter().all(|c| e.classes.iter().any(|x| x == c))
-            && s.id
-                .as_ref()
-                .is_none_or(|id| e.style_id.as_ref() == Some(id))
-            && s.states.iter().all(|st| {
-                if st == "root" {
-                    i == 0
-                } else {
-                    let state = if i == index {
-                        state
-                    } else {
-                        scene.interaction(e.id).unwrap_or_default()
-                    };
-                    match st.as_str() {
-                        "hover" => state.hovered,
-                        "pressed" => state.pressed,
-                        "selected" => state.selected,
-                        "disabled" => state.disabled,
-                        "focus" => state.focused,
-                        _ => false,
-                    }
-                }
-            })
-    };
     let mut at = Some(index);
     let mut part = selector.parts.iter().rev();
     let Some(last) = part.next() else {
         return false;
     };
-    if !matches_simple(index, last) {
+    if !matches_simple(scene, index, index, state, last) {
         return false;
     }
     for required in part {
         at = scene.nodes[at.unwrap()].parent;
         while let Some(i) = at {
-            if matches_simple(i, required) {
+            if matches_simple(scene, i, index, state, required) {
                 break;
             }
             at = scene.nodes[i].parent;
@@ -600,6 +1122,119 @@ fn selector_matches(
     }
     true
 }
+fn virtual_selector_matches(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    state: InteractionState,
+    selector: &Selector,
+) -> bool {
+    let Some(last) = selector.parts.last() else {
+        return false;
+    };
+    if last.widget.as_deref() != Some(kind)
+        || !last.classes.is_empty()
+        || last.id.is_some()
+        || !last
+            .states
+            .iter()
+            .all(|name| state_matches(&scene.nodes[owner].element, state, name, false))
+    {
+        return false;
+    }
+    let owner_state = scene
+        .interaction(scene.nodes[owner].element.id)
+        .unwrap_or_default();
+    let mut at = Some(owner);
+    let mut menu_parent = matches!(kind, "menu-item" | "menu-separator");
+    for required in selector.parts[..selector.parts.len() - 1].iter().rev() {
+        if menu_parent
+            && matches!(required.widget.as_deref(), Some("menu" | "menu-surface"))
+            && required.classes.is_empty()
+            && required.id.is_none()
+            && required.states.is_empty()
+        {
+            menu_parent = false;
+            continue;
+        }
+        while let Some(i) = at {
+            if matches_simple(scene, i, owner, owner_state, required) {
+                break;
+            }
+            at = scene.nodes[i].parent;
+        }
+        let Some(i) = at else { return false };
+        at = scene.nodes[i].parent;
+    }
+    true
+}
+pub(super) struct PartStyle {
+    pub computed: ComputedStyle,
+    pub color_explicit: bool,
+    pub background_explicit: bool,
+}
+/// Compute a synthetic paint part using the owner as its CSS parent.
+pub(super) fn part_style(
+    scene: &Scene,
+    owner: usize,
+    kind: &str,
+    state: InteractionState,
+    base: Style,
+) -> Option<PartStyle> {
+    if !scene.stylesheet.rules.iter().any(|rule| {
+        rule.selectors
+            .iter()
+            .any(|s| s.parts.last().and_then(|p| p.widget.as_deref()) == Some(kind))
+    }) {
+        return None;
+    }
+    let mut declarations =
+        std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
+    for rule in &scene.stylesheet.rules {
+        for selector in &rule.selectors {
+            if virtual_selector_matches(scene, owner, kind, state, selector) {
+                for (name, value) in &rule.declarations {
+                    let key = (selector.specificity, rule.order);
+                    if declarations
+                        .get(name)
+                        .is_none_or(|(spec, order, _)| key >= (*spec, *order))
+                    {
+                        declarations.insert(name.clone(), (key.0, key.1, value.clone()));
+                    }
+                }
+            }
+        }
+    }
+    if declarations.is_empty() {
+        return None;
+    }
+    let color_explicit = declarations.contains_key("color");
+    let background_explicit = declarations.contains_key("background-color");
+    let owner_state = scene
+        .interaction(scene.nodes[owner].element.id)
+        .unwrap_or_default();
+    let mut vars = inherited_vars(scene, owner, owner_state);
+    for (name, (_, _, value)) in &declarations {
+        if name.starts_with("--") {
+            vars.insert(name.clone(), value.clone());
+        }
+    }
+    let mut result = ComputedStyle::from(&scene.nodes[owner].element);
+    result.style = base;
+    result.borders = empty_borders();
+    result.outline = None;
+    for (name, (_, _, raw)) in declarations {
+        if !name.starts_with("--") {
+            apply_decl(&mut result, &name, &resolve_vars(&raw, &vars, 0).ok()?).ok()?;
+        }
+    }
+    Some(PartStyle {
+        computed: result,
+        color_explicit,
+        background_explicit,
+    })
+}
+
 fn resolve_vars(
     value: &str,
     vars: &std::collections::BTreeMap<String, String>,
@@ -694,7 +1329,12 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
     match name {
         "color" => c.style.text.color = parse_color(v)?,
         "background" | "background-color" => {
-            c.style.background = Some(ShapePaint::fill(parse_color(v)?))
+            let color = parse_color(v)?;
+            if let Some(paint) = &mut c.style.background {
+                paint.fill = Some(color);
+            } else {
+                c.style.background = Some(ShapePaint::fill(color));
+            }
         }
         "border-top-width"
         | "border-right-width"
@@ -990,7 +1630,100 @@ mod tests {
             .is_err()
         );
         assert!(Stylesheet::parse("button { border-radius: -2px; }").is_err());
-        assert!(Stylesheet::parse("button:active { color: red; }").is_err());
+        assert!(Stylesheet::parse("button:unknown { color: red; }").is_err());
+        assert!(Stylesheet::parse("unknown-widget { color: red; }").is_err());
+    }
+
+    #[test]
+    fn background_alias_participates_in_the_same_cascade_as_background_color() {
+        let button = Element::new(2, Widget::Button("Theme".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene
+            .set_desktop_theme(Theme::Dark, "button { background: #fff; }")
+            .unwrap();
+        assert_eq!(
+            scene
+                .computed_style(ElementId(2))
+                .unwrap()
+                .style
+                .background
+                .unwrap()
+                .fill,
+            Some(Color::rgba(255, 255, 255, 255))
+        );
+        scene
+            .set_desktop_theme(
+                Theme::Dark,
+                "button { background-color: #123456; background: #abcdef; }",
+            )
+            .unwrap();
+        assert_eq!(
+            scene
+                .computed_style(ElementId(2))
+                .unwrap()
+                .style
+                .background
+                .unwrap()
+                .fill,
+            Some(Color::rgba(0xab, 0xcd, 0xef, 255))
+        );
+    }
+
+    #[test]
+    fn stateful_layout_detection_is_conservative_for_variables_and_ancestors() {
+        assert!(
+            !Stylesheet::for_theme(
+                Theme::Dark,
+                "",
+                "button:hover { background: #fff; border-color: #000; }"
+            )
+            .unwrap()
+            .interaction_affects_layout()
+        );
+        assert!(
+            Stylesheet::for_theme(Theme::Dark, "", "panel:hover button { padding: 12px; }")
+                .unwrap()
+                .interaction_affects_layout()
+        );
+        assert!(
+            Stylesheet::for_theme(
+                Theme::Dark,
+                "",
+                "panel:hover { --size: 20px; } button { padding: var(--size); }"
+            )
+            .unwrap()
+            .interaction_affects_layout()
+        );
+    }
+
+    #[test]
+    fn desktop_layer_is_atomic_and_application_rules_win() {
+        let button = Element::new(2, Widget::Button("Theme".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene.set_stylesheet("button { color: #123456; }").unwrap();
+        scene
+            .set_desktop_theme(Theme::Light, "button { color: #abcdef; padding: 17px; }")
+            .unwrap();
+        let before = scene.computed_style(ElementId(2)).unwrap();
+        assert_eq!(before.style.text.color, parse_color("#123456").unwrap());
+        assert!(
+            scene
+                .set_desktop_theme(Theme::Dark, "button { color: nonsense; }")
+                .is_err()
+        );
+        assert_eq!(scene.theme(), Theme::Light);
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
+        scene
+            .insert(ElementId(1), Element::new(3, Widget::Button("New".into())))
+            .unwrap();
+        assert_eq!(scene.theme(), Theme::Light);
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
+        assert_eq!(
+            scene.desktop_stylesheet(),
+            "button { color: #abcdef; padding: 17px; }"
+        );
+        scene.remove(ElementId(3)).unwrap();
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
     }
 
     #[test]
@@ -1037,12 +1770,18 @@ mod tests {
         ]))
         .unwrap();
         let button_padding = scene.computed_style(ElementId(3)).unwrap().padding;
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.background,
+            Some(paint.clone())
+        );
         scene
             .set_stylesheet("panel { background-color: #abcdef; }")
             .unwrap();
+        let mut overridden = paint;
+        overridden.fill = Some(Color::rgba(0xab, 0xcd, 0xef, 255));
         assert_eq!(
             scene.computed_style(ElementId(2)).unwrap().style.background,
-            Some(paint)
+            Some(overridden)
         );
         assert_eq!(
             scene.computed_style(ElementId(3)).unwrap().padding,

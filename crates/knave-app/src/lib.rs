@@ -2,6 +2,8 @@
 //!
 //! Clipboard requests use the system clipboard; actions also reach the application.
 mod clipboard;
+#[cfg(target_os = "linux")]
+mod theme;
 
 use std::{error::Error, sync::Arc};
 
@@ -24,6 +26,14 @@ pub trait Application {
     fn ready(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
         Ok(())
     }
+    /// Called when a desktop theme is applied, including before the first frame.
+    fn theme_changed(&mut self, _theme: Theme) -> AppResult {
+        Ok(())
+    }
+    /// Rebuild theme-dependent cached content using the text engine after a live update.
+    fn refresh_theme(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
+        Ok(())
+    }
     fn scene(&mut self) -> &mut Scene;
     /// Clipboard effects are handled before delivery; cut also reports the edited value.
     fn action(&mut self, action: Action) -> AppResult;
@@ -33,14 +43,51 @@ pub trait Application {
     }
 }
 
-/// Run one window until it closes. Feedback uses explicit scene deadlines;
-/// inactive scenes sleep without polling or background workers.
+/// Run one window until it closes, following Knave's live desktop theme on Linux.
 pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppResult {
+    run_inner(title, size, app, true)
+}
+
+/// Run without loading or watching desktop theme configuration.
+pub fn run_unthemed(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppResult {
+    run_inner(title, size, app, false)
+}
+
+fn run_inner(
+    title: &str,
+    size: [f64; 2],
+    mut app: impl Application + 'static,
+    themed: bool,
+) -> AppResult {
     if size.iter().any(|v| !v.is_finite() || *v <= 0.0) {
         return Err("window dimensions must be finite and positive".into());
     }
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Wait);
+    #[cfg(target_os = "linux")]
+    let watcher = if themed {
+        let watcher = match theme::Watcher::start(event_loop.create_proxy()) {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                eprintln!("theme watcher: {error}");
+                None
+            }
+        };
+        match theme::apply(app.scene()) {
+            Ok((theme, _)) => app.theme_changed(theme)?,
+            Err(error) => {
+                eprintln!("theme: {error}");
+                if let Ok(theme) = theme::apply_fallback(app.scene()) {
+                    app.theme_changed(theme)?;
+                }
+            }
+        }
+        watcher
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "linux"))]
+    let _ = (&mut app, themed);
     let mut host = Host {
         title: title.into(),
         size,
@@ -51,6 +98,8 @@ pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppR
         composing: false,
         error: None,
         epoch: std::time::Instant::now(),
+        #[cfg(target_os = "linux")]
+        watcher,
     };
     event_loop.run_app(&mut host)?;
     match host.error {
@@ -223,6 +272,8 @@ fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
 }
 
 struct Host<A> {
+    #[cfg(target_os = "linux")]
+    watcher: Option<theme::Watcher>,
     epoch: std::time::Instant,
     title: String,
     size: [f64; 2],
@@ -426,6 +477,33 @@ impl<A: Application> Host<A> {
     }
 }
 impl<A: Application> ApplicationHandler for Host<A> {
+    #[cfg(target_os = "linux")]
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, _: ()) {
+        if let Some(watcher) = &self.watcher {
+            watcher
+                .pending
+                .store(false, std::sync::atomic::Ordering::Release);
+            match theme::apply(self.app.scene()) {
+                Ok((theme, true)) => {
+                    let result = self.app.theme_changed(theme).and_then(|()| {
+                        if let Some(gpu) = &mut self.gpu {
+                            self.app.refresh_theme(&mut gpu.painter)
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    if let Err(error) = result {
+                        self.fail(event_loop, error);
+                        return;
+                    }
+                }
+                Ok((_, false)) => {}
+                Err(error) => eprintln!("theme: {error}"),
+            }
+            self.sync(true);
+        }
+    }
+
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let actions = self.app.scene().advance(self.epoch.elapsed());
         for action in actions {

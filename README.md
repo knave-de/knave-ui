@@ -60,4 +60,5 @@ See [renderer architecture](docs/architecture/renderer-foundation.md),
 [repository extraction decision](docs/architecture/repository-split.md).
 
 The [component catalog](docs/architecture/widget-catalog.md) documents shared
-widgets, keyboard/selection contracts, semantic snapshots and deferred CSS work.
+widgets, keyboard/selection contracts and semantic snapshots. See the
+[theme selector reference](docs/architecture/theme-selectors.md) for CSS coverage.

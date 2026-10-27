@@ -111,7 +111,10 @@ Reverting this slice restores the previous label behavior.
 
 Measurement, placement and paint invalidation are separate. Hover and slider
 motion repaint; scrolling and dragging update placement without text shaping.
-Offscreen elements emit no drawing commands. Large collections retain their
+Paint-only interaction rules skip layout-style snapshots. Rules that may change
+layout, including stateful custom properties, compare visible nodes; making a
+hidden subtree visible separately invalidates layout. `background` and
+`background-color` share the same cascade property. Offscreen elements emit no drawing commands. Large collections retain their
 nodes; this is clipping, not list virtualization.
 
 Shape/image CPU staging and GPU instance buffers retain capacity across frames.

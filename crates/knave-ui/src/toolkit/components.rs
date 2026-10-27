@@ -1,6 +1,25 @@
 use super::*;
 use crate::UiImage;
 
+/// Stable semantic identities for composed elements and text roles in CSS.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ComponentKind {
+    Subtitle,
+    Caption,
+    Badge,
+    Alert,
+    Section,
+    Card,
+    EmptyState,
+    SplitButton,
+    Breadcrumbs,
+    CommandPalette,
+    Expander,
+    Accordion,
+    SplitView,
+    ColorPicker,
+}
+
 /// Appearance intent for the future theme layer; constructors do not set paint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ButtonVariant {
@@ -58,6 +77,7 @@ impl Element {
     }
     pub fn split_button(id: u64, primary: Element, menu: Element) -> Self {
         Self::new(id, Widget::Panel)
+            .component(ComponentKind::SplitButton)
             .layout(Layout {
                 flow: Flow::Row,
                 ..Layout::default()
@@ -67,11 +87,13 @@ impl Element {
     pub fn badge(id: u64, label: impl Into<String>) -> Self {
         let mut result = Self::new(id, Widget::Text(label.into()));
         result.semantics.role = Some(Role::Status);
+        result.component = Some(ComponentKind::Badge);
         result
     }
     pub fn alert(id: u64, text: impl Into<String>) -> Self {
         let mut result = Self::new(id, Widget::Text(text.into()));
         result.semantics.role = Some(Role::Alert);
+        result.component = Some(ComponentKind::Alert);
         result
     }
 }
