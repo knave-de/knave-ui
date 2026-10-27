@@ -14,6 +14,11 @@ struct ShapeInstance {
     parameters: vec4<f32>,
     shadow: vec4<f32>,
     shadow_data: vec4<f32>,
+    edge_widths: vec4<f32>,
+    edge_top: vec4<f32>,
+    edge_right: vec4<f32>,
+    edge_bottom: vec4<f32>,
+    edge_left: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> viewport: Viewport;
@@ -68,15 +73,31 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let opacity = clamp(shape.parameters.y, 0.0, 1.0);
     if (distance <= antialias) {
         let outer = 1.0 - smoothstep(-antialias, antialias, distance);
-        let border_width = max(shape.parameters.x, 0.0);
-        let inner = 1.0 - smoothstep(-antialias, antialias, distance + border_width);
+        var border_color = shape.border;
+        var inner = 1.0 - smoothstep(-antialias, antialias, distance + max(shape.parameters.x, 0.0));
+        var has_border = shape.parameters.x > 0.0 && shape.border.a > 0.0;
+        if (shape.parameters.z > 0.5) {
+            let widths = shape.edge_widths;
+            let inner_size = max(size - vec2(widths.y + widths.w, widths.x + widths.z), vec2(0.0));
+            let inner_point = input.local - vec2(widths.w, widths.x);
+            let inner_radii = max(shape.radii - vec4(max(widths.x, widths.w), max(widths.x, widths.y), max(widths.z, widths.y), max(widths.z, widths.w)), vec4(0.0));
+            let inner_distance = rounded_box_distance(inner_point, inner_size, inner_radii);
+            inner = select(0.0, 1.0 - smoothstep(-antialias, antialias, inner_distance), inner_size.x > 0.0 && inner_size.y > 0.0);
+            let distances = vec4(input.local.y / max(widths.x, 0.0001), (size.x - input.local.x) / max(widths.y, 0.0001), (size.y - input.local.y) / max(widths.z, 0.0001), input.local.x / max(widths.w, 0.0001));
+            let nearest = min(min(distances.x, distances.y), min(distances.z, distances.w));
+            border_color = shape.edge_top;
+            if (nearest == distances.y) { border_color = shape.edge_right; }
+            if (nearest == distances.z) { border_color = shape.edge_bottom; }
+            if (nearest == distances.w) { border_color = shape.edge_left; }
+            has_border = true;
+        }
         let border_amount = clamp(outer - inner, 0.0, 1.0);
-        let fill_amount = select(outer, inner, border_width > 0.0 && shape.border.a > 0.0);
-        let border_alpha = shape.border.a * border_amount;
+        let fill_amount = select(outer, inner, has_border);
+        let border_alpha = border_color.a * border_amount;
         let fill_alpha = shape.fill.a * fill_amount;
         let alpha = (border_alpha + fill_alpha * (1.0 - border_alpha)) * opacity;
         if (alpha <= 0.0) { return vec4(0.0); }
-        let rgb = (shape.border.rgb * border_alpha + shape.fill.rgb * fill_alpha * (1.0 - border_alpha))
+        let rgb = (border_color.rgb * border_alpha + shape.fill.rgb * fill_alpha * (1.0 - border_alpha))
             / max(border_alpha + fill_alpha * (1.0 - border_alpha), 0.00001);
         return vec4(rgb, alpha);
     }
@@ -112,6 +133,11 @@ struct ShapeInstance {
     meta: [f32; 4],
     shadow: [f32; 4],
     shadow_data: [f32; 4],
+    edge_widths: [f32; 4],
+    edge_top: [f32; 4],
+    edge_right: [f32; 4],
+    edge_bottom: [f32; 4],
+    edge_left: [f32; 4],
 }
 
 pub(super) struct ShapePass {
@@ -349,11 +375,30 @@ fn instance(bounds: Rect, paint: &ShapePaint, transform: Transform2D) -> ShapeIn
                 .border
                 .map_or(0.0, |border| sane(border.width).max(0.0)),
             sane(paint.opacity).clamp(0.0, 1.0),
-            0.0,
+            if paint.edge_borders.is_some() {
+                1.0
+            } else {
+                0.0
+            },
             0.0,
         ],
         shadow,
         shadow_data,
+        edge_widths: paint.edge_borders.map_or([0.0; 4], |e| {
+            [e.top.width, e.right.width, e.bottom.width, e.left.width].map(|w| sane(w).max(0.0))
+        }),
+        edge_top: paint
+            .edge_borders
+            .map_or([0.0; 4], |e| color_array(e.top.color)),
+        edge_right: paint
+            .edge_borders
+            .map_or([0.0; 4], |e| color_array(e.right.color)),
+        edge_bottom: paint
+            .edge_borders
+            .map_or([0.0; 4], |e| color_array(e.bottom.color)),
+        edge_left: paint
+            .edge_borders
+            .map_or([0.0; 4], |e| color_array(e.left.color)),
     }
 }
 

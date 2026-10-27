@@ -13,8 +13,8 @@ pub use display_list::{
 };
 pub use geometry::{Rect, Transform2D};
 pub use paint::{
-    Border, BoxShadow, Color, CornerRadii, HeadingLevel, ImageFit, ImageStyle, ShapePaint,
-    TextAlign, TextSpan, TextStyle, TextWrap,
+    Border, BoxShadow, Color, CornerRadii, EdgeBorders, HeadingLevel, ImageFit, ImageStyle,
+    ShapePaint, TextAlign, TextSpan, TextStyle, TextWrap,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

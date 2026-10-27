@@ -49,6 +49,7 @@ struct Node {
     children: Vec<usize>,
     bounds: Rect,
     clip: Option<Rect>,
+    parent_clip: Option<Rect>,
     natural: [f32; 2],
     scroll: f32,
     scroll_max: f32,
@@ -144,6 +145,7 @@ impl Scene {
                 let metrics_changed = old.iter().zip(&new).any(|(a, b)| {
                     a.as_ref().zip(b.as_ref()).is_some_and(|(a, b)| {
                         a.padding != b.padding
+                            || a.borders != b.borders
                             || a.margin != b.margin
                             || a.gap != b.gap
                             || a.style.text.font_family != b.style.text.font_family
@@ -186,6 +188,12 @@ impl Scene {
             if style.padding_explicit {
                 layout.padding_edges = Some(style.padding);
             }
+            layout.border_edges = Insets {
+                top: style.borders.top.width,
+                right: style.borders.right.width,
+                bottom: style.borders.bottom.width,
+                left: style.borders.left.width,
+            };
             layout.margin = style.margin;
             layout.gap = style.gap;
         }
@@ -251,6 +259,7 @@ impl Scene {
             children: Vec::new(),
             bounds: Rect::default(),
             clip: None,
+            parent_clip: None,
             natural: [0.0; 2],
             scroll: 0.0,
             scroll_max: 0.0,
@@ -548,6 +557,7 @@ impl Scene {
                 .zip(self.computed_style(self.nodes[index].element.id).as_ref())
                 .is_some_and(|(before, after)| {
                     before.padding != after.padding
+                        || before.borders != after.borders
                         || before.margin != after.margin
                         || before.gap != after.gap
                         || before.style.text.font_family != after.style.text.font_family
@@ -739,6 +749,7 @@ fn validate(e: &Element) -> Result<(), UiError> {
         return Err(UiError::InvalidLayout);
     }
     if !l.margin.valid()
+        || !l.border_edges.valid()
         || !l.insets().valid()
         || e.style.radii.is_some_and(|r| {
             [r.top_left, r.top_right, r.bottom_left, r.bottom_right]
@@ -831,7 +842,7 @@ fn control_content(bounds: Rect, layout: Layout) -> Rect {
     if layout.padding_edges.is_some() || layout.padding != 0.0 {
         layout.insets().apply(bounds)
     } else {
-        inset(bounds, 10.0)
+        layout.border_edges.apply(inset(bounds, 10.0))
     }
 }
 
@@ -839,6 +850,8 @@ fn label_content(bounds: Rect, layout: Layout) -> Rect {
     if layout.padding_edges.is_some() || layout.padding != 0.0 {
         layout.insets().apply(bounds)
     } else {
-        Insets::symmetric(0.0, 10.0).apply(bounds)
+        layout
+            .border_edges
+            .apply(Insets::symmetric(0.0, 10.0).apply(bounds))
     }
 }

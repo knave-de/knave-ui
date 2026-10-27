@@ -1,7 +1,7 @@
 use knave_renderer::WgpuPainter;
 use knave_ui::{
-    BoxShadow, Color, CornerRadii, DisplayCommand, DisplayList, ImageStyle, Rect, ShapePaint,
-    TextStyle, Transform2D, UiImage,
+    Border, BoxShadow, Color, CornerRadii, DisplayCommand, DisplayList, EdgeBorders, ImageStyle,
+    Rect, ShapePaint, TextStyle, Transform2D, UiImage,
 };
 
 #[test]
@@ -28,7 +28,7 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
         adapter_info.name, adapter_info.backend, adapter_info.device_type
     );
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-    let size = (32, 32);
+    let size = (64, 64);
     let target = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("knave-renderer-offscreen-target"),
         size: wgpu::Extent3d {
@@ -127,6 +127,33 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
             DisplayCommand::Shape {
                 bounds: Rect::new(27.0, 1.0, 3.0, 5.0),
                 paint: ShapePaint::fill(Color::rgba(48, 90, 160, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::Shape {
+                bounds: Rect::new(36.0, 36.0, 24.0, 24.0),
+                paint: ShapePaint {
+                    edge_borders: Some(EdgeBorders {
+                        top: Border {
+                            width: 4.0,
+                            color: Color::rgba(255, 0, 0, 255),
+                        },
+                        right: Border {
+                            width: 4.0,
+                            color: Color::rgba(0, 255, 0, 255),
+                        },
+                        bottom: Border {
+                            width: 4.0,
+                            color: Color::rgba(0, 0, 255, 255),
+                        },
+                        left: Border {
+                            width: 4.0,
+                            color: Color::rgba(255, 255, 0, 255),
+                        },
+                    }),
+                    radii: CornerRadii::uniform(4.0),
+                    ..ShapePaint::fill(Color::rgba(255, 255, 255, 255))
+                },
                 transform: Transform2D::IDENTITY,
                 clip: None,
             },
@@ -252,6 +279,11 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
         [255, 0, 0, 255],
         "blurred shadow should render beyond the shape quad"
     );
+    assert_eq!(pixel(47, 37), [255, 0, 0, 255]);
+    assert_eq!(pixel(58, 47), [0, 255, 0, 255]);
+    assert_eq!(pixel(47, 58), [0, 0, 255, 255]);
+    assert_eq!(pixel(37, 47), [255, 255, 0, 255]);
+    assert_eq!(pixel(47, 47), [255, 255, 255, 255]);
     let translated = pixel(18, 12);
     assert!(
         translated[0] > 240 && translated[1] > 240 && translated[2] < 8,

@@ -86,9 +86,10 @@ impl Scene {
         let b = node.bounds;
         let clip = node.clip;
         let state = self.interaction(e.id).unwrap();
-        let mut style = self
-            .computed_style(e.id)
-            .map_or_else(|| e.style.clone(), |s| s.style);
+        let computed = self.computed_style(e.id);
+        let mut style = computed
+            .as_ref()
+            .map_or_else(|| e.style.clone(), |s| s.style.clone());
         let layout = self.effective_layout(i);
         if state.disabled {
             style.text.color.alpha = 105;
@@ -112,6 +113,20 @@ impl Scene {
                     .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
             })
         });
+        if background.is_none()
+            && computed.as_ref().is_some_and(|c| {
+                [
+                    c.borders.top.width,
+                    c.borders.right.width,
+                    c.borders.bottom.width,
+                    c.borders.left.width,
+                ]
+                .iter()
+                .any(|w| *w > 0.0)
+            })
+        {
+            background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+        }
         if let Some(paint) = &mut background {
             paint.radii = style.radii.unwrap_or_else(|| {
                 if style.background.is_some() {
@@ -123,17 +138,49 @@ impl Scene {
             if state.disabled {
                 paint.opacity *= 0.5;
             }
-            if state.focused && self.focus_visible && !state.disabled {
-                paint.border = Some(
-                    self.computed_style(e.id)
-                        .and_then(|computed| computed.focus_border)
-                        .unwrap_or(Border {
-                            color: style.focus,
-                            width: 1.0,
-                        }),
-                );
+            if let Some(computed) = &computed
+                && [
+                    computed.borders.top.width,
+                    computed.borders.right.width,
+                    computed.borders.bottom.width,
+                    computed.borders.left.width,
+                ]
+                .iter()
+                .any(|w| *w > 0.0)
+            {
+                paint.edge_borders = Some(computed.borders);
+                paint.border = None;
             }
             shape(&mut self.list, b, clip, paint.clone());
+        }
+        let outline = computed.as_ref().and_then(|c| c.outline).or_else(|| {
+            (state.focused && self.focus_visible && !state.disabled).then_some(Border {
+                color: style.focus,
+                width: 1.0,
+            })
+        });
+        if let Some(outline) = outline.filter(|o| o.width > 0.0) {
+            let offset = computed.as_ref().map_or(0.0, |c| c.outline_offset);
+            let expand = offset + outline.width;
+            let outer = Rect::new(
+                b.x - expand,
+                b.y - expand,
+                b.width + 2.0 * expand,
+                b.height + 2.0 * expand,
+            );
+            let mut paint = ShapePaint::fill(Color::rgba(0, 0, 0, 0));
+            paint.border = Some(outline);
+            let radii = style
+                .radii
+                .or_else(|| background.as_ref().map(|p| p.radii))
+                .unwrap_or(CornerRadii::uniform(style.radius));
+            paint.radii = CornerRadii {
+                top_left: (radii.top_left + expand).max(0.0),
+                top_right: (radii.top_right + expand).max(0.0),
+                bottom_right: (radii.bottom_right + expand).max(0.0),
+                bottom_left: (radii.bottom_left + expand).max(0.0),
+            };
+            shape(&mut self.list, outer, node.parent_clip, paint);
         }
         let content = control_content(b, layout);
         let text_area = label_content(b, layout);

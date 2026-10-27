@@ -231,6 +231,7 @@ impl Scene {
         bounds.x += l.offset[0];
         bounds.y += l.offset[1];
         self.nodes[i].bounds = bounds;
+        self.nodes[i].parent_clip = parent_clip;
         self.nodes[i].clip = parent_clip.and_then(|c| c.intersection(bounds));
         let inner = l.insets().apply(bounds);
         let children = self.nodes[i].children.clone();

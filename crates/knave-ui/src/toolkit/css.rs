@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Border, Color, CornerRadii, ShapePaint};
+use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint};
 
 const DARK_STYLESHEET: &str = include_str!("../dark.css");
 const LIGHT_STYLESHEET: &str = include_str!("../light.css");
@@ -25,7 +25,9 @@ impl Theme {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
     pub style: Style,
-    pub(super) focus_border: Option<Border>,
+    pub borders: EdgeBorders,
+    pub outline: Option<Border>,
+    pub outline_offset: f32,
     pub padding: Insets,
     pub margin: Insets,
     pub gap: f32,
@@ -33,10 +35,20 @@ pub struct ComputedStyle {
 }
 impl From<&Element> for ComputedStyle {
     fn from(element: &Element) -> Self {
+        let mut borders = empty_borders();
+        borders.top.width = element.layout.border_edges.top;
+        borders.right.width = element.layout.border_edges.right;
+        borders.bottom.width = element.layout.border_edges.bottom;
+        borders.left.width = element.layout.border_edges.left;
         Self {
             style: element.style.clone(),
-            focus_border: None,
-            padding: element.layout.insets(),
+            borders,
+            outline: None,
+            outline_offset: 0.0,
+            padding: element
+                .layout
+                .padding_edges
+                .unwrap_or(Insets::all(element.layout.padding)),
             margin: element.layout.margin,
             gap: element.layout.gap,
             padding_explicit: false,
@@ -131,33 +143,10 @@ impl Stylesheet {
                 let (name, value) = declaration.split_once(':').ok_or(StylesheetError::Syntax)?;
                 let name = name.trim().to_ascii_lowercase();
                 let value = value.trim().to_owned();
-                if !name.starts_with("--")
-                    && !matches!(
-                        name.as_str(),
-                        "color"
-                            | "background"
-                            | "background-color"
-                            | "border"
-                            | "border-color"
-                            | "border-width"
-                            | "border-radius"
-                            | "font-size"
-                            | "font-weight"
-                            | "line-height"
-                            | "font-family"
-                            | "text-align"
-                            | "text-wrap"
-                            | "padding"
-                            | "margin"
-                            | "gap"
-                    )
-                {
-                    return Err(StylesheetError::UnsupportedProperty);
-                }
                 if value.is_empty() {
                     return Err(StylesheetError::InvalidValue);
                 }
-                declarations.push((name, value));
+                declarations.extend(expand_declaration(&name, &value)?);
             }
             sheet.rules.push(Rule {
                 selectors,
@@ -191,7 +180,9 @@ impl Stylesheet {
                 apply_decl(
                     &mut ComputedStyle {
                         style: Style::default(),
-                        focus_border: None,
+                        borders: empty_borders(),
+                        outline: None,
+                        outline_offset: 0.0,
                         padding: Insets::default(),
                         margin: Insets::default(),
                         gap: 0.0,
@@ -205,6 +196,86 @@ impl Stylesheet {
         Ok(())
     }
 }
+fn empty_borders() -> EdgeBorders {
+    let edge = Border {
+        color: Color::TEXT,
+        width: 0.0,
+    };
+    EdgeBorders {
+        top: edge,
+        right: edge,
+        bottom: edge,
+        left: edge,
+    }
+}
+
+fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, StylesheetError> {
+    let sides = ["top", "right", "bottom", "left"];
+    let corners = ["top-left", "top-right", "bottom-right", "bottom-left"];
+    let mut out = Vec::new();
+    let mut push = |name: String, value: String| out.push((name, value));
+    match name {
+        "border-radius" => {
+            for corner in corners {
+                push(format!("border-{corner}-radius"), format!("@quad:{value}"));
+            }
+        }
+        "border-width" | "border-color" => {
+            let suffix = name.strip_prefix("border-").unwrap();
+            for side in sides {
+                push(format!("border-{side}-{suffix}"), format!("@quad:{value}"));
+            }
+        }
+        "border" => {
+            for side in sides {
+                for part in ["width", "color"] {
+                    push(format!("border-{side}-{part}"), format!("@border:{value}"));
+                }
+            }
+        }
+        "border-top" | "border-right" | "border-bottom" | "border-left" => {
+            for part in ["width", "color"] {
+                push(format!("{name}-{part}"), format!("@border:{value}"));
+            }
+        }
+        "outline" => {
+            for part in ["width", "color"] {
+                push(format!("outline-{part}"), format!("@border:{value}"));
+            }
+        }
+        _ if name.starts_with("--")
+            || matches!(
+                name,
+                "color"
+                    | "background"
+                    | "background-color"
+                    | "font-size"
+                    | "font-weight"
+                    | "line-height"
+                    | "font-family"
+                    | "text-align"
+                    | "text-wrap"
+                    | "padding"
+                    | "margin"
+                    | "gap"
+                    | "outline-width"
+                    | "outline-color"
+                    | "outline-offset"
+            )
+            || sides.iter().any(|side| {
+                name == format!("border-{side}-width") || name == format!("border-{side}-color")
+            })
+            || corners
+                .iter()
+                .any(|corner| name == format!("border-{corner}-radius")) =>
+        {
+            push(name.to_owned(), value.to_owned())
+        }
+        _ => return Err(StylesheetError::UnsupportedProperty),
+    }
+    Ok(out)
+}
+
 fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
     let mut parts = Vec::new();
     let mut specificity = (0, 0, 0);
@@ -335,34 +406,19 @@ pub(super) fn compute(
         for selector in &rule.selectors {
             if selector_matches(scene, index, state, selector) {
                 for (name, value) in &rule.declarations {
-                    let name = if selector
-                        .parts
-                        .last()
-                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
-                        && name == "border-color"
+                    if name.starts_with("outline-")
+                        && !scene.focus_visible
+                        && selector
+                            .parts
+                            .last()
+                            .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
                     {
-                        "focus-border-color"
-                    } else if selector
-                        .parts
-                        .last()
-                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
-                        && name == "border-width"
-                    {
-                        "focus-border-width"
-                    } else if selector
-                        .parts
-                        .last()
-                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
-                        && name == "border"
-                    {
-                        "focus-border"
-                    } else {
-                        name.as_str()
-                    };
+                        continue;
+                    }
                     let key = (selector.specificity, rule.order);
                     if declarations
                         .get(name)
-                        .is_none_or(|(old, order, _)| key > (*old, *order))
+                        .is_none_or(|(old, order, _)| key >= (*old, *order))
                     {
                         declarations.insert(name.to_owned(), (key.0, key.1, value.clone()));
                     }
@@ -376,7 +432,6 @@ pub(super) fn compute(
             vars.insert(name.clone(), value.clone());
         }
     }
-    let mut focus_border_color_explicit = false;
     for (name, (_, _, raw)) in declarations {
         if name.starts_with("--") {
             continue;
@@ -387,49 +442,16 @@ pub(super) fn compute(
             continue;
         }
         let value = resolve_vars(&raw, &vars, 0).ok()?;
-        match name.as_str() {
-            "focus-border-color" => {
-                let border = result.focus_border.get_or_insert(Border {
-                    color: result.style.focus,
-                    width: 1.0,
-                });
-                border.color = parse_color(&value).ok()?;
-                focus_border_color_explicit = true;
-                continue;
-            }
-            "focus-border-width" => {
-                let border = result.focus_border.get_or_insert(Border {
-                    color: result.style.focus,
-                    width: 1.0,
-                });
-                border.width = px(&value).ok()?;
-                continue;
-            }
-            "focus-border" => {
-                let parts = value.split_whitespace().collect::<Vec<_>>();
-                if parts.len() != 3 || parts[1] != "solid" {
-                    return None;
-                }
-                result.focus_border = Some(Border {
-                    color: parse_color(parts[2]).ok()?,
-                    width: px(parts[0]).ok()?,
-                });
-                focus_border_color_explicit = true;
-                continue;
-            }
-            _ => {}
-        }
         apply_decl(&mut result, &name, &value).ok()?;
-    }
-    if !focus_border_color_explicit && let Some(border) = &mut result.focus_border {
-        border.color = result.style.focus;
     }
     Some(result)
 }
 pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
     let mut result = ComputedStyle {
         style: Style::default(),
-        focus_border: None,
+        borders: empty_borders(),
+        outline: None,
+        outline_offset: 0.0,
         padding: Insets::all(8.0),
         margin: Insets::default(),
         gap: 0.0,
@@ -442,7 +464,7 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
             if selector.parts.len() == 1 && selector.parts[0].widget.as_deref() == Some(kind) {
                 for (name, value) in &rule.declarations {
                     let key = (selector.specificity, rule.order);
-                    if decl.get(name).is_none_or(|(s, o, _)| key > (*s, *o)) {
+                    if decl.get(name).is_none_or(|(s, o, _)| key >= (*s, *o)) {
                         decl.insert(name.clone(), (key.0, key.1, value.clone()));
                     }
                 }
@@ -647,52 +669,111 @@ fn px(v: &str) -> Result<f32, StylesheetError> {
         Ok(f)
     }
 }
+fn component_value(value: &str, index: usize, width: bool) -> Result<String, StylesheetError> {
+    if let Some(value) = value.strip_prefix("@quad:") {
+        let vals: Vec<_> = value.split_whitespace().collect();
+        let values = match vals.as_slice() {
+            [a] => [*a, *a, *a, *a],
+            [a, b] => [*a, *b, *a, *b],
+            [a, b, c] => [*a, *b, *c, *b],
+            [a, b, c, d] => [*a, *b, *c, *d],
+            _ => return Err(StylesheetError::InvalidValue),
+        };
+        Ok(values[index].to_owned())
+    } else if let Some(value) = value.strip_prefix("@border:") {
+        let vals: Vec<_> = value.split_whitespace().collect();
+        if vals.len() != 3 || vals[1] != "solid" {
+            return Err(StylesheetError::InvalidValue);
+        }
+        Ok(vals[if width { 0 } else { 2 }].to_owned())
+    } else {
+        Ok(value.to_owned())
+    }
+}
 fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), StylesheetError> {
     match name {
         "color" => c.style.text.color = parse_color(v)?,
         "background" | "background-color" => {
             c.style.background = Some(ShapePaint::fill(parse_color(v)?))
         }
-        "border-color" => {
-            let color = parse_color(v)?;
-            let width = c
-                .style
-                .background
-                .as_ref()
-                .and_then(|p| p.border)
-                .map_or(1.0, |b| b.width);
-            let p = c
-                .style
-                .background
-                .get_or_insert_with(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-            p.border = Some(Border { color, width });
+        "border-top-width"
+        | "border-right-width"
+        | "border-bottom-width"
+        | "border-left-width"
+        | "border-top-color"
+        | "border-right-color"
+        | "border-bottom-color"
+        | "border-left-color" => {
+            let index = if name.starts_with("border-top-") {
+                0
+            } else if name.starts_with("border-right-") {
+                1
+            } else if name.starts_with("border-bottom-") {
+                2
+            } else {
+                3
+            };
+            let value = component_value(v, index, name.ends_with("width"))?;
+            let edge = match index {
+                0 => &mut c.borders.top,
+                1 => &mut c.borders.right,
+                2 => &mut c.borders.bottom,
+                _ => &mut c.borders.left,
+            };
+            if name.ends_with("width") {
+                edge.width = px(&value)?;
+            } else {
+                edge.color = parse_color(&value)?;
+            }
         }
-        "border-width" => {
-            let width = px(v)?;
-            let p = c
+        "border-top-left-radius"
+        | "border-top-right-radius"
+        | "border-bottom-right-radius"
+        | "border-bottom-left-radius" => {
+            let index = match name {
+                "border-top-left-radius" => 0,
+                "border-top-right-radius" => 1,
+                "border-bottom-right-radius" => 2,
+                _ => 3,
+            };
+            let r = px(&component_value(v, index, true)?)?;
+            let radii = c
                 .style
-                .background
-                .get_or_insert_with(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-            let color = p.border.map_or(Color::ACCENT, |b| b.color);
-            p.border = Some(Border { color, width });
+                .radii
+                .get_or_insert_with(|| CornerRadii::uniform(c.style.radius));
+            match index {
+                0 => radii.top_left = r,
+                1 => radii.top_right = r,
+                2 => radii.bottom_right = r,
+                _ => radii.bottom_left = r,
+            }
+            if index == 0 {
+                c.style.radius = r;
+            }
         }
-        "border" => {
-            let parts = v.split_whitespace().collect::<Vec<_>>();
-            if parts.len() != 3 || parts[1] != "solid" {
+        "outline-width" | "outline-color" => {
+            let value = component_value(v, 0, name == "outline-width")?;
+            let outline = c.outline.get_or_insert(Border {
+                width: 0.0,
+                color: Color::TEXT,
+            });
+            if name == "outline-width" {
+                outline.width = px(&value)?;
+            } else {
+                outline.color = parse_color(&value)?;
+            }
+        }
+        "outline-offset" => {
+            let value = v
+                .trim()
+                .strip_suffix("px")
+                .unwrap_or(v.trim())
+                .parse::<f32>()
+                .map_err(|_| StylesheetError::InvalidValue)?;
+            if !value.is_finite() {
                 return Err(StylesheetError::InvalidValue);
             }
-            let width = px(parts[0])?;
-            let color = parse_color(parts[2])?;
-            let p = c
-                .style
-                .background
-                .get_or_insert_with(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-            p.border = Some(Border { color, width });
-        }
-        "border-radius" => {
-            let r = px(v)?;
-            c.style.radius = r;
-            c.style.radii = Some(CornerRadii::uniform(r));
+            c.outline_offset = value;
         }
         "font-size" => c.style.text.font_size = px(v)?,
         "line-height" => c.style.text.line_height = px(v)?,
