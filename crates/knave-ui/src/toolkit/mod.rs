@@ -33,6 +33,7 @@ use crate::{Color, DisplayList, Rect};
 pub use input::{Action, EventResult, Input, Key, KeyModifiers};
 pub use model::*;
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 pub use text_edit::{InputMode, TextEdit, TextValidation};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -80,6 +81,7 @@ struct MenuState {
 pub struct Scene {
     theme: Theme,
     stylesheet: Stylesheet,
+    style_cache: Mutex<Vec<Option<(InteractionState, ComputedStyle)>>>,
     stylesheet_override: String,
     desktop_stylesheet: String,
     clock: std::time::Duration,
@@ -145,12 +147,14 @@ impl Scene {
 
     fn update_stylesheet(&mut self, next: Stylesheet) {
         if !self.stylesheet.same_as(&next) {
+            self.clear_style_cache();
             let old = self
                 .nodes
                 .iter()
                 .map(|n| self.computed_style(n.element.id))
                 .collect::<Vec<_>>();
             let _previous = std::mem::replace(&mut self.stylesheet, next);
+            self.clear_style_cache();
             let new = self
                 .nodes
                 .iter()
@@ -193,7 +197,26 @@ impl Scene {
         id: ElementId,
         state: InteractionState,
     ) -> Option<ComputedStyle> {
-        css::compute(self, id, state)
+        let index = *self.indices.get(&id)?;
+        {
+            let cache = self.style_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((cached_state, style)) = cache.get(index).and_then(Option::as_ref)
+                && *cached_state == state
+            {
+                return Some(style.clone());
+            }
+        }
+        let style = css::compute(self, id, state)?;
+        let mut cache = self.style_cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.resize(self.nodes.len(), None);
+        cache[index] = Some((state, style.clone()));
+        Some(style)
+    }
+    pub(super) fn clear_style_cache(&self) {
+        self.style_cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
     pub(super) fn auxiliary_style(&self, kind: &str) -> ComputedStyle {
         css::auxiliary(self, kind)
@@ -264,6 +287,7 @@ impl Scene {
             theme: Theme::Dark,
             stylesheet: Stylesheet::for_theme(Theme::Dark, "", "")
                 .expect("bundled dark stylesheet is valid"),
+            style_cache: Mutex::new(Vec::new()),
             stylesheet_override: String::new(),
             desktop_stylesheet: String::new(),
             clock: std::time::Duration::ZERO,
@@ -505,6 +529,7 @@ impl Scene {
             self.cancel_if_within(i);
         }
         self.nodes[i].element.enabled = enabled;
+        self.clear_style_cache();
         self.paint_dirty = true;
         Ok(())
     }
@@ -712,6 +737,7 @@ impl Scene {
         }
     }
     fn invalidate_layout(&mut self) {
+        self.clear_style_cache();
         self.measure_dirty = true;
         self.invalidate_positions();
     }

@@ -949,7 +949,7 @@ pub(super) fn compute(
     let mut result = ComputedStyle::from(&node.element);
     if let Some(parent) = node.parent {
         let parent_id = scene.nodes[parent].element.id;
-        let inherited = compute(scene, parent_id, scene.interaction(parent_id)?)?;
+        let inherited = scene.computed_style(parent_id)?;
         let defaults = crate::TextStyle::default();
         if result.style.text.color == defaults.color {
             result.style.text.color = inherited.style.text.color;
@@ -1753,6 +1753,7 @@ mod tests {
             Color::rgba(0x11, 0x22, 0x33, 255)
         );
         scene.nodes[1].element.style_id = Some("primary".into());
+        scene.clear_style_cache();
         assert_eq!(
             scene.computed_style(ElementId(2)).unwrap().style.text.color,
             Color::rgba(0x44, 0x55, 0x66, 255)
@@ -1857,6 +1858,51 @@ mod tests {
         let before = scene.computed_style(ElementId(1)).unwrap();
         assert!(scene.set_stylesheet("button { color: nonsense; }").is_err());
         assert_eq!(scene.computed_style(ElementId(1)).unwrap(), before);
+    }
+
+    #[test]
+    fn cached_styles_follow_public_state_and_stylesheet_changes() {
+        let mut scene = Scene::new(Element::new(1, Widget::Button("Save".into()))).unwrap();
+        scene
+            .set_stylesheet("button { color: #112233; } button:disabled { color: #445566; }")
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(1)).unwrap().style.text.color,
+            Color::rgba(0x11, 0x22, 0x33, 255)
+        );
+        scene.set_enabled(ElementId(1), false).unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(1)).unwrap().style.text.color,
+            Color::rgba(0x44, 0x55, 0x66, 255)
+        );
+        scene
+            .set_stylesheet("button:disabled { color: #778899; }")
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(1)).unwrap().style.text.color,
+            Color::rgba(0x77, 0x88, 0x99, 255)
+        );
+    }
+
+    #[test]
+    fn child_style_cache_tracks_ancestor_focus_state() {
+        let root = Element::new(1, Widget::Panel).children(vec![
+            Element::new(2, Widget::Button("Parent".into()))
+                .children(vec![Element::new(3, Widget::Text("Child".into()))]),
+        ]);
+        let mut scene = Scene::new(root).unwrap();
+        scene
+            .set_stylesheet("text { color: #112233; } button:focus text { color: #445566; }")
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(3)).unwrap().style.text.color,
+            Color::rgba(0x11, 0x22, 0x33, 255)
+        );
+        scene.set_focus(Some(ElementId(2))).unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(3)).unwrap().style.text.color,
+            Color::rgba(0x44, 0x55, 0x66, 255)
+        );
     }
     #[test]
     fn rejects_variable_cycles_and_malformed_values() {

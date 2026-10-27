@@ -131,6 +131,7 @@ impl Scene {
             self.reveal_focus();
             self.paint_dirty = true;
         }
+        self.clear_style_cache();
         if let Some(previous_styles) = previous_styles {
             self.finish_interaction_style_change(previous_styles);
         } else {
@@ -139,6 +140,7 @@ impl Scene {
         Ok(())
     }
     pub fn event(&mut self, input: Input) -> EventResult {
+        let preserves_styles = matches!(&input, Input::Scroll { .. });
         let interaction_may_change = self.interaction_styles_may_change(&input);
         let previous_styles = (interaction_may_change
             && self.stylesheet.interaction_affects_layout())
@@ -267,6 +269,9 @@ impl Scene {
                 self.refresh_combo(*id)
             }
             _ => {}
+        }
+        if !preserves_styles {
+            self.clear_style_cache();
         }
         if let Some(previous_styles) = previous_styles {
             self.finish_interaction_style_change(previous_styles);
