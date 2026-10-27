@@ -78,12 +78,12 @@ fn core() -> Result<Vec<Element>, UiError> {
                     Widget::Paragraph(vec![
                         TextSpan {
                             text: "Rich text: ".into(),
-                            color: text_style.color,
+                            color: None,
                             weight: text_style.weight,
                         },
                         TextSpan {
                             text: "spans using toolkit defaults".into(),
-                            color: text_style.color,
+                            color: None,
                             weight: text_style.weight,
                         },
                     ]),

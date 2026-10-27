@@ -456,7 +456,7 @@ fn create_buffer(font_system: &mut FontSystem, item: &TextItem<'_>) -> Buffer {
     if let Some(spans) = item.spans {
         buffer.set_rich_text(
             spans.iter().map(|span| {
-                let color = span.color;
+                let color = resolved_span_color(span, item.style);
                 (
                     span.text.as_str(),
                     attrs
@@ -479,6 +479,10 @@ fn create_buffer(font_system: &mut FontSystem, item: &TextItem<'_>) -> Buffer {
     }
     buffer.shape_until_scroll(font_system, false);
     buffer
+}
+
+fn resolved_span_color(span: &TextSpan, style: &TextStyle) -> knave_ui::Color {
+    span.color.unwrap_or(style.color)
 }
 
 fn sane_dimension(value: f32) -> f32 {
@@ -569,6 +573,30 @@ fn measured_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rich_text_inherits_theme_color_unless_a_span_sets_one() {
+        let theme_color = knave_ui::Color::rgba(0x17, 0x23, 0x2d, 255);
+        let explicit_color = knave_ui::Color::rgba(0x95, 0x26, 0x39, 255);
+        let style = TextStyle {
+            color: theme_color,
+            ..TextStyle::default()
+        };
+
+        let inherited = TextSpan {
+            text: "inherited".into(),
+            color: None,
+            weight: 400,
+        };
+        let explicit = TextSpan {
+            text: "explicit".into(),
+            color: Some(explicit_color),
+            weight: 700,
+        };
+
+        assert_eq!(resolved_span_color(&inherited, &style), theme_color);
+        assert_eq!(resolved_span_color(&explicit, &style), explicit_color);
+    }
 
     #[test]
     fn text_transform_support_is_explicit() {
