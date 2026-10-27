@@ -312,8 +312,62 @@ impl Scene {
         if p.iter().any(|v| !v.is_finite()) {
             return None;
         }
+        let previous_pointer = self.pointer;
         self.pointer = p;
         self.pointer_inside = true;
+        if previous_pointer != p
+            && self.stylesheet.has_any_part_hover()
+            && [previous_pointer, p]
+                .into_iter()
+                .filter_map(|position| self.top_node(position))
+                .any(|mut i| {
+                    loop {
+                        let parts: &[&str] = match &self.nodes[i].element.widget {
+                            Widget::Checkbox { .. } | Widget::MixedCheckbox { .. } => {
+                                &["checkbox-indicator", "checkbox-mark"]
+                            }
+                            Widget::Toggle { .. } => &["switch-track", "switch-thumb"],
+                            Widget::Slider(_) => &["slider-track", "slider-fill", "slider-thumb"],
+                            Widget::Progress { .. } => &["progress-track", "progress-fill"],
+                            Widget::Spinner => &["spinner-dot"],
+                            Widget::TextInput(_) | Widget::ComboBox { .. } => {
+                                &["text-selection", "text-caret"]
+                            }
+                            Widget::Scroll => &["scrollbar-thumb"],
+                            _ => &[],
+                        };
+                        if parts
+                            .iter()
+                            .any(|part| self.stylesheet.has_part_hover(part))
+                        {
+                            break true;
+                        }
+                        match self.nodes[i].parent {
+                            Some(parent) => i = parent,
+                            None => break false,
+                        }
+                    }
+                })
+        {
+            self.paint_dirty = true;
+        }
+        if previous_pointer != p
+            && self
+                .hover
+                .and_then(|id| self.indices.get(&id))
+                .is_some_and(|i| matches!(self.nodes[*i].element.widget, Widget::Collection(_)))
+            && self.stylesheet.has_collection_part_hover()
+        {
+            self.paint_dirty = true;
+        }
+        if previous_pointer != p
+            && self.menu.as_ref().is_some_and(|menu| {
+                contains(menu.bounds, previous_pointer) || contains(menu.bounds, p)
+            })
+            && self.stylesheet.has_menu_part_hover()
+        {
+            self.paint_dirty = true;
+        }
         if let Some(menu) = &self.menu
             && contains(menu.bounds, p)
         {
@@ -889,7 +943,7 @@ impl Scene {
     fn interaction_styles_may_change(&self, input: &Input) -> bool {
         match input {
             Input::PointerMove(position) => self.hit_test(*position) != self.hover,
-            Input::PointerDown(_) => true,
+            Input::PointerDown(_) | Input::ContextMenu(_) => true,
             Input::PointerUp(_) => self.capture.is_some() || self.key_pressed.is_some(),
             Input::PointerLeave => self.hover.is_some(),
             Input::Key { key, .. } => matches!(

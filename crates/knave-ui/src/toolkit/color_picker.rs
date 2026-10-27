@@ -31,6 +31,7 @@ impl Element {
             children.push(channel);
         }
         let mut result = Self::new(id, Widget::Panel).children(children);
+        result.component = Some(ComponentKind::ColorPicker);
         result.color_picker = Some(ColorPickerState {
             value: color,
             swatch: ElementId(swatch_id),

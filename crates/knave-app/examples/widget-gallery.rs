@@ -32,7 +32,9 @@ fn grid(id: u64, columns: usize, children: Vec<Element>) -> Element {
 fn section(id: u64, title: &str, children: Vec<Element>) -> Element {
     let mut items = vec![Element::heading(id + 1, title, HeadingLevel::H2)];
     items.extend(children);
-    Element::new(id, Widget::Panel).children(items)
+    Element::new(id, Widget::Panel)
+        .component(ComponentKind::Section)
+        .children(items)
 }
 fn choices() -> Vec<MenuItem> {
     vec![
@@ -327,7 +329,7 @@ fn layout() -> Vec<Element> {
                 Element::new(2121, Widget::Button("Grid B".into())), Element::new(2122, Widget::Button("Grid C".into()))]),
         ]),
         section(2200, "Panels and cards · compositions", vec![
-            section(2210, "Card composition · panel and content", vec![text(2212, "This composition uses the toolkit defaults. Global styling and custom overrides will be added later.")]),
+            section(2210, "Card composition · panel and content", vec![text(2212, "This composition uses the toolkit defaults. Global styling and custom overrides will be added later.")]).component(ComponentKind::Card),
             text(2202, "Resize the window to inspect wrapping and fixed versus fill lengths. The fixed-width panel below is clipped at its parent."),
             Element::new(2203, Widget::Panel).layout(Layout { width: Length::Px(520.0), ..Default::default() })
                 .children(vec![text(2204, "A longer sentence in a 520 logical-pixel panel. At narrow window sizes, ancestor clipping still applies.")]),
@@ -696,7 +698,7 @@ fn overlays() -> Vec<Element> {
                     "Progress, spinner, alert and expiring toast examples above use the shared widgets. Toast dismissal also supports an ordinary button.",
                 ),
             ],
-        ),
+        ).component(ComponentKind::EmptyState),
     ]
 }
 fn states() -> Result<Vec<Element>, UiError> {
@@ -835,7 +837,7 @@ fn gallery() -> Result<Scene, UiError> {
         .collect();
     Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
-            text(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
+            Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
             popup, command_palette()?.element("Commands")?]))

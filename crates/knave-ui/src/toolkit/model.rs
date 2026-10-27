@@ -482,6 +482,8 @@ pub struct Element {
     pub color_channel: Option<super::ColorChannel>,
     pub split_layout: Option<super::SplitLayout>,
     pub button_variant: Option<super::ButtonVariant>,
+    /// Semantic identity for composed elements and text roles.
+    pub component: Option<super::ComponentKind>,
     pub semantics: super::Semantics,
     pub selection_group: Option<super::SelectionGroup>,
     pub id: ElementId,
@@ -518,6 +520,7 @@ impl Element {
             color_channel: None,
             split_layout: None,
             button_variant: None,
+            component: None,
             semantics: super::Semantics::default(),
             selection_group: None,
             id: ElementId(id),
@@ -546,6 +549,19 @@ impl Element {
         element.semantics.role = Some(super::Role::Heading);
         element.semantics.heading_level = Some(level);
         element
+    }
+    /// Create text with a subtitle identity that can be styled using `subtitle`.
+    pub fn subtitle(id: u64, text: impl Into<String>) -> Self {
+        Self::new(id, Widget::Text(text.into())).component(super::ComponentKind::Subtitle)
+    }
+    /// Create text with a caption identity that can be styled using `caption`.
+    pub fn caption(id: u64, text: impl Into<String>) -> Self {
+        Self::new(id, Widget::Text(text.into())).component(super::ComponentKind::Caption)
+    }
+    /// Mark a composed element with a stable semantic CSS identity.
+    pub fn component(mut self, component: super::ComponentKind) -> Self {
+        self.component = Some(component);
+        self
     }
     /// Wrapping for text, paragraphs and control labels. Use Auto height to grow with the text.
     /// Text inputs and popup menu rows remain single-line.

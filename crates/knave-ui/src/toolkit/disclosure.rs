@@ -24,7 +24,9 @@ impl Element {
                 accordion: None,
             },
         );
-        Self::new(id, Widget::Panel).children(vec![trigger, content])
+        Self::new(id, Widget::Panel)
+            .component(ComponentKind::Expander)
+            .children(vec![trigger, content])
     }
     /// Each section is an expander; opening one closes the others.
     pub fn accordion(id: u64, mut sections: Vec<Element>) -> Self {
@@ -49,7 +51,9 @@ impl Element {
                 }
             }
         }
-        Self::new(id, Widget::Panel).children(sections)
+        Self::new(id, Widget::Panel)
+            .component(ComponentKind::Accordion)
+            .children(sections)
     }
     /// Divider IDs are supplied explicitly; the two pane elements retain their IDs.
     pub fn split_view(
@@ -68,6 +72,7 @@ impl Element {
         slider.orientation = orientation;
         let divider = Self::new(divider_id, Widget::Splitter(slider));
         let mut result = Self::new(id, Widget::Panel).children(vec![first, divider, second]);
+        result.component = Some(ComponentKind::SplitView);
         result.split_layout = Some(SplitLayout {
             orientation,
             min_pane,
