@@ -843,6 +843,7 @@ fn gallery() -> Result<Scene, UiError> {
 struct Gallery {
     palette: CommandPalette,
     fixtures_ready: bool,
+    theme: knave_ui::toolkit::Theme,
     scene: Scene,
     clicks: u32,
     trace: bool,
@@ -937,6 +938,7 @@ impl Application for Gallery {
                 ];
                 let mut fixture =
                     Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
+                fixture.set_theme(self.theme)?;
                 fixture.layout(size, text);
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
@@ -1094,13 +1096,21 @@ impl Application for Gallery {
     }
 }
 fn main() -> AppResult {
+    let config = knave_config::ConfigDocument::at_default_path()?;
+    let theme = match config.config().appearance.theme {
+        knave_config::Theme::Light => knave_ui::toolkit::Theme::Light,
+        knave_config::Theme::System | knave_config::Theme::Dark => knave_ui::toolkit::Theme::Dark,
+    };
+    let mut scene = gallery()?;
+    scene.set_theme(theme)?;
     knave_app::run(
         "Knave UI · Component catalog",
         [960.0, 840.0],
         Gallery {
             palette: command_palette()?,
             fixtures_ready: false,
-            scene: gallery()?,
+            theme,
+            scene,
             clicks: 0,
             trace: std::env::args().any(|arg| arg == "--trace"),
         },
@@ -1114,6 +1124,7 @@ mod tests {
         Gallery {
             palette: command_palette().unwrap(),
             fixtures_ready: false,
+            theme: knave_ui::toolkit::Theme::Dark,
             scene: gallery().unwrap(),
             clicks: 0,
             trace: false,
