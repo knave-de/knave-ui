@@ -160,6 +160,37 @@ fn standard_hover_and_pressed_backgrounds_are_painted() {
     )));
 }
 #[test]
+fn paint_only_hover_updates_without_layout() {
+    let mut s = scene(vec![leaf(1, Widget::Button("Press".into()))]);
+    s.set_stylesheet("button:hover { background: #123456; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let before = s.stats().layouts;
+    s.event(Input::PointerMove([20.0, 20.0]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert_eq!(s.stats().layouts, before);
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. } if paint.fill == Some(knave_ui::Color::rgba(0x12, 0x34, 0x56, 255))
+    )));
+}
+
+#[test]
+fn hover_custom_property_can_still_relayout() {
+    let first = Element::new(1, Widget::Button("First".into()));
+    let second = Element::new(2, Widget::Button("Second".into()));
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![first, second])).unwrap();
+    s.set_stylesheet(
+        ":root { --space: 0px; } button:hover { --space: 24px; } button { padding: var(--space); }",
+    )
+    .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let before = s.bounds(ElementId(2)).unwrap().y;
+    s.event(Input::PointerMove([5.0, 5.0]));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert!(s.bounds(ElementId(2)).unwrap().y > before);
+}
+
+#[test]
 fn hover_spacing_relayouts_bounds_and_pointer_targets() {
     let first = Element::new(1, Widget::Button("First".into())).class("action");
     let second = Element::new(2, Widget::Button("Second".into()));

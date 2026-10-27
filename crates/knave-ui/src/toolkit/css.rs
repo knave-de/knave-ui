@@ -92,6 +92,35 @@ pub(super) struct Stylesheet {
     rules: Vec<Rule>,
 }
 impl Stylesheet {
+    /// Paint-only state rules cannot change layout, including via inheritance.
+    pub(super) fn interaction_affects_layout(&self) -> bool {
+        self.rules.iter().any(|rule| {
+            rule.selectors.iter().any(|selector| {
+                selector
+                    .parts
+                    .iter()
+                    .any(|part| part.states.iter().any(|state| state != "root"))
+            }) && rule.declarations.iter().any(|(name, _)| {
+                !matches!(
+                    name.as_str(),
+                    "color"
+                        | "background"
+                        | "background-color"
+                        | "border-top-color"
+                        | "border-right-color"
+                        | "border-bottom-color"
+                        | "border-left-color"
+                        | "outline-width"
+                        | "outline-color"
+                        | "outline-offset"
+                        | "border-top-left-radius"
+                        | "border-top-right-radius"
+                        | "border-bottom-right-radius"
+                        | "border-bottom-left-radius"
+                )
+            })
+        })
+    }
     pub(super) fn same_as(&self, other: &Self) -> bool {
         self.rules == other.rules
     }
@@ -216,6 +245,7 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
     let mut out = Vec::new();
     let mut push = |name: String, value: String| out.push((name, value));
     match name {
+        "background" => push("background-color".to_owned(), value.to_owned()),
         "border-radius" => {
             for corner in corners {
                 push(format!("border-{corner}-radius"), format!("@quad:{value}"));
@@ -992,6 +1022,68 @@ mod tests {
         );
         assert!(Stylesheet::parse("button { border-radius: -2px; }").is_err());
         assert!(Stylesheet::parse("button:active { color: red; }").is_err());
+    }
+
+    #[test]
+    fn background_alias_participates_in_the_same_cascade_as_background_color() {
+        let button = Element::new(2, Widget::Button("Theme".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene
+            .set_desktop_theme(Theme::Dark, "button { background: #fff; }")
+            .unwrap();
+        assert_eq!(
+            scene
+                .computed_style(ElementId(2))
+                .unwrap()
+                .style
+                .background
+                .unwrap()
+                .fill,
+            Some(Color::rgba(255, 255, 255, 255))
+        );
+        scene
+            .set_desktop_theme(
+                Theme::Dark,
+                "button { background-color: #123456; background: #abcdef; }",
+            )
+            .unwrap();
+        assert_eq!(
+            scene
+                .computed_style(ElementId(2))
+                .unwrap()
+                .style
+                .background
+                .unwrap()
+                .fill,
+            Some(Color::rgba(0xab, 0xcd, 0xef, 255))
+        );
+    }
+
+    #[test]
+    fn stateful_layout_detection_is_conservative_for_variables_and_ancestors() {
+        assert!(
+            !Stylesheet::for_theme(
+                Theme::Dark,
+                "",
+                "button:hover { background: #fff; border-color: #000; }"
+            )
+            .unwrap()
+            .interaction_affects_layout()
+        );
+        assert!(
+            Stylesheet::for_theme(Theme::Dark, "", "panel:hover button { padding: 12px; }")
+                .unwrap()
+                .interaction_affects_layout()
+        );
+        assert!(
+            Stylesheet::for_theme(
+                Theme::Dark,
+                "",
+                "panel:hover { --size: 20px; } button { padding: var(--size); }"
+            )
+            .unwrap()
+            .interaction_affects_layout()
+        );
     }
 
     #[test]

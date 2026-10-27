@@ -117,7 +117,10 @@ impl Scene {
         {
             return Err(UiError::MissingElement(id));
         }
-        let previous_styles = self.interaction_style_snapshot();
+        let previous_styles = self
+            .stylesheet
+            .interaction_affects_layout()
+            .then(|| self.interaction_style_snapshot());
         if let Some(id) = target {
             self.select_group_item(self.indices[&id]);
         }
@@ -128,13 +131,18 @@ impl Scene {
             self.reveal_focus();
             self.paint_dirty = true;
         }
-        self.finish_interaction_style_change(previous_styles);
+        if let Some(previous_styles) = previous_styles {
+            self.finish_interaction_style_change(previous_styles);
+        } else {
+            self.paint_dirty = true;
+        }
         Ok(())
     }
     pub fn event(&mut self, input: Input) -> EventResult {
-        let previous_styles = self
-            .interaction_styles_may_change(&input)
-            .then(|| self.interaction_style_snapshot());
+        let interaction_may_change = self.interaction_styles_may_change(&input);
+        let previous_styles = (interaction_may_change
+            && self.stylesheet.interaction_affects_layout())
+        .then(|| self.interaction_style_snapshot());
         let focus_visible = match &input {
             Input::Key { pressed: true, .. } => Some(true),
             Input::PointerDown(_) => Some(false),
@@ -262,6 +270,8 @@ impl Scene {
         }
         if let Some(previous_styles) = previous_styles {
             self.finish_interaction_style_change(previous_styles);
+        } else if interaction_may_change {
+            self.paint_dirty = true;
         }
         EventResult {
             redraw: self.needs_frame(),

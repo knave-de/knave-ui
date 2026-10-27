@@ -565,17 +565,22 @@ impl Scene {
             expanded: self.menu.as_ref().is_some_and(|m| m.owner == id),
         })
     }
-    pub(super) fn interaction_style_snapshot(&self) -> Vec<Option<ComputedStyle>> {
+    pub(super) fn interaction_style_snapshot(&self) -> Vec<(usize, Option<ComputedStyle>)> {
         self.nodes
             .iter()
-            .map(|node| self.computed_style(node.element.id))
+            .enumerate()
+            .filter(|(index, _)| self.visible(*index))
+            .map(|(index, node)| (index, self.computed_style(node.element.id)))
             .collect()
     }
-    pub(super) fn finish_interaction_style_change(&mut self, previous: Vec<Option<ComputedStyle>>) {
-        let metrics_changed = previous.iter().enumerate().any(|(index, before)| {
+    pub(super) fn finish_interaction_style_change(
+        &mut self,
+        previous: Vec<(usize, Option<ComputedStyle>)>,
+    ) {
+        let metrics_changed = previous.iter().any(|(index, before)| {
             before
                 .as_ref()
-                .zip(self.computed_style(self.nodes[index].element.id).as_ref())
+                .zip(self.computed_style(self.nodes[*index].element.id).as_ref())
                 .is_some_and(|(before, after)| {
                     before.padding != after.padding
                         || before.borders != after.borders
