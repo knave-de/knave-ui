@@ -65,6 +65,7 @@ impl LayoutKey {
 
 struct CachedLayout {
     buffer: Arc<Buffer>,
+    measured: Option<knave_ui::toolkit::TextLayout>,
     bytes: usize,
     last_used: u64,
 }
@@ -164,15 +165,12 @@ impl TextPass {
             };
             let key = LayoutKey::new(item.text, item.spans, item.style, item.bounds);
             self.clock = self.clock.wrapping_add(1);
-            if !self.layouts.contains_key(&key) {
-                self.insert_layout(key.clone(), item);
-            }
             let buffer_key = if let Some(layout) = self.layouts.get_mut(&key) {
                 layout.last_used = self.clock;
                 Arc::clone(&layout.buffer)
             } else {
-                // Oversized layouts are shaped for this frame without entering the bounded cache.
                 let buffer = Arc::new(create_buffer(&mut self.font_system, item));
+                self.insert_layout(key, Arc::clone(&buffer));
                 let top = area.top
                     + single_line_vertical_offset(&buffer, sane_dimension(item.bounds.height))
                         * area.scale;
@@ -274,18 +272,22 @@ impl TextPass {
         };
         let key = LayoutKey::new(text, spans, style, item.bounds);
         self.clock = self.clock.wrapping_add(1);
-        if !self.layouts.contains_key(&key) {
-            self.insert_layout(key.clone(), &item);
-        }
         let buffer = if let Some(layout) = self.layouts.get_mut(&key) {
             layout.last_used = self.clock;
+            if let Some(measured) = &layout.measured {
+                return measured.clone();
+            }
             Arc::clone(&layout.buffer)
         } else {
-            Arc::new(create_buffer(&mut self.font_system, &item))
+            let buffer = Arc::new(create_buffer(&mut self.font_system, &item));
+            self.insert_layout(key.clone(), Arc::clone(&buffer));
+            buffer
         };
         let content = spans.map(|spans| spans.iter().map(|s| s.text.as_str()).collect::<String>());
         let text = content.as_deref().unwrap_or(text);
-        measured_layout(&buffer, text, style)
+        let measured = measured_layout(&buffer, text, style);
+        self.cache_measurement(&key, measured.clone());
+        measured
     }
 
     pub fn render<'a>(
@@ -296,9 +298,14 @@ impl TextPass {
         self.renderers[run].render(&self.atlas, &self.viewport, pass)
     }
 
-    fn insert_layout(&mut self, key: LayoutKey, item: &TextItem<'_>) {
+    fn insert_layout(&mut self, key: LayoutKey, buffer: Arc<Buffer>) {
+        let text_bytes = key.text.len().saturating_add(
+            key.spans
+                .iter()
+                .fold(0usize, |sum, span| sum.saturating_add(span.text.len())),
+        );
         let bytes = key.estimated_bytes();
-        if key.text.len() > MAX_CACHED_TEXT_BYTES || bytes > MAX_LAYOUT_CACHE_BYTES {
+        if text_bytes > MAX_CACHED_TEXT_BYTES || bytes > MAX_LAYOUT_CACHE_BYTES {
             return;
         }
         while self.layouts.len() >= MAX_CACHED_LAYOUTS
@@ -316,16 +323,54 @@ impl TextPass {
                 self.layout_bytes = self.layout_bytes.saturating_sub(layout.bytes);
             }
         }
-        let buffer = create_buffer(&mut self.font_system, item);
         self.layout_bytes += bytes;
         self.layouts.insert(
             key,
             CachedLayout {
-                buffer: Arc::new(buffer),
+                buffer,
+                measured: None,
                 bytes,
                 last_used: self.clock,
             },
         );
+    }
+
+    fn cache_measurement(&mut self, key: &LayoutKey, measured: knave_ui::toolkit::TextLayout) {
+        let extra = std::mem::size_of_val(&measured).saturating_add(
+            measured
+                .carets
+                .capacity()
+                .saturating_mul(std::mem::size_of::<knave_ui::toolkit::Caret>()),
+        );
+        if extra > MAX_LAYOUT_CACHE_BYTES {
+            return;
+        }
+        if self
+            .layouts
+            .get(key)
+            .is_none_or(|layout| layout.measured.is_some())
+        {
+            return;
+        }
+        while self.layout_bytes.saturating_add(extra) > MAX_LAYOUT_CACHE_BYTES {
+            let Some(oldest) = self
+                .layouts
+                .iter()
+                .filter(|(cached_key, _)| *cached_key != key)
+                .min_by_key(|(_, layout)| layout.last_used)
+                .map(|(key, _)| key.clone())
+            else {
+                return;
+            };
+            if let Some(layout) = self.layouts.remove(&oldest) {
+                self.layout_bytes = self.layout_bytes.saturating_sub(layout.bytes);
+            }
+        }
+        if let Some(layout) = self.layouts.get_mut(key) {
+            layout.bytes = layout.bytes.saturating_add(extra);
+            layout.measured = Some(measured);
+            self.layout_bytes = self.layout_bytes.saturating_add(extra);
+        }
     }
 }
 
