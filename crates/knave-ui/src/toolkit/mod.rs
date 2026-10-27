@@ -7,7 +7,7 @@ mod components;
 mod context_menu;
 mod css;
 use css::Stylesheet;
-pub use css::{ComputedStyle, StylesheetError};
+pub use css::{ComputedStyle, StylesheetError, Theme};
 mod cursor;
 mod snapshot;
 pub use snapshot::*;
@@ -77,7 +77,9 @@ struct MenuState {
 
 /// Owns scene structure, widget values and input state. Storage is bounded by `MAX_ELEMENTS`.
 pub struct Scene {
+    theme: Theme,
     stylesheet: Stylesheet,
+    stylesheet_override: String,
     clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -101,10 +103,30 @@ pub struct Scene {
     pub inspect: bool,
 }
 impl Scene {
-    /// Atomically replace scene CSS rules over built-in appearance defaults.
+    /// Atomically replace application CSS rules over the selected theme defaults.
     /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
     pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::replacement(source)?;
+        let next = Stylesheet::for_theme(self.theme, source)?;
+        self.update_stylesheet(next);
+        self.stylesheet_override = source.to_owned();
+        Ok(())
+    }
+
+    /// Select a bundled base palette while retaining and revalidating application CSS.
+    /// Invalid combined styles leave the current theme and stylesheet active.
+    pub fn set_theme(&mut self, theme: Theme) -> Result<(), StylesheetError> {
+        let next = Stylesheet::for_theme(theme, &self.stylesheet_override)?;
+        self.update_stylesheet(next);
+        self.theme = theme;
+        Ok(())
+    }
+
+    /// Returns the currently selected bundled palette.
+    pub fn theme(&self) -> Theme {
+        self.theme
+    }
+
+    fn update_stylesheet(&mut self, next: Stylesheet) {
         if !self.stylesheet.same_as(&next) {
             let old = self
                 .nodes
@@ -141,7 +163,6 @@ impl Scene {
                 self.paint_dirty = true;
             }
         }
-        Ok(())
     }
     pub fn computed_style(&self, id: ElementId) -> Option<ComputedStyle> {
         self.computed_style_for(id, self.interaction(id)?)
@@ -172,7 +193,10 @@ impl Scene {
     }
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
-            stylesheet: Stylesheet::default_sheet(),
+            theme: Theme::Dark,
+            stylesheet: Stylesheet::for_theme(Theme::Dark, "")
+                .expect("bundled dark stylesheet is valid"),
+            stylesheet_override: String::new(),
             clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
@@ -499,7 +523,7 @@ impl Scene {
             Widget::Toggle { checked: true, .. }
                 | Widget::Checkbox { checked: true, .. }
                 | Widget::Selectable { selected: true, .. }
-        );
+        ) || matches!(&node.element.widget, Widget::Collection(collection) if collection.selected.is_some());
         Some(InteractionState {
             hovered: self.hover == Some(id),
             focused: self.surface_focused && self.focus == Some(id),

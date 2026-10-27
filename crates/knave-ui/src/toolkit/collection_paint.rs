@@ -62,9 +62,14 @@ pub(super) fn paint_collection(
             continue;
         }
         if collection.selected == Some(item.id) {
+            let selected_background = computed
+                .background
+                .as_ref()
+                .and_then(|background| background.fill)
+                .unwrap_or(computed.selected);
             list.commands.push(DisplayCommand::Shape {
                 bounds,
-                paint: ShapePaint::fill(computed.selected),
+                paint: ShapePaint::fill(selected_background),
                 transform: Transform2D::IDENTITY,
                 clip: item_clip,
             });

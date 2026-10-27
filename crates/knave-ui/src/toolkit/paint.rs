@@ -120,15 +120,6 @@ impl Scene {
                     CornerRadii::uniform(style.radius)
                 }
             });
-            if state.selected {
-                paint.fill = Some(style.selected);
-            }
-            if state.hovered && !state.disabled {
-                paint.fill = Some(style.hover);
-            }
-            if state.pressed && !state.disabled {
-                paint.fill = Some(style.pressed);
-            }
             if state.disabled {
                 paint.opacity *= 0.5;
             }
@@ -244,7 +235,15 @@ impl Scene {
                     w,
                     18.0,
                 );
-                let mut paint = ShapePaint::fill(if checked { style.focus } else { style.hover });
+                let mut paint = ShapePaint::fill(if checked {
+                    style.text.color
+                } else {
+                    style
+                        .background
+                        .as_ref()
+                        .and_then(|paint| paint.fill)
+                        .unwrap_or(Color::rgba(80, 92, 111, 255))
+                });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
                 shape(&mut self.list, rect, clip, paint);
                 if toggle {
@@ -313,7 +312,12 @@ impl Scene {
                         4.0,
                     )
                 };
-                shape(&mut self.list, track, clip, ShapePaint::fill(style.hover));
+                let track_color = style
+                    .background
+                    .as_ref()
+                    .and_then(|paint| paint.fill)
+                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                shape(&mut self.list, track, clip, ShapePaint::fill(track_color));
                 let fill = if vertical {
                     Rect::new(
                         track.x,
@@ -325,7 +329,12 @@ impl Scene {
                     Rect::new(track.x, track.y, track.width * f, track.height)
                 };
                 if fill.is_finite_positive() {
-                    shape(&mut self.list, fill, clip, ShapePaint::fill(style.focus));
+                    shape(
+                        &mut self.list,
+                        fill,
+                        clip,
+                        ShapePaint::fill(style.text.color),
+                    );
                 }
                 let center = if vertical {
                     [
@@ -466,7 +475,12 @@ impl Scene {
                     content.width,
                     4.0,
                 );
-                shape(&mut self.list, track, clip, ShapePaint::fill(style.hover));
+                let track_color = style
+                    .background
+                    .as_ref()
+                    .and_then(|paint| paint.fill)
+                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                shape(&mut self.list, track, clip, ShapePaint::fill(track_color));
                 let phase = (self.clock.as_millis() % 1600) as f32 / 1600.0;
                 let width = value.map_or(track.width * 0.25, |v| track.width * v as f32);
                 let x = value.map_or(track.x + (track.width - width) * phase, |_| track.x);
@@ -474,7 +488,7 @@ impl Scene {
                     &mut self.list,
                     Rect::new(x, track.y, width, track.height),
                     clip,
-                    ShapePaint::fill(style.focus),
+                    ShapePaint::fill(style.text.color),
                 );
             }
             Widget::Spinner => {
@@ -483,7 +497,7 @@ impl Scene {
                 let center = [content.x + 12.0, text_area.y + text_area.height / 2.0];
                 for n in 0..8 {
                     let angle = n as f32 * std::f32::consts::TAU / 8.0;
-                    let mut paint = ShapePaint::fill(style.focus);
+                    let mut paint = ShapePaint::fill(style.text.color);
                     paint.opacity = if n == phase { 1.0 } else { 0.25 };
                     paint.radii = CornerRadii::uniform(2.0);
                     shape(
@@ -503,7 +517,13 @@ impl Scene {
                 &mut self.list,
                 Rect::new(b.x, b.y + b.height / 2.0, b.width, 1.0),
                 clip,
-                ShapePaint::fill(style.hover),
+                ShapePaint::fill(
+                    style
+                        .background
+                        .as_ref()
+                        .and_then(|paint| paint.fill)
+                        .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                ),
             ),
             Widget::Scroll if node.scroll_max > 0.0 => {
                 let area = layout.insets().apply(b);
@@ -515,7 +535,13 @@ impl Scene {
                     &mut self.list,
                     Rect::new(b.x + b.width - 5.0, y, 3.0, h),
                     clip,
-                    ShapePaint::fill(style.hover),
+                    ShapePaint::fill(
+                        style
+                            .background
+                            .as_ref()
+                            .and_then(|paint| paint.fill)
+                            .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                    ),
                 );
             }
             _ => {}
@@ -542,9 +568,25 @@ impl Scene {
         };
         let node = &self.nodes[self.indices[&menu.owner]];
         let menu_style = self
-            .computed_style(node.element.id)
+            .computed_style_for(node.element.id, InteractionState::default())
             .unwrap_or_else(|| ComputedStyle::from(&node.element))
             .style;
+        let highlighted_style = self
+            .computed_style_for(
+                node.element.id,
+                InteractionState {
+                    hovered: true,
+                    ..InteractionState::default()
+                },
+            )
+            .unwrap_or_else(|| ComputedStyle::from(&node.element))
+            .style;
+        let separator_color = self
+            .auxiliary_style("separator")
+            .style
+            .background
+            .and_then(|paint| paint.fill)
+            .unwrap_or(Color::rgba(80, 92, 111, 255));
         let b = menu.bounds;
         let clip = Some(b);
         let mut menu_paint = menu_style.background.clone().unwrap_or_else(|| {
@@ -576,7 +618,7 @@ impl Scene {
                     &mut self.list,
                     Rect::new(b.x + 8.0, row.y + h / 2.0, (b.width - 16.0).max(0.0), 1.0),
                     clip,
-                    ShapePaint::fill(menu_style.hover),
+                    ShapePaint::fill(separator_color),
                 ),
                 MenuItem::Option { label, enabled, .. } => {
                     if menu.highlighted == Some(index) {
@@ -584,7 +626,13 @@ impl Scene {
                             &mut self.list,
                             row,
                             clip,
-                            ShapePaint::fill(menu_style.hover),
+                            ShapePaint::fill(
+                                highlighted_style
+                                    .background
+                                    .as_ref()
+                                    .and_then(|paint| paint.fill)
+                                    .unwrap_or(Color::rgba(49, 64, 83, 255)),
+                            ),
                         );
                     }
                     let mut style = menu_style.text.clone();

@@ -1,32 +1,26 @@
 use super::*;
 use crate::{Border, Color, CornerRadii, ShapePaint};
 
-const DEFAULT_STYLESHEET: &str = r#"
-    :root { --accent: accent; --warning: warning; --danger: danger; --canvas: background; --panel-surface: #151d28; --surface: #212c3c; --surface-hover: #314053; --surface-pressed: #1c283a; --surface-selected: #2a5870; --surface-menu: #1c2737; --surface-tooltip: #2d3d50; --surface-overlay: #00000087; --text-disabled: #78818d; --control-muted: #505c6f; }
-    :hover { background-color: var(--surface-hover); }
-    :pressed { background-color: var(--surface-pressed); }
-    :selected { background-color: var(--surface-selected); }
-    :focus { focus-color: var(--accent); }
-    :disabled { color: var(--text-disabled); }
-    .warning { color: var(--warning); }
-    .danger { color: var(--danger); }
-    canvas { background-color: var(--canvas); }
-    surface { background-color: var(--surface); }
-    modal-overlay { background-color: var(--surface-overlay); }
-    panel, scene-snapshot { background-color: var(--panel-surface); }
-    button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { background-color: var(--surface); }
-    button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
-    button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
-    button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
-    button:disabled, link:disabled, text-input:disabled { color: var(--text-disabled); }
-    button:focus, link:focus, text-input:focus, dropdown:focus { border-color: var(--accent); border-width: 1px; }
-    menu, context-menu { background-color: var(--surface-menu); }
-    text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: text; }
-    progress, spinner { focus-color: var(--accent); hover-color: var(--control-muted); }
-    separator { hover-color: var(--control-muted); }
-    tooltip { color: text; background-color: var(--surface-tooltip); padding: 8px; }
-    text, paragraph, heading { color: text; }
-"#;
+const DARK_STYLESHEET: &str = include_str!("../dark.css");
+const LIGHT_STYLESHEET: &str = include_str!("../light.css");
+
+/// Selects a bundled base palette for a scene.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Theme {
+    /// Returns the CSS base bundled for this theme.
+    pub fn stylesheet(self) -> &'static str {
+        match self {
+            Self::Dark => DARK_STYLESHEET,
+            Self::Light => LIGHT_STYLESHEET,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
@@ -89,11 +83,8 @@ impl Stylesheet {
     pub(super) fn same_as(&self, other: &Self) -> bool {
         self.rules == other.rules
     }
-    pub fn default_sheet() -> Self {
-        Self::parse(DEFAULT_STYLESHEET).expect("bundled stylesheet is valid")
-    }
-    pub fn replacement(source: &str) -> Result<Self, StylesheetError> {
-        let mut sheet = Self::parse_rules(DEFAULT_STYLESHEET)?;
+    pub fn for_theme(theme: Theme, source: &str) -> Result<Self, StylesheetError> {
+        let mut sheet = Self::parse_rules(theme.stylesheet())?;
         let custom = Self::parse_rules(source)?;
         if sheet.rules.len() + custom.rules.len() > 256 {
             return Err(StylesheetError::Syntax);
@@ -105,7 +96,8 @@ impl Stylesheet {
         sheet.validate()?;
         Ok(sheet)
     }
-    pub fn parse(source: &str) -> Result<Self, StylesheetError> {
+    #[cfg(test)]
+    fn parse(source: &str) -> Result<Self, StylesheetError> {
         let sheet = Self::parse_rules(source)?;
         sheet.validate()?;
         Ok(sheet)
@@ -158,10 +150,6 @@ impl Stylesheet {
                             | "padding"
                             | "margin"
                             | "gap"
-                            | "hover-color"
-                            | "pressed-color"
-                            | "selected-color"
-                            | "focus-color"
                     )
                 {
                     return Err(StylesheetError::UnsupportedProperty);
@@ -346,32 +334,27 @@ pub(super) fn compute(
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
             if selector_matches(scene, index, state, selector) {
-                let states = selector
-                    .parts
-                    .last()
-                    .map(|p| p.states.as_slice())
-                    .unwrap_or_default();
-                let state_property = if states.iter().any(|s| s == "pressed") {
-                    "pressed-color"
-                } else if states.iter().any(|s| s == "selected") {
-                    "selected-color"
-                } else if states.iter().any(|s| s == "hover") {
-                    "hover-color"
-                } else {
-                    ""
-                };
                 for (name, value) in &rule.declarations {
-                    let state_name = states
-                        .iter()
-                        .find(|s| s.as_str() == "focus")
-                        .map(String::as_str);
-                    let name = if name == "background-color" && !state_property.is_empty() {
-                        state_property
-                    } else if state_name == Some("focus") && name == "border-color" {
+                    let name = if selector
+                        .parts
+                        .last()
+                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
+                        && name == "border-color"
+                    {
                         "focus-border-color"
-                    } else if state_name == Some("focus") && name == "border-width" {
+                    } else if selector
+                        .parts
+                        .last()
+                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
+                        && name == "border-width"
+                    {
                         "focus-border-width"
-                    } else if state_name == Some("focus") && name == "border" {
+                    } else if selector
+                        .parts
+                        .last()
+                        .is_some_and(|part| part.states.iter().any(|state| state == "focus"))
+                        && name == "border"
+                    {
                         "focus-border"
                     } else {
                         name.as_str()
@@ -794,10 +777,6 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             };
         }
         "gap" => c.gap = px(v)?,
-        "hover-color" => c.style.hover = parse_color(v)?,
-        "pressed-color" => c.style.pressed = parse_color(v)?,
-        "selected-color" => c.style.selected = parse_color(v)?,
-        "focus-color" => c.style.focus = parse_color(v)?,
         _ => return Err(StylesheetError::UnsupportedProperty),
     }
     Ok(())
@@ -830,7 +809,7 @@ mod tests {
         let mut scene = Scene::new(Element::new(1, Widget::Button("Open".into()))).unwrap();
         scene
             .set_stylesheet(
-                "button { color: #eeeeee; } button:hover { background-color: #123456; } button:pressed { background-color: #223344; } button:selected { background-color: #334455; } button:disabled { color: #667788; } button:focus { focus-color: #abcdef; }",
+                "button { color: #eeeeee; } button:hover { background-color: #123456; } button:pressed { background-color: #223344; } button:selected { background-color: #334455; } button:disabled { color: #667788; } button:focus { color: #abcdef; background-color: #010203; }",
             )
             .unwrap();
         let hover = InteractionState {
@@ -842,7 +821,10 @@ mod tests {
                 .computed_style_for(ElementId(1), hover)
                 .unwrap()
                 .style
-                .hover,
+                .background
+                .as_ref()
+                .and_then(|paint| paint.fill)
+                .unwrap(),
             Color::rgba(0x12, 0x34, 0x56, 255)
         );
         let pressed = InteractionState {
@@ -854,7 +836,10 @@ mod tests {
                 .computed_style_for(ElementId(1), pressed)
                 .unwrap()
                 .style
-                .pressed,
+                .background
+                .as_ref()
+                .and_then(|paint| paint.fill)
+                .unwrap(),
             Color::rgba(0x22, 0x33, 0x44, 255)
         );
         let selected = InteractionState {
@@ -866,7 +851,10 @@ mod tests {
                 .computed_style_for(ElementId(1), selected)
                 .unwrap()
                 .style
-                .selected,
+                .background
+                .as_ref()
+                .and_then(|paint| paint.fill)
+                .unwrap(),
             Color::rgba(0x33, 0x44, 0x55, 255)
         );
         let disabled = InteractionState {
@@ -891,8 +879,22 @@ mod tests {
                 .computed_style_for(ElementId(1), focused)
                 .unwrap()
                 .style
-                .focus,
+                .text
+                .color,
             Color::rgba(0xab, 0xcd, 0xef, 255)
+        );
+        assert_eq!(
+            scene
+                .computed_style_for(ElementId(1), focused)
+                .unwrap()
+                .style
+                .background
+                .and_then(|paint| paint.fill),
+            Some(Color::rgba(0x01, 0x02, 0x03, 255))
+        );
+        assert_eq!(
+            Stylesheet::parse("button { focus-color: #fff; }").unwrap_err(),
+            StylesheetError::UnsupportedProperty
         );
         let before = scene.computed_style(ElementId(1)).unwrap();
         assert!(scene.set_stylesheet("button { color: nonsense; }").is_err());
@@ -908,6 +910,39 @@ mod tests {
         );
         assert!(Stylesheet::parse("button { border-radius: -2px; }").is_err());
         assert!(Stylesheet::parse("button:active { color: red; }").is_err());
+    }
+
+    #[test]
+    fn themes_are_bundled_and_retain_application_overrides() {
+        let button = Element::new(2, Widget::Button("Theme".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        assert_eq!(scene.theme(), Theme::Dark);
+        let dark = scene
+            .computed_style(ElementId(2))
+            .unwrap()
+            .style
+            .background
+            .and_then(|paint| paint.fill)
+            .unwrap();
+        scene
+            .set_stylesheet("button { color: #123456; } :root { --surface: #fefefe; }")
+            .unwrap();
+        scene.set_theme(Theme::Light).unwrap();
+        assert_eq!(scene.theme(), Theme::Light);
+        let light = scene
+            .computed_style(ElementId(2))
+            .unwrap()
+            .style
+            .background
+            .and_then(|paint| paint.fill)
+            .unwrap();
+        assert_eq!(light, Color::rgba(0xfe, 0xfe, 0xfe, 255));
+        assert_ne!(dark, light);
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.text.color,
+            Color::rgba(0x12, 0x34, 0x56, 255)
+        );
+        assert_ne!(Theme::Dark.stylesheet(), Theme::Light.stylesheet());
     }
     #[test]
     fn explicit_background_and_default_layout_metrics_are_preserved() {

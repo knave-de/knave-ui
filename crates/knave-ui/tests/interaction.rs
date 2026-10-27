@@ -99,7 +99,12 @@ fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
     s.event(Input::PointerMove([20.0, b.y + b.height - 2.0]));
     assert!(s.interaction(ElementId(1)).unwrap().hovered);
     assert_eq!(
-        s.computed_style(ElementId(1)).unwrap().style.hover,
+        s.computed_style(ElementId(1))
+            .unwrap()
+            .style
+            .background
+            .and_then(|paint| paint.fill)
+            .unwrap(),
         knave_ui::Color::rgba(0x55, 0x66, 0x77, 255)
     );
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
@@ -112,6 +117,47 @@ fn stylesheet_updates_layout_hit_bounds_menu_and_tooltip_paint() {
     s.event(Input::PointerUp(point));
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Shape{paint,..} if paint.fill==Some(knave_ui::Color::rgba(0x11,0x22,0x33,255)))));
+}
+
+#[test]
+fn standard_focus_color_and_background_declarations_are_painted() {
+    let mut s = scene(vec![leaf(1, Widget::Button("Focus".into()))]);
+    s.set_stylesheet("button:focus { color: #aabbcc; background-color: #112233; }")
+        .unwrap();
+    click(&mut s, [20.0, 20.0]);
+    key(&mut s, Key::Tab, false);
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { bounds: shape_bounds, paint, .. }
+            if *shape_bounds == bounds
+                && paint.fill == Some(knave_ui::Color::rgba(0x11, 0x22, 0x33, 255))
+    )));
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Focus" && style.color == knave_ui::Color::rgba(0xaa, 0xbb, 0xcc, 255)
+    )));
+}
+
+#[test]
+fn standard_hover_and_pressed_backgrounds_are_painted() {
+    let mut s = scene(vec![leaf(1, Widget::Button("Press".into()))]);
+    s.set_stylesheet(
+        "button:hover { background-color: #123456; } button:pressed { background-color: #654321; }",
+    )
+    .unwrap();
+    s.event(Input::PointerMove([20.0, 20.0]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x12, 0x34, 0x56, 255))
+    )));
+    s.event(Input::PointerDown([20.0, 20.0]));
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Shape { paint, .. }
+            if paint.fill == Some(knave_ui::Color::rgba(0x65, 0x43, 0x21, 255))
+    )));
 }
 #[test]
 fn hover_spacing_relayouts_bounds_and_pointer_targets() {
@@ -150,7 +196,7 @@ fn collection_paint_uses_computed_color_selection_and_padding() {
     )
     .unwrap();
     let mut s = Scene::new(Element::new(1, Widget::Collection(collection))).unwrap();
-    s.set_stylesheet("collection { color: #ff0000; selected-color: #00ff00; padding: 12px; }")
+    s.set_stylesheet("collection { color: #ff0000; padding: 12px; } collection:selected { background-color: #00ff00; }")
         .unwrap();
     let mut metrics = Metrics;
     let list = s.display_list([240.0, 160.0], &mut metrics).clone();
@@ -262,16 +308,16 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == button_bounds
-                && paint.fill == Some(knave_ui::Color::rgba(0x31, 0x40, 0x53, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x2d, 0x37, 0x44, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x2d, 0x3d, 0x50, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x28, 0x35, 0x43, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == s.bounds(ElementId(3)).unwrap()
-                && paint.fill == Some(knave_ui::Color::rgba(0x21, 0x2c, 0x3c, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x19, 0x1f, 0x28, 255))
     )));
 
     let menu_bounds = s.bounds(ElementId(2)).unwrap();
@@ -282,7 +328,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x1c, 0x27, 0x37, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x11, 0x18, 0x20, 255))
     )));
 
     let popup = Element::new(10, Widget::Popup { modal: true }).layout(Layout {
@@ -297,7 +343,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == Rect::new(0.0, 0.0, 400.0, 400.0)
-                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0x87))
+                && paint.fill == Some(knave_ui::Color::rgba(0, 0, 0, 0xaa))
     )));
 
     s.set_stylesheet(
@@ -1104,7 +1150,7 @@ fn tooltip_uses_readable_text_and_stays_inside_the_viewport() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(tooltip.0, knave_ui::Color::TEXT);
+    assert_eq!(tooltip.0, knave_ui::Color::rgba(247, 248, 250, 255));
     assert!(tooltip.1.x >= 0.0 && tooltip.1.y >= 0.0);
     assert!(tooltip.1.x + tooltip.1.width <= 400.0);
     assert!(tooltip.1.y + tooltip.1.height <= 400.0);
