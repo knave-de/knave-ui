@@ -1013,6 +1013,9 @@ impl Application for Gallery {
                 ]),
             )?;
         }
+        // `Scene::insert` rebuilds the retained tree; restore the startup
+        // preference after the gallery's one-time fixture population.
+        self.scene.set_theme(self.theme)?;
         self.fixtures_ready = true;
         Ok(())
     }
