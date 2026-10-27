@@ -31,6 +31,11 @@ pub struct ComputedStyle {
     pub padding: Insets,
     pub margin: Insets,
     pub gap: f32,
+    pub width: Length,
+    pub height: Length,
+    pub content: Option<String>,
+    pub(super) width_explicit: bool,
+    pub(super) height_explicit: bool,
     pub(super) padding_explicit: bool,
 }
 impl From<&Element> for ComputedStyle {
@@ -51,6 +56,11 @@ impl From<&Element> for ComputedStyle {
                 .unwrap_or(Insets::all(element.layout.padding)),
             margin: element.layout.margin,
             gap: element.layout.gap,
+            width: element.layout.width,
+            height: element.layout.height,
+            content: None,
+            width_explicit: false,
+            height_explicit: false,
             padding_explicit: false,
         }
     }
@@ -194,13 +204,13 @@ impl Stylesheet {
         if source.len() > 64 * 1024 {
             return Err(StylesheetError::Syntax);
         }
+        let source = strip_comments(source)?;
         let mut sheet = Self::default();
-        let mut rest = source;
+        let mut rest = source.as_str();
         while !rest.trim().is_empty() {
             let rest_trim = rest.trim_start();
             let open = rest_trim.find('{').ok_or(StylesheetError::Syntax)?;
-            let close = rest_trim[open + 1..]
-                .find('}')
+            let close = find_unquoted(&rest_trim[open + 1..], '}')
                 .ok_or(StylesheetError::Syntax)?
                 + open
                 + 1;
@@ -241,8 +251,8 @@ impl Stylesheet {
                 }
             }
             let mut declarations = Vec::new();
-            for declaration in rest_trim[open + 1..close]
-                .split(';')
+            for declaration in split_unquoted(&rest_trim[open + 1..close], ';')
+                .into_iter()
                 .filter(|x| !x.trim().is_empty())
             {
                 let (name, value) = declaration.split_once(':').ok_or(StylesheetError::Syntax)?;
@@ -253,6 +263,12 @@ impl Stylesheet {
                 }
                 let expanded = expand_declaration(&name, &value)?;
                 for selector in &selectors {
+                    if name == "content"
+                        && selector.parts.last().and_then(|p| p.widget.as_deref())
+                            != Some("checkbox-mark")
+                    {
+                        return Err(StylesheetError::UnsupportedProperty);
+                    }
                     if let Some(auxiliary) = selector
                         .parts
                         .last()
@@ -316,6 +332,11 @@ impl Stylesheet {
                         padding: Insets::default(),
                         margin: Insets::default(),
                         gap: 0.0,
+                        width: Length::Fill,
+                        height: Length::Auto,
+                        content: None,
+                        width_explicit: false,
+                        height_explicit: false,
                         padding_explicit: false,
                     },
                     name,
@@ -337,6 +358,79 @@ fn empty_borders() -> EdgeBorders {
         bottom: edge,
         left: edge,
     }
+}
+
+fn find_unquoted(source: &str, delimiter: char) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    for (i, ch) in source.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+            }
+        } else if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+        } else if ch == delimiter {
+            return Some(i);
+        }
+    }
+    None
+}
+fn split_unquoted(mut source: &str, delimiter: char) -> Vec<&str> {
+    let mut parts = Vec::new();
+    while let Some(i) = find_unquoted(source, delimiter) {
+        parts.push(&source[..i]);
+        source = &source[i + delimiter.len_utf8()..];
+    }
+    parts.push(source);
+    parts
+}
+
+fn strip_comments(source: &str) -> Result<String, StylesheetError> {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    let mut quote = None;
+    let mut escaped = false;
+    while let Some(ch) = chars.next() {
+        if let Some(q) = quote {
+            out.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+            }
+        } else if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+            out.push(ch);
+        } else if ch == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            let mut closed = false;
+            let mut star = false;
+            for c in chars.by_ref() {
+                if star && c == '/' {
+                    closed = true;
+                    break;
+                }
+                star = c == '*';
+            }
+            if !closed {
+                return Err(StylesheetError::Syntax);
+            }
+            out.push(' ');
+        } else {
+            out.push(ch);
+        }
+    }
+    if quote.is_some() {
+        return Err(StylesheetError::Syntax);
+    }
+    Ok(out)
 }
 
 fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, StylesheetError> {
@@ -382,6 +476,10 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
                     | "background-color"
                     | "font-size"
                     | "font-weight"
+                    | "font-style"
+                    | "content"
+                    | "width"
+                    | "height"
                     | "line-height"
                     | "font-family"
                     | "text-align"
@@ -501,6 +599,7 @@ fn auxiliary_supports_property(kind: &str, property: &str) -> bool {
                     | "padding"
                     | "font-size"
                     | "font-weight"
+                    | "font-style"
                     | "line-height"
                     | "font-family"
                     | "text-align"
@@ -533,6 +632,7 @@ fn is_paint_part(name: &str) -> bool {
 }
 fn part_supports_property(part: &str, property: &str) -> bool {
     property.starts_with("--")
+        || (part == "checkbox-mark" && property == "content")
         || matches!(property, "background-color" | "color")
         || (property.starts_with("border-")
             && (property.ends_with("-width")
@@ -545,6 +645,7 @@ fn part_supports_property(part: &str, property: &str) -> bool {
             property,
             "font-size"
                 | "font-weight"
+                | "font-style"
                 | "line-height"
                 | "font-family"
                 | "text-align"
@@ -591,6 +692,7 @@ fn known_selector(name: &str) -> bool {
             | "h1"
             | "h2"
             | "h3"
+            | "span"
             | "subtitle"
             | "caption"
             | "badge"
@@ -607,12 +709,6 @@ fn known_selector(name: &str) -> bool {
             | "accordion"
             | "split-view"
             | "color-picker"
-            | "primary-button"
-            | "secondary-button"
-            | "ghost-button"
-            | "destructive-button"
-            | "icon-button"
-            | "loading-button"
             | "password-input"
             | "multiline-input"
             | "search-input"
@@ -696,12 +792,29 @@ fn widget_name(w: &Widget) -> &'static str {
         Widget::Popup { .. } => "popup",
     }
 }
+fn cascade_specificity(
+    sheet: &Stylesheet,
+    rule: &Rule,
+    selector: &Selector,
+) -> (u16, u16, u16, u16) {
+    let (ids, classes, types) = selector.specificity;
+    (
+        u16::from(rule.order >= sheet.base_rule_count),
+        ids,
+        classes,
+        types,
+    )
+}
 fn widget_matches(scene: &Scene, index: usize, selector: &str) -> bool {
     let element = &scene.nodes[index].element;
-    if selector == "*" || widget_name(&element.widget) == selector {
+    if selector == "*"
+        || (widget_name(&element.widget) == selector
+            && !(selector == "text" && element.component == Some(ComponentKind::Span)))
+    {
         return true;
     }
     let component = match selector {
+        "span" => Some(ComponentKind::Span),
         "subtitle" => Some(ComponentKind::Subtitle),
         "caption" => Some(ComponentKind::Caption),
         "badge" => Some(ComponentKind::Badge),
@@ -740,22 +853,6 @@ fn widget_matches(scene: &Scene, index: usize, selector: &str) -> bool {
             _ => false,
         };
         if heading {
-            return true;
-        }
-    }
-    if matches!(element.widget, Widget::Button(_)) {
-        let variant = match selector {
-            "primary-button" => Some(ButtonVariant::Primary),
-            "secondary-button" => Some(ButtonVariant::Secondary),
-            "ghost-button" => Some(ButtonVariant::Ghost),
-            "destructive-button" => Some(ButtonVariant::Destructive),
-            "icon-button" => Some(ButtonVariant::Icon),
-            _ => None,
-        };
-        if variant.is_some() && element.button_variant == variant {
-            return true;
-        }
-        if selector == "loading-button" && element.semantics.busy {
             return true;
         }
     }
@@ -869,9 +966,12 @@ pub(super) fn compute(
         if result.style.text.weight == defaults.weight {
             result.style.text.weight = inherited.style.text.weight;
         }
+        if result.style.text.font_style == defaults.font_style {
+            result.style.text.font_style = inherited.style.text.font_style;
+        }
     }
     let mut declarations =
-        std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
+        std::collections::BTreeMap::<String, ((u16, u16, u16, u16), usize, String)>::new();
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
             if selector_matches(scene, index, state, selector) {
@@ -885,7 +985,10 @@ pub(super) fn compute(
                     {
                         continue;
                     }
-                    let key = (selector.specificity, rule.order);
+                    let key = (
+                        cascade_specificity(&scene.stylesheet, rule, selector),
+                        rule.order,
+                    );
                     if declarations
                         .get(name)
                         .is_none_or(|(old, order, _)| key >= (*old, *order))
@@ -926,9 +1029,15 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
         padding: Insets::all(8.0),
         margin: Insets::default(),
         gap: 0.0,
+        width: Length::Fill,
+        height: Length::Auto,
+        content: None,
+        width_explicit: false,
+        height_explicit: false,
         padding_explicit: true,
     };
-    let mut decl = std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
+    let mut decl =
+        std::collections::BTreeMap::<String, ((u16, u16, u16, u16), usize, String)>::new();
     let mut vars = std::collections::BTreeMap::<String, String>::new();
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
@@ -939,7 +1048,10 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
                 && selector.parts[0].states.is_empty()
             {
                 for (name, value) in &rule.declarations {
-                    let key = (selector.specificity, rule.order);
+                    let key = (
+                        cascade_specificity(&scene.stylesheet, rule, selector),
+                        rule.order,
+                    );
                     if decl.get(name).is_none_or(|(s, o, _)| key >= (*s, *o)) {
                         decl.insert(name.clone(), (key.0, key.1, value.clone()));
                     }
@@ -996,13 +1108,16 @@ fn inherited_vars(
             )
         });
     let mut cascaded =
-        std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
+        std::collections::BTreeMap::<String, ((u16, u16, u16, u16), usize, String)>::new();
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
             if selector_matches(scene, index, state, selector) {
                 for (name, value) in &rule.declarations {
                     if name.starts_with("--") {
-                        let key = (selector.specificity, rule.order);
+                        let key = (
+                            cascade_specificity(&scene.stylesheet, rule, selector),
+                            rule.order,
+                        );
                         if cascaded
                             .get(name)
                             .is_none_or(|(spec, order, _)| key > (*spec, *order))
@@ -1189,12 +1304,15 @@ pub(super) fn part_style(
         return None;
     }
     let mut declarations =
-        std::collections::BTreeMap::<String, ((u16, u16, u16), usize, String)>::new();
+        std::collections::BTreeMap::<String, ((u16, u16, u16, u16), usize, String)>::new();
     for rule in &scene.stylesheet.rules {
         for selector in &rule.selectors {
             if virtual_selector_matches(scene, owner, kind, state, selector) {
                 for (name, value) in &rule.declarations {
-                    let key = (selector.specificity, rule.order);
+                    let key = (
+                        cascade_specificity(&scene.stylesheet, rule, selector),
+                        rule.order,
+                    );
                     if declarations
                         .get(name)
                         .is_none_or(|(spec, order, _)| key >= (*spec, *order))
@@ -1235,6 +1353,26 @@ pub(super) fn part_style(
     })
 }
 
+fn find_var(value: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    for (i, ch) in value.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == q {
+                quote = None;
+            }
+        } else if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+        } else if value[i..].starts_with("var(") {
+            return Some(i);
+        }
+    }
+    None
+}
 fn resolve_vars(
     value: &str,
     vars: &std::collections::BTreeMap<String, String>,
@@ -1245,12 +1383,51 @@ fn resolve_vars(
     }
     let mut out = String::new();
     let mut rest = value;
-    while let Some(start) = rest.find("var(") {
+    while let Some(start) = find_var(rest) {
         out.push_str(&rest[..start]);
         let after = &rest[start + 4..];
-        let end = after.find(')').ok_or(StylesheetError::Variable)?;
-        let key = after[..end].trim();
-        let replacement = vars.get(key).ok_or(StylesheetError::Variable)?;
+        let mut nesting = 0usize;
+        let mut end = None;
+        let mut comma = None;
+        let mut quote = None;
+        let mut escaped = false;
+        for (i, ch) in after.char_indices() {
+            if let Some(q) = quote {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == q {
+                    quote = None;
+                }
+                continue;
+            }
+            if ch == '\'' || ch == '"' {
+                quote = Some(ch);
+                continue;
+            }
+            match ch {
+                '(' => nesting += 1,
+                ')' if nesting == 0 => {
+                    end = Some(i);
+                    break;
+                }
+                ')' => nesting -= 1,
+                ',' if nesting == 0 && comma.is_none() => comma = Some(i),
+                _ => {}
+            }
+        }
+        let end = end.ok_or(StylesheetError::Variable)?;
+        let key_end = comma.unwrap_or(end);
+        let key = after[..key_end].trim();
+        if !key.starts_with("--") {
+            return Err(StylesheetError::Variable);
+        }
+        let replacement = vars
+            .get(key)
+            .map(String::as_str)
+            .or_else(|| comma.map(|i| after[i + 1..end].trim()))
+            .ok_or(StylesheetError::Variable)?;
         out.push_str(&resolve_vars(replacement, vars, depth + 1)?);
         rest = &after[end + 1..];
     }
@@ -1327,6 +1504,32 @@ fn component_value(value: &str, index: usize, width: bool) -> Result<String, Sty
 }
 fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), StylesheetError> {
     match name {
+        "content" => {
+            let v = v.trim();
+            if v == "normal" {
+                c.content = None;
+            } else if v == "none" {
+                c.content = Some(String::new());
+            } else {
+                let quote = v.chars().next().ok_or(StylesheetError::InvalidValue)?;
+                if !matches!(quote, '\'' | '"') || v.len() < 2 || !v.ends_with(quote) {
+                    return Err(StylesheetError::InvalidValue);
+                }
+                let mut content = String::new();
+                let mut chars = v[1..v.len() - 1].chars();
+                while let Some(ch) = chars.next() {
+                    if ch == '\\' {
+                        content.push(chars.next().ok_or(StylesheetError::InvalidValue)?);
+                    } else {
+                        content.push(ch);
+                    }
+                }
+                if content.len() > 256 {
+                    return Err(StylesheetError::InvalidValue);
+                }
+                c.content = Some(content);
+            }
+        }
         "color" => c.style.text.color = parse_color(v)?,
         "background" | "background-color" => {
             let color = parse_color(v)?;
@@ -1415,6 +1618,37 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             }
             c.outline_offset = value;
         }
+        "width" | "height" => {
+            let length = match v.trim() {
+                "fit-content" => Length::Auto,
+                "auto" => {
+                    if name == "width" {
+                        Length::Fill
+                    } else {
+                        Length::Auto
+                    }
+                }
+                value if value.ends_with('%') => {
+                    Length::Percent(px(&value[..value.len() - 1])? / 100.0)
+                }
+                _ => Length::Px(px(v)?),
+            };
+            if name == "width" {
+                c.width = length;
+                c.width_explicit = true;
+            } else {
+                c.height = length;
+                c.height_explicit = true;
+            }
+        }
+        "font-style" => {
+            c.style.text.font_style = match v.trim() {
+                "normal" => crate::FontStyle::Normal,
+                "italic" => crate::FontStyle::Italic,
+                "oblique" => crate::FontStyle::Oblique,
+                _ => return Err(StylesheetError::InvalidValue),
+            }
+        }
         "font-size" => c.style.text.font_size = px(v)?,
         "line-height" => c.style.text.line_height = px(v)?,
         "font-family" => {
@@ -1441,11 +1675,14 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             }
         }
         "font-weight" => {
-            let w = v
-                .trim()
-                .parse::<u16>()
-                .map_err(|_| StylesheetError::InvalidValue)?;
-            if !(100..=900).contains(&w) || w % 100 != 0 {
+            let w = match v.trim() {
+                "normal" => 400,
+                "bold" => 700,
+                value => value
+                    .parse::<u16>()
+                    .map_err(|_| StylesheetError::InvalidValue)?,
+            };
+            if !(1..=1000).contains(&w) {
                 return Err(StylesheetError::InvalidValue);
             }
             c.style.text.weight = w;

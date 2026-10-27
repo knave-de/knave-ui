@@ -2,11 +2,13 @@
 
 Knave UI implements a bounded CSS subset, not a web browser. Themes are loaded
 from the configured theme's `light.css` or `dark.css`; changes are applied live.
-Selectors can use a type, `.class`, `#style-id`, descendant spaces, commas and
+CSS block comments (`/* ... */`) are supported. Selectors can use a type, `.class`, `#style-id`, descendant spaces, commas and
 these states: `:hover`, `:focus`, `:pressed` (also `:active`), `:selected`,
 `:checked`, `:indeterminate`, `:expanded`, `:invalid`, `:busy`, `:enabled`,
 `:disabled` and `:root`. `*` matches retained elements. Custom properties and
-`var(--name)` are inherited. Normal specificity and later-rule ordering apply.
+`var(--name)` are inherited; `var(--name, fallback)` is supported.
+Custom theme/application rules take precedence over bundled defaults. Within a
+layer, normal specificity and later-rule ordering apply.
 An unknown type, unsupported selector or unsupported declaration rejects the
 new stylesheet; the last valid stylesheet remains active.
 
@@ -35,9 +37,8 @@ More specific selectors match the same element as well as its underlying type:
 - `heading`, `h1`, `h2`, `h3`; `subtitle`, `caption`, `badge`, `alert`,
   `section`, `card`, `empty-state`, `split-button`, `breadcrumbs`,
   `command-palette`, `expander`, `accordion`, `split-view`, `color-picker`;
-- `primary-button`, `secondary-button`, `ghost-button`, `destructive-button`,
-  `icon-button`, `loading-button`; button variants also expose `.primary`,
-  `.secondary`, `.ghost`, `.destructive`, `.icon`;
+- `button.primary`, `button.secondary`, `button.ghost`, `button.destructive`,
+  `button.icon`; use `button:busy` for loading buttons;
 - `password-input`, `multiline-input`, `search-input`, `numeric-input`;
 - `tabs`, `sidebar`, `radio-group`, `segmented-control`, `chip-group`, `list`,
   `icon-grid`, `tree`, `table`; group children can match `tab`, `sidebar-item`,
@@ -46,7 +47,12 @@ More specific selectors match the same element as well as its underlying type:
   `navigation`, `status` and `alert` for matching semantic roles.
 
 Use `Element::heading`, `Element::subtitle` and `Element::caption` to mark
-text for the respective semantic selectors. Composed constructors retain their
+text for the respective semantic selectors. Inline `Element::span(id, text)`
+children of `Widget::Paragraph` are selectable as `span` and can carry classes
+and IDs; `Scene::set_text(id, text)` updates them without rebuilding the
+paragraph. Span color, family, size, style and weight are rendered inline.
+Inline backgrounds, borders, dimensions and independent hit targets are not
+supported. Composed constructors retain their
 component identity, and applications can mark custom compositions with
 `Element::component(ComponentKind::...)`. Ordinary text without that metadata
 continues to match `text`, but does not automatically become a subtitle. Classes
@@ -75,7 +81,9 @@ corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
 `collection-item`, `table-header`, `table-cell`) also accept typography. Part
 geometry is fixed by the control: padding, margin, gap and outline are not
 supported on parts. Their text is clipped to the existing row/cell geometry.
-Parts have no individual class or ID. Menu and collection item states describe
+`checkbox-mark` also accepts CSS `content` with a quoted string or `none`
+to replace or hide its generated glyph. Parts have no individual class or ID.
+Menu and collection item states describe
 individual rows; a part's hover is its painted hit area. Wildcard selectors
 match retained elements, not the parts.
 
@@ -85,8 +93,16 @@ background; tooltip also supports text properties, padding and corner radii.
 
 ## Values and scope
 
+Retained elements support `width` and `height` in logical pixels, percentages,
+`auto` and `fit-content`. CSS dimensions override the element's Rust layout
+dimensions, and live changes remeasure the scene. Height percentages resolve
+against the available parent height. The root fills the viewport unless CSS
+explicitly sets its dimensions.
+
 Retained elements support color, background, padding, margin, gap, fonts,
-text alignment/wrapping, borders, corner radii and outlines. Lengths are logical
+text alignment/wrapping, borders, corner radii and outlines. `font-style`
+supports `normal`, `italic` and `oblique`; `font-weight` supports `normal`,
+`bold`, and numeric weights from 1 to 1000. Lengths are logical
 pixels. Colors support `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `transparent`, `white`,
 `black`, `accent`, `warning`, `danger`, `text` and `background`. See
 [component coverage](widget-catalog.md) for border and layout details. The

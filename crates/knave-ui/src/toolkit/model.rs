@@ -11,6 +11,8 @@ pub struct ElementId(pub u64);
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum Length {
     Px(f32),
+    /// Fraction of the available parent dimension.
+    Percent(f32),
     #[default]
     Fill,
     Auto,
@@ -551,6 +553,10 @@ impl Element {
         element
     }
     /// Create text with a subtitle identity that can be styled using `subtitle`.
+    /// An inline text element for use as a direct child of a paragraph.
+    pub fn span(id: u64, text: impl Into<String>) -> Self {
+        Self::new(id, Widget::Text(text.into())).component(super::ComponentKind::Span)
+    }
     pub fn subtitle(id: u64, text: impl Into<String>) -> Self {
         Self::new(id, Widget::Text(text.into())).component(super::ComponentKind::Subtitle)
     }

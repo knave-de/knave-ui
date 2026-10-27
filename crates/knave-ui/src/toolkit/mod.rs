@@ -160,7 +160,9 @@ impl Scene {
             if changed {
                 let metrics_changed = old.iter().zip(&new).any(|(a, b)| {
                     a.as_ref().zip(b.as_ref()).is_some_and(|(a, b)| {
-                        a.padding != b.padding
+                        a.width != b.width
+                            || a.height != b.height
+                            || a.padding != b.padding
                             || a.borders != b.borders
                             || a.margin != b.margin
                             || a.gap != b.gap
@@ -168,6 +170,7 @@ impl Scene {
                             || a.style.text.font_size != b.style.text.font_size
                             || a.style.text.line_height != b.style.text.line_height
                             || a.style.text.weight != b.style.text.weight
+                            || a.style.text.font_style != b.style.text.font_style
                             || a.style.text.wrap != b.style.text.wrap
                             || a.style.text.align != b.style.text.align
                     })
@@ -198,6 +201,45 @@ impl Scene {
     pub(super) fn theme_color(&self, name: &str) -> Option<Color> {
         css::theme_color(self, name)
     }
+    fn paragraph_text_len(&self, index: usize) -> usize {
+        let node = &self.nodes[index];
+        let base = match &node.element.widget {
+            Widget::Paragraph(spans) => spans.iter().map(|s| s.text.len()).sum(),
+            _ => 0,
+        };
+        node.children.iter().fold(base, |sum, child| {
+            sum.saturating_add(self.nodes[*child].element.widget.label().len())
+        })
+    }
+    pub(super) fn paragraph_spans(&self, index: usize) -> Vec<crate::TextSpan> {
+        let node = &self.nodes[index];
+        let Widget::Paragraph(existing) = &node.element.widget else {
+            return Vec::new();
+        };
+        let mut spans = existing.clone();
+        for &child in &node.children {
+            let child = &self.nodes[child];
+            if !child.element.visible || child.element.component != Some(ComponentKind::Span) {
+                continue;
+            }
+            if let Widget::Text(text) = &child.element.widget {
+                let style = self
+                    .computed_style(child.element.id)
+                    .map(|s| s.style.text)
+                    .unwrap_or_else(|| child.element.style.text.clone());
+                spans.push(crate::TextSpan {
+                    text: text.clone(),
+                    color: Some(style.color),
+                    weight: style.weight,
+                    font_family: Some(style.font_family),
+                    font_style: Some(style.font_style),
+                    font_size: Some(style.font_size),
+                    line_height: Some(style.line_height),
+                });
+            }
+        }
+        spans
+    }
     pub(super) fn effective_layout(&self, index: usize) -> Layout {
         let mut layout = self.nodes[index].element.layout;
         if let Some(style) = self.computed_style(self.nodes[index].element.id) {
@@ -212,6 +254,8 @@ impl Scene {
             };
             layout.margin = style.margin;
             layout.gap = style.gap;
+            layout.width = style.width;
+            layout.height = style.height;
         }
         layout
     }
@@ -260,6 +304,28 @@ impl Scene {
             return Err(UiError::TooDeep);
         }
         validate(&element)?;
+        if element.component == Some(ComponentKind::Span) {
+            if !matches!(element.widget, Widget::Text(_))
+                || !element.children.is_empty()
+                || !parent
+                    .is_some_and(|p| matches!(self.nodes[p].element.widget, Widget::Paragraph(_)))
+            {
+                return Err(UiError::InvalidLayout);
+            }
+        } else if parent
+            .is_some_and(|p| matches!(self.nodes[p].element.widget, Widget::Paragraph(_)))
+        {
+            return Err(UiError::InvalidLayout);
+        }
+        if element.component == Some(ComponentKind::Span)
+            && parent.is_some_and(|p| {
+                self.paragraph_text_len(p)
+                    .saturating_add(element.widget.label().len())
+                    > MAX_TEXT_BYTES
+            })
+        {
+            return Err(UiError::TextTooLong);
+        }
         if self.indices.contains_key(&element.id) {
             return Err(UiError::DuplicateId(element.id));
         }
@@ -375,8 +441,50 @@ impl Scene {
         self.invalidate_layout();
         Ok(())
     }
+    /// Replace a text element's content and remeasure it, including inline spans.
+    pub fn set_text(&mut self, id: ElementId, text: impl Into<String>) -> Result<(), UiError> {
+        let i = *self.indices.get(&id).ok_or(UiError::MissingElement(id))?;
+        if !matches!(self.nodes[i].element.widget, Widget::Text(_)) {
+            return Err(UiError::InvalidLayout);
+        }
+        self.set_widget(id, Widget::Text(text.into()))
+    }
     pub fn set_widget(&mut self, id: ElementId, widget: Widget) -> Result<(), UiError> {
         let i = *self.indices.get(&id).ok_or(UiError::MissingElement(id))?;
+        if (self.nodes[i].element.component == Some(ComponentKind::Span)
+            && !matches!(widget, Widget::Text(_)))
+            || (matches!(self.nodes[i].element.widget, Widget::Paragraph(_))
+                && !self.nodes[i].children.is_empty()
+                && !matches!(widget, Widget::Paragraph(_)))
+        {
+            return Err(UiError::InvalidLayout);
+        }
+        if let (Some(parent), Widget::Text(text)) = (self.nodes[i].parent, &widget)
+            && self.nodes[i].element.component == Some(ComponentKind::Span)
+            && self
+                .paragraph_text_len(parent)
+                .saturating_sub(self.nodes[i].element.widget.label().len())
+                .saturating_add(text.len())
+                > MAX_TEXT_BYTES
+        {
+            return Err(UiError::TextTooLong);
+        }
+        if let Widget::Paragraph(spans) = &widget
+            && spans
+                .iter()
+                .map(|s| s.text.len())
+                .sum::<usize>()
+                .saturating_add(
+                    self.nodes[i]
+                        .children
+                        .iter()
+                        .map(|c| self.nodes[*c].element.widget.label().len())
+                        .sum::<usize>(),
+                )
+                > MAX_TEXT_BYTES
+        {
+            return Err(UiError::TextTooLong);
+        }
         let mut next = self.nodes[i].element.clone();
         next.widget = widget;
         validate(&next)?;
@@ -582,7 +690,9 @@ impl Scene {
                 .as_ref()
                 .zip(self.computed_style(self.nodes[*index].element.id).as_ref())
                 .is_some_and(|(before, after)| {
-                    before.padding != after.padding
+                    before.width != after.width
+                        || before.height != after.height
+                        || before.padding != after.padding
                         || before.borders != after.borders
                         || before.margin != after.margin
                         || before.gap != after.gap
@@ -590,6 +700,7 @@ impl Scene {
                         || before.style.text.font_size != after.style.text.font_size
                         || before.style.text.line_height != after.style.text.line_height
                         || before.style.text.weight != after.style.text.weight
+                        || before.style.text.font_style != after.style.text.font_style
                         || before.style.text.wrap != after.style.text.wrap
                         || before.style.text.align != after.style.text.align
                 })
@@ -714,6 +825,9 @@ impl Scene {
                 return;
             }
             order.push(i);
+            if matches!(s.nodes[i].element.widget, Widget::Paragraph(_)) {
+                return;
+            }
             for c in &s.nodes[i].children {
                 if !matches!(s.nodes[*c].element.widget, Widget::Popup { .. }) {
                     walk(s, *c, order);
@@ -791,7 +905,7 @@ fn validate(e: &Element) -> Result<(), UiError> {
         || l.offset.iter().any(|v| !v.is_finite())
         || [l.width, l.height]
             .into_iter()
-            .any(|v| matches!(v,Length::Px(x) if !x.is_finite()||x<0.0))
+            .any(|v| matches!(v, Length::Px(x) | Length::Percent(x) if !x.is_finite() || x < 0.0))
         || matches!(l.flow, Flow::Grid { columns: 0 })
     {
         return Err(UiError::InvalidLayout);

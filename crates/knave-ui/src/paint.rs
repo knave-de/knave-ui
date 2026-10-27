@@ -138,6 +138,14 @@ pub enum HeadingLevel {
     H3,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum FontStyle {
+    #[default]
+    Normal,
+    Italic,
+    Oblique,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextStyle {
     pub color: Color,
@@ -145,6 +153,7 @@ pub struct TextStyle {
     pub font_size: f32,
     pub line_height: f32,
     pub weight: u16,
+    pub font_style: FontStyle,
     pub wrap: TextWrap,
     pub align: TextAlign,
 }
@@ -176,6 +185,7 @@ impl Default for TextStyle {
             font_size: 14.0,
             line_height: 18.0,
             weight: 400,
+            font_style: FontStyle::Normal,
             wrap: TextWrap::Word,
             align: TextAlign::Start,
         }
@@ -240,10 +250,49 @@ mod tests {
 }
 
 /// A styled inline run; the paragraph supplies wrapping and alignment.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct TextSpan {
     pub text: String,
-    /// An explicit run color. `None` uses the containing widget's computed text color.
     pub color: Option<Color>,
     pub weight: u16,
+    pub font_family: Option<String>,
+    pub font_style: Option<FontStyle>,
+    pub font_size: Option<f32>,
+    pub line_height: Option<f32>,
+}
+impl Default for TextSpan {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            color: None,
+            weight: 400,
+            font_family: None,
+            font_style: None,
+            font_size: None,
+            line_height: None,
+        }
+    }
+}
+impl PartialEq for TextSpan {
+    fn eq(&self, other: &Self) -> bool {
+        self.text == other.text
+            && self.color == other.color
+            && self.weight == other.weight
+            && self.font_family == other.font_family
+            && self.font_style == other.font_style
+            && self.font_size.map(f32::to_bits) == other.font_size.map(f32::to_bits)
+            && self.line_height.map(f32::to_bits) == other.line_height.map(f32::to_bits)
+    }
+}
+impl Eq for TextSpan {}
+impl std::hash::Hash for TextSpan {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.text.hash(h);
+        self.color.hash(h);
+        self.weight.hash(h);
+        self.font_family.hash(h);
+        self.font_style.hash(h);
+        self.font_size.map(f32::to_bits).hash(h);
+        self.line_height.map(f32::to_bits).hash(h);
+    }
 }

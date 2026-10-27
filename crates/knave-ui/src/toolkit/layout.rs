@@ -16,18 +16,37 @@ impl Scene {
         if self.measure_dirty {
             self.measure_node(0, size[0], text);
         }
-        self.arrange(
-            0,
-            self.nodes[0].element.layout.margin.apply(viewport),
-            Some(viewport),
-        );
+        let root_style = self.computed_style(self.nodes[0].element.id);
+        let root_layout = self.effective_layout(0);
+        let mut root_bounds = root_layout.margin.apply(viewport);
+        if root_style
+            .as_ref()
+            .is_some_and(|style| style.width_explicit)
+        {
+            root_bounds.width = resolve(
+                root_layout.width,
+                self.nodes[0].natural[0],
+                root_bounds.width,
+            );
+        }
+        if root_style
+            .as_ref()
+            .is_some_and(|style| style.height_explicit)
+        {
+            root_bounds.height = resolve(
+                root_layout.height,
+                self.nodes[0].natural[1],
+                root_bounds.height,
+            );
+        }
+        self.arrange(0, root_bounds, Some(viewport));
         let popups: Vec<_> = self.scopes.iter().map(|(id, _)| self.indices[id]).collect();
         for i in popups {
             if self.measure_dirty {
                 self.measure_node(i, size[0], text);
             }
             let n = &self.nodes[i];
-            let l = n.element.layout;
+            let l = self.effective_layout(i);
             let area = l.margin.apply(viewport);
             let w = resolve(l.width, n.natural[0], area.width).min(area.width);
             let h = resolve(l.height, n.natural[1], area.height).min(area.height);
@@ -57,6 +76,7 @@ impl Scene {
         let layout = self.effective_layout(i);
         let available = match layout.width {
             Length::Px(w) => w,
+            Length::Percent(fraction) => (width - layout.margin.horizontal()).max(0.0) * fraction,
             _ => (width - layout.margin.horizontal()).max(0.0),
         };
         let padding = layout.insets();
@@ -72,8 +92,8 @@ impl Scene {
                 self.stats.measured_texts += 1;
                 self.nodes[i].text.size
             }
-            Widget::Paragraph(spans) => {
-                let spans = spans.clone();
+            Widget::Paragraph(_) => {
+                let spans = self.paragraph_spans(i);
                 let style = self.computed_style(self.nodes[i].element.id).map_or_else(
                     || self.nodes[i].element.style.text.clone(),
                     |s| s.style.text,
@@ -141,7 +161,11 @@ impl Scene {
             Widget::Panel | Widget::Scroll | Widget::Popup { .. } => [0.0, 0.0],
             _ => [120.0, 36.0],
         };
-        let children = self.nodes[i].children.clone();
+        let children = if matches!(self.nodes[i].element.widget, Widget::Paragraph(_)) {
+            Vec::new()
+        } else {
+            self.nodes[i].children.clone()
+        };
         let active: Vec<_> = children
             .into_iter()
             .filter(|c| {
@@ -163,19 +187,19 @@ impl Scene {
             let fixed: f32 = active
                 .iter()
                 .zip(&sizes)
-                .filter(|(c, _)| self.nodes[**c].element.layout.width != Length::Fill)
+                .filter(|(c, _)| self.effective_layout(**c).width != Length::Fill)
                 .map(|(_, size)| size[0])
                 .sum();
             let fills = active
                 .iter()
-                .filter(|c| self.nodes[**c].element.layout.width == Length::Fill)
+                .filter(|c| self.effective_layout(**c).width == Length::Fill)
                 .count();
             if fills > 0 {
                 let share = ((inner - fixed - layout.gap * active.len().saturating_sub(1) as f32)
                     / fills as f32)
                     .max(0.0);
                 for (position, c) in active.iter().copied().enumerate() {
-                    if self.nodes[c].element.layout.width == Length::Fill {
+                    if self.effective_layout(c).width == Length::Fill {
                         sizes[position] = self.measure_node(c, share, text);
                         sizes[position][0] = share;
                     }
@@ -214,8 +238,10 @@ impl Scene {
         }
         intrinsic[0] += padding.horizontal();
         intrinsic[1] += padding.vertical();
-        if let Length::Px(v) = layout.width {
-            intrinsic[0] = v;
+        match layout.width {
+            Length::Px(v) => intrinsic[0] = v,
+            Length::Percent(_) => intrinsic[0] = available,
+            _ => {}
         }
         if let Length::Px(v) = layout.height {
             intrinsic[1] = v;
@@ -234,6 +260,15 @@ impl Scene {
         self.nodes[i].parent_clip = parent_clip;
         self.nodes[i].clip = parent_clip.and_then(|c| c.intersection(bounds));
         let inner = l.insets().apply(bounds);
+        if matches!(self.nodes[i].element.widget, Widget::Paragraph(_)) {
+            let clip = self.nodes[i].clip;
+            for child in self.nodes[i].children.clone() {
+                self.nodes[child].bounds = inner;
+                self.nodes[child].parent_clip = clip;
+                self.nodes[child].clip = clip.and_then(|c| c.intersection(inner));
+            }
+            return;
+        }
         let children = self.nodes[i].children.clone();
         let active: Vec<_> = children
             .into_iter()
@@ -289,17 +324,27 @@ impl Scene {
         let scroll = matches!(self.nodes[i].element.widget, Widget::Scroll);
         let content_h = match l.flow {
             Flow::Column => {
-                active.iter().map(|c| self.outer(*c, 1)).sum::<f32>()
+                active
+                    .iter()
+                    .map(|c| self.outer_at(*c, 1, inner.height))
+                    .sum::<f32>()
                     + l.gap * (active.len() - 1) as f32
             }
             Flow::Grid { columns } => {
                 active
                     .chunks(columns)
-                    .map(|row| row.iter().map(|c| self.outer(*c, 1)).fold(0.0, f32::max))
+                    .map(|row| {
+                        row.iter()
+                            .map(|c| self.outer_at(*c, 1, inner.height))
+                            .fold(0.0, f32::max)
+                    })
                     .sum::<f32>()
                     + l.gap * (active.len().div_ceil(columns) - 1) as f32
             }
-            _ => active.iter().map(|c| self.outer(*c, 1)).fold(0.0, f32::max),
+            _ => active
+                .iter()
+                .map(|c| self.outer_at(*c, 1, inner.height))
+                .fold(0.0, f32::max),
         };
         self.nodes[i].scroll_max = if scroll {
             (content_h - inner.height).max(0.0)
@@ -323,12 +368,12 @@ impl Scene {
         };
         let fixed: f32 = active
             .iter()
-            .filter(|c| scroll || dimension(&self.nodes[**c], axis) != Length::Fill)
-            .map(|c| self.outer(*c, axis))
+            .filter(|c| scroll || dimension(self.effective_layout(**c), axis) != Length::Fill)
+            .map(|c| self.outer_at(*c, axis, space))
             .sum();
         let fills = active
             .iter()
-            .filter(|c| !scroll && dimension(&self.nodes[**c], axis) == Length::Fill)
+            .filter(|c| !scroll && dimension(self.effective_layout(**c), axis) == Length::Fill)
             .count();
         let share = if fills > 0 {
             ((space - fixed - l.gap * (active.len() - 1) as f32) / fills as f32).max(0.0)
@@ -386,7 +431,7 @@ impl Scene {
                         let start = position + 1 - grid_columns;
                         grid_y += active[start..=position]
                             .iter()
-                            .map(|j| self.outer(*j, 1))
+                            .map(|j| self.outer_at(*j, 1, inner.height))
                             .fold(0.0, f32::max)
                             + l.gap;
                     }
@@ -427,26 +472,32 @@ impl Scene {
             self.arrange(c, r, clip);
         }
     }
-    fn outer(&self, index: usize, axis: usize) -> f32 {
+    fn outer_at(&self, index: usize, axis: usize, available: f32) -> f32 {
         let layout = self.effective_layout(index);
-        self.nodes[index].natural[axis]
-            + if axis == 0 {
-                layout.margin.horizontal()
-            } else {
-                layout.margin.vertical()
-            }
+        let margin = if axis == 0 {
+            layout.margin.horizontal()
+        } else {
+            layout.margin.vertical()
+        };
+        let size = match dimension(layout, axis) {
+            Length::Percent(fraction) => (available - margin).max(0.0) * fraction,
+            Length::Px(value) => value,
+            Length::Auto | Length::Fill => self.nodes[index].natural[axis],
+        };
+        size + margin
     }
 }
-fn dimension(n: &Node, axis: usize) -> Length {
+fn dimension(layout: Layout, axis: usize) -> Length {
     if axis == 0 {
-        n.element.layout.width
+        layout.width
     } else {
-        n.element.layout.height
+        layout.height
     }
 }
 fn resolve(length: Length, natural: f32, available: f32) -> f32 {
     match length {
         Length::Px(v) => v,
+        Length::Percent(fraction) => available * fraction,
         Length::Auto => natural.min(available),
         Length::Fill => available,
     }

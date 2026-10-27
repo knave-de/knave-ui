@@ -8,8 +8,7 @@ dependency; desktop presentation belongs to Shell's internal `knave-shell-ui`.
 ## Appearance policy
 
 The gallery supplies no custom backgrounds, radii, padding, gaps, control heights,
-caption metrics or text wrap/color/weight overrides. Rich spans initialize their
-required values from `TextStyle::default()`. Images, icons and the color picker's
+caption metrics or text wrap/color/weight overrides. The rich-text sample uses classed span elements that inherit typography. Images, icons and the color picker's
 selected color are sample content. Explicit fixture sizes, split dimensions,
 rows, columns, grids, clipping and scrolling demonstrate structural layout.
 

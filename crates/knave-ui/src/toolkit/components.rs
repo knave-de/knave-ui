@@ -4,6 +4,7 @@ use crate::UiImage;
 /// Stable semantic identities for composed elements and text roles in CSS.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComponentKind {
+    Span,
     Subtitle,
     Caption,
     Badge,

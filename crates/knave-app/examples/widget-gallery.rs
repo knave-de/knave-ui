@@ -1,6 +1,6 @@
 //! Shared application widgets, behavior examples and frozen real-scene references.
 use knave_app::{AppResult, Application};
-use knave_ui::{HeadingLevel, TextSpan, TextStyle, toolkit::*};
+use knave_ui::{HeadingLevel, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
@@ -53,7 +53,6 @@ fn core() -> Result<Vec<Element>, UiError> {
     tooltip.tooltip =
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
     let supporting_text = text(103, "Supporting text · toolkit defaults");
-    let text_style = TextStyle::default();
     Ok(vec![
         section(
             100,
@@ -75,21 +74,10 @@ fn core() -> Result<Vec<Element>, UiError> {
                     },
                 ),
                 Element::badge(131, "Badge · 3 updates"),
-                Element::new(
-                    105,
-                    Widget::Paragraph(vec![
-                        TextSpan {
-                            text: "Rich text: ".into(),
-                            color: None,
-                            weight: text_style.weight,
-                        },
-                        TextSpan {
-                            text: "spans using toolkit defaults".into(),
-                            color: None,
-                            weight: text_style.weight,
-                        },
-                    ]),
-                ),
+                Element::new(105, Widget::Paragraph(vec![])).children(vec![
+                    Element::span(132, "Rich text: "),
+                    Element::span(133, "spans using toolkit defaults").class("highlight"),
+                ]),
                 Element::new(106, Widget::Separator),
                 Element::new(
                     107,
