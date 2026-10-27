@@ -544,6 +544,7 @@ impl Element {
         let mut element = Self::new(id, Widget::Text(text.into()));
         element.style.text = TextStyle::heading(level);
         element.semantics.role = Some(super::Role::Heading);
+        element.semantics.heading_level = Some(level);
         element
     }
     /// Wrapping for text, paragraphs and control labels. Use Auto height to grow with the text.

@@ -403,6 +403,21 @@ fn widget_name(w: &Widget) -> &'static str {
         Widget::Popup { .. } => "popup",
     }
 }
+fn widget_matches(element: &Element, selector: &str) -> bool {
+    if widget_name(&element.widget) == selector {
+        return true;
+    }
+    if element.semantics.role != Some(Role::Heading) {
+        return false;
+    }
+    match selector {
+        "heading" => true,
+        "h1" => element.semantics.heading_level == Some(crate::HeadingLevel::H1),
+        "h2" => element.semantics.heading_level == Some(crate::HeadingLevel::H2),
+        "h3" => element.semantics.heading_level == Some(crate::HeadingLevel::H3),
+        _ => false,
+    }
+}
 pub(super) fn compute(
     scene: &Scene,
     id: ElementId,
@@ -582,9 +597,7 @@ fn selector_matches(
 ) -> bool {
     let matches_simple = |i: usize, s: &Simple| {
         let e = &scene.nodes[i].element;
-        s.widget
-            .as_deref()
-            .is_none_or(|w| widget_name(&e.widget) == w)
+        s.widget.as_deref().is_none_or(|w| widget_matches(e, w))
             && s.classes.iter().all(|c| e.classes.iter().any(|x| x == c))
             && s.id
                 .as_ref()

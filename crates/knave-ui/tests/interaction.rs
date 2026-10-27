@@ -1209,6 +1209,46 @@ fn focus_outline_is_for_keyboard_and_disappears_when_control_is_disabled() {
 }
 
 #[test]
+fn heading_selectors_match_levels_and_follow_the_text_cascade() {
+    use knave_ui::{Color, HeadingLevel};
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).children(vec![
+        Element::heading(1, "First", HeadingLevel::H1),
+        Element::heading(2, "Second", HeadingLevel::H2).class("accent"),
+        Element::heading(3, "Third", HeadingLevel::H3),
+        Element::new(4, Widget::Text("Body".into())),
+    ]))
+    .unwrap();
+    scene.set_desktop_theme(Theme::Dark, "text { color: #111111; } heading { font-weight: 500; } h1, h2, h3 { font-weight: 600; } h1 { color: #123456; font-size: 36px; line-height: 42px; } h2 { color: #334455; } h3 { color: #445566; } panel h2.accent { color: #abcdef; }").unwrap();
+    let style = |id| scene.computed_style(ElementId(id)).unwrap().style.text;
+    assert_eq!(style(1).color, Color::rgba(0x12, 0x34, 0x56, 255));
+    assert_eq!(style(1).font_size, 36.0);
+    assert_eq!(style(1).line_height, 42.0);
+    assert_eq!(style(2).color, Color::rgba(0xab, 0xcd, 0xef, 255));
+    assert_eq!(style(3).color, Color::rgba(0x44, 0x55, 0x66, 255));
+    assert_eq!(style(3).weight, 600);
+    assert_eq!(style(4).color, Color::rgba(0x11, 0x11, 0x11, 255));
+    scene.layout([400.0, 400.0], &mut Metrics);
+    let old_height = scene.bounds(ElementId(1)).unwrap().height;
+    scene
+        .set_desktop_theme(Theme::Dark, "h1 { font-size: 48px; line-height: 60px; }")
+        .unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    assert!(scene.bounds(ElementId(1)).unwrap().height > old_height);
+    scene
+        .insert(ElementId(0), Element::new(5, Widget::Text("Other".into())))
+        .unwrap();
+    assert_eq!(
+        scene
+            .computed_style(ElementId(1))
+            .unwrap()
+            .style
+            .text
+            .font_size,
+        48.0
+    );
+}
+
+#[test]
 fn shared_heading_presets_reach_scene_paint_with_measured_heights() {
     use knave_ui::{DisplayCommand, HeadingLevel, TextWrap};
     let label = "A_very_long_heading_that_must_fit_the_constrained_width";

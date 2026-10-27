@@ -41,6 +41,8 @@ pub enum Role {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Semantics {
     pub role: Option<Role>,
+    /// Heading level for level-specific styling and semantic metadata.
+    pub heading_level: Option<crate::HeadingLevel>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub controls: Option<ElementId>,

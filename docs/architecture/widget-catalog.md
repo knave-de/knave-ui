@@ -36,7 +36,11 @@ light/high-contrast palettes and theme installation remain deferred.
 `HeadingLevel::{H1, H2, H3}`, `TextStyle::heading` and `Element::heading` supply
 24/32, 20/28 and 16/24 logical-pixel font-size/line-height presets. All use weight
 700 with the default font family/color. The gallery uses these same public
-constructors for its title, sections, subordinate headings and samples.
+constructors for its title, sections, subordinate headings and samples. Heading
+elements retain their level in `Semantics::heading_level`; CSS supports `h1`,
+`h2`, `h3` and `heading`, while `text` continues to match them too. Adding the
+field changes exhaustive `Semantics` struct literals; use `..Default::default()`
+when constructing one.
 
 ## Component coverage
 
