@@ -59,6 +59,13 @@ pub fn apply(scene: &mut Scene) -> Result<(Theme, bool), Box<dyn std::error::Err
     Ok((theme, changed))
 }
 
+/// Use the selected bundled palette when the initial custom CSS is invalid.
+pub fn apply_fallback(scene: &mut Scene) -> Result<Theme, Box<dyn std::error::Error>> {
+    let (_, _, theme) = selection()?;
+    scene.set_desktop_theme(theme, "")?;
+    Ok(theme)
+}
+
 #[cfg(target_os = "linux")]
 pub struct Watcher {
     shutdown: std::os::unix::net::UnixStream,

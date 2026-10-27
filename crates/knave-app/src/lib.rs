@@ -71,7 +71,12 @@ fn run_inner(
         };
         match theme::apply(app.scene()) {
             Ok((theme, _)) => app.theme_changed(theme)?,
-            Err(error) => eprintln!("theme: {error}"),
+            Err(error) => {
+                eprintln!("theme: {error}");
+                if let Ok(theme) = theme::apply_fallback(app.scene()) {
+                    app.theme_changed(theme)?;
+                }
+            }
         }
         watcher
     } else {
