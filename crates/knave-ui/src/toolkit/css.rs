@@ -95,9 +95,10 @@ impl Stylesheet {
     pub(super) fn same_as(&self, other: &Self) -> bool {
         self.rules == other.rules
     }
-    pub fn for_theme(theme: Theme, source: &str) -> Result<Self, StylesheetError> {
+    pub fn for_theme(theme: Theme, desktop: &str, source: &str) -> Result<Self, StylesheetError> {
         let mut sheet = Self::parse_rules(theme.stylesheet())?;
-        let custom = Self::parse_rules(source)?;
+        let mut custom = Self::parse_rules(desktop)?;
+        custom.rules.extend(Self::parse_rules(source)?.rules);
         if sheet.rules.len() + custom.rules.len() > 256 {
             return Err(StylesheetError::Syntax);
         }
@@ -991,6 +992,36 @@ mod tests {
         );
         assert!(Stylesheet::parse("button { border-radius: -2px; }").is_err());
         assert!(Stylesheet::parse("button:active { color: red; }").is_err());
+    }
+
+    #[test]
+    fn desktop_layer_is_atomic_and_application_rules_win() {
+        let button = Element::new(2, Widget::Button("Theme".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene.set_stylesheet("button { color: #123456; }").unwrap();
+        scene
+            .set_desktop_theme(Theme::Light, "button { color: #abcdef; padding: 17px; }")
+            .unwrap();
+        let before = scene.computed_style(ElementId(2)).unwrap();
+        assert_eq!(before.style.text.color, parse_color("#123456").unwrap());
+        assert!(
+            scene
+                .set_desktop_theme(Theme::Dark, "button { color: nonsense; }")
+                .is_err()
+        );
+        assert_eq!(scene.theme(), Theme::Light);
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
+        scene
+            .insert(ElementId(1), Element::new(3, Widget::Button("New".into())))
+            .unwrap();
+        assert_eq!(scene.theme(), Theme::Light);
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
+        assert_eq!(
+            scene.desktop_stylesheet(),
+            "button { color: #abcdef; padding: 17px; }"
+        );
+        scene.remove(ElementId(3)).unwrap();
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap(), before);
     }
 
     #[test]

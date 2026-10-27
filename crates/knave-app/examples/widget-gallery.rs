@@ -875,6 +875,7 @@ impl Application for Gallery {
         if self.fixtures_ready {
             return Ok(());
         }
+        let desktop_css = self.scene.desktop_stylesheet().to_owned();
         for (kind, title) in [
             "Button",
             "Checkbox",
@@ -938,7 +939,7 @@ impl Application for Gallery {
                 ];
                 let mut fixture =
                     Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
-                fixture.set_theme(self.theme)?;
+                fixture.set_desktop_theme(self.theme, &desktop_css)?;
                 fixture.layout(size, text);
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
@@ -1017,6 +1018,17 @@ impl Application for Gallery {
         // preference after the gallery's one-time fixture population.
         self.scene.set_theme(self.theme)?;
         self.fixtures_ready = true;
+        Ok(())
+    }
+
+    fn theme_changed(&mut self, theme: knave_ui::toolkit::Theme) -> AppResult {
+        if self.fixtures_ready {
+            for kind in 0..20 {
+                self.scene.remove(ElementId(5600 + kind * 20))?;
+            }
+            self.fixtures_ready = false;
+        }
+        self.theme = theme;
         Ok(())
     }
 
@@ -1099,13 +1111,8 @@ impl Application for Gallery {
     }
 }
 fn main() -> AppResult {
-    let config = knave_config::ConfigDocument::at_default_path()?;
-    let theme = match config.config().appearance.theme {
-        knave_config::Theme::Light => knave_ui::toolkit::Theme::Light,
-        knave_config::Theme::System | knave_config::Theme::Dark => knave_ui::toolkit::Theme::Dark,
-    };
-    let mut scene = gallery()?;
-    scene.set_theme(theme)?;
+    let theme = knave_ui::toolkit::Theme::Dark;
+    let scene = gallery()?;
     knave_app::run(
         "Knave UI · Component catalog",
         [960.0, 840.0],
