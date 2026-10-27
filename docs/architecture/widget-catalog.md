@@ -18,6 +18,16 @@ interaction states and inherited color/typography. Applications can replace the
 scene stylesheet atomically and target elements by widget, class or style ID.
 Built-in appearance rules remain beneath replacement rules, so omitted
 declarations retain default palette values and fallback surfaces.
+CSS borders reserve layout space between the content padding and outer margin.
+`border`, `border-width`, `border-color`, and each `border-top/right/bottom/left`
+shorthand and width/color longhand support solid per-edge borders. Auto-sized
+boxes grow with the border; explicitly sized boxes keep their bounds and inset
+content. `border-radius` accepts one to four values, and individual corner
+radius properties override it through the normal cascade. `outline`,
+`outline-width`, `outline-color`, and `outline-offset` paint independently of
+layout; offsets may be negative. CSS lengths use logical pixels. Existing explicit
+Rust `ShapePaint::border` remains a painted stroke and does not reserve layout.
+
 Action variants remain semantic intent and share the default button appearance;
 light/high-contrast palettes and theme installation remain deferred.
 

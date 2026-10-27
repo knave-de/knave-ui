@@ -67,6 +67,15 @@ impl CornerRadii {
     }
 }
 
+/// Border widths and colors for the four edges, in top/right/bottom/left order.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EdgeBorders {
+    pub top: Border,
+    pub right: Border,
+    pub bottom: Border,
+    pub left: Border,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BoxShadow {
     pub color: Color,
@@ -80,6 +89,7 @@ pub struct BoxShadow {
 pub struct ShapePaint {
     pub fill: Option<Color>,
     pub border: Option<Border>,
+    pub edge_borders: Option<EdgeBorders>,
     pub radii: CornerRadii,
     pub opacity: f32,
     pub shadow: Option<BoxShadow>,
@@ -90,6 +100,7 @@ impl ShapePaint {
         Self {
             fill: Some(color),
             border: None,
+            edge_borders: None,
             radii: CornerRadii::default(),
             opacity: 1.0,
             shadow: None,

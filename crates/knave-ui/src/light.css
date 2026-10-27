@@ -26,7 +26,7 @@ button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, select
 button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
 button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
 collection:selected { background-color: var(--surface-selected); }
-button:focus, link:focus, text-input:focus, dropdown:focus, checkbox:focus, toggle:focus { border-color: var(--accent); border-width: 1px; }
+button:focus, link:focus, text-input:focus, dropdown:focus, checkbox:focus, toggle:focus { outline-color: var(--accent); outline-width: 1px; }
 menu, context-menu { background-color: var(--surface-menu); }
 text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: #17232d; }
 slider, checkbox:selected, mixed-checkbox:selected, toggle:selected, progress, spinner { color: var(--accent); }

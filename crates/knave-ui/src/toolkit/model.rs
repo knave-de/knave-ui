@@ -95,6 +95,8 @@ pub struct Layout {
     pub padding: f32,
     /// Overrides uniform padding when present.
     pub padding_edges: Option<Insets>,
+    /// Layout space reserved for the element border.
+    pub border_edges: Insets,
     pub margin: Insets,
     pub clip: ClipMode,
     pub gap: f32,
@@ -109,6 +111,7 @@ impl Default for Layout {
             flow: Flow::Column,
             padding: 0.0,
             padding_edges: None,
+            border_edges: Insets::default(),
             margin: Insets::default(),
             clip: ClipMode::Content,
             gap: 8.0,
@@ -128,7 +131,13 @@ impl Layout {
         self
     }
     pub fn insets(self) -> Insets {
-        self.padding_edges.unwrap_or(Insets::all(self.padding))
+        let p = self.padding_edges.unwrap_or(Insets::all(self.padding));
+        Insets {
+            top: p.top + self.border_edges.top,
+            right: p.right + self.border_edges.right,
+            bottom: p.bottom + self.border_edges.bottom,
+            left: p.left + self.border_edges.left,
+        }
     }
 }
 

@@ -254,8 +254,8 @@ fn focused_border_color_and_width_follow_css_cascade() {
     let list = s.display_list([240.0, 120.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.border.is_some_and(|border|
-                border.width == 3.0 && border.color == knave_ui::Color::rgba(255, 0, 0, 255))
+            if paint.edge_borders.is_some_and(|edges|
+                edges.top.width == 3.0 && edges.top.color == knave_ui::Color::rgba(255, 0, 0, 255))
     )));
 }
 #[test]
@@ -1981,4 +1981,100 @@ fn numeric_endpoints_do_not_emit_false_changes_and_icon_size_can_be_overridden()
     );
     let list = s.display_list([400.0, 400.0], &mut Metrics);
     assert!(list.commands.iter().any(|command| matches!(command, knave_ui::DisplayCommand::Image { bounds, .. } if bounds.width == 48.0 && bounds.height == 48.0)));
+}
+
+#[test]
+fn css_borders_reflow_content_and_outline_does_not() {
+    let first = Element::new(1, Widget::Text("First".into())).class("first");
+    let second = Element::new(2, Widget::Text("Second".into()));
+    let mut scene =
+        Scene::new(Element::new(0, Widget::Panel).children(vec![first, second])).unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    let before = scene.bounds(ElementId(2)).unwrap().y;
+    scene.set_stylesheet(".first { border-top: 3px solid #f00; border-bottom: 7px solid #00f; padding: 2px; outline: 4px solid #0f0; outline-offset: 5px; }").unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    let first_bounds = scene.bounds(ElementId(1)).unwrap();
+    assert_eq!(scene.bounds(ElementId(2)).unwrap().y, before + 14.0);
+    let list = scene.display_list([400.0, 400.0], &mut Metrics);
+    assert!(list.commands.iter().any(|command| matches!(command, DisplayCommand::Shape { bounds, paint, .. }
+        if *bounds == first_bounds && paint.edge_borders.is_some_and(|b| b.top.width == 3.0 && b.bottom.width == 7.0))));
+    assert!(list.commands.iter().any(|command| matches!(command, DisplayCommand::Shape { bounds, paint, .. }
+        if bounds.x == first_bounds.x - 9.0 && bounds.y == first_bounds.y - 9.0 && paint.border.is_some_and(|b| b.width == 4.0 && b.color == knave_ui::Color::rgba(0, 255, 0, 255)))));
+    scene.set_stylesheet(".first { border-top: 3px solid #f00; border-bottom: 7px solid #00f; padding: 2px; outline: 12px solid #0f0; outline-offset: 20px; }").unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(scene.bounds(ElementId(2)).unwrap().y, before + 14.0);
+}
+
+#[test]
+fn border_cascade_and_corner_shorthand_resolve_variables() {
+    let mut s = scene(vec![
+        leaf(1, Widget::Button("Styled".into())).class("target"),
+    ]);
+    s.set_stylesheet(":root { --widths: 1px 2px 3px 4px; --radii: 4px 8px 12px 16px; } button { border: 9px solid #f00; border-width: var(--widths); border-radius: var(--radii); } .target { border-left: 6px solid #00f; border-top-right-radius: 20px; }").unwrap();
+    let style = s.computed_style(ElementId(1)).unwrap();
+    assert_eq!(
+        [
+            style.borders.top.width,
+            style.borders.right.width,
+            style.borders.bottom.width,
+            style.borders.left.width
+        ],
+        [1.0, 2.0, 3.0, 6.0]
+    );
+    assert_eq!(
+        style.borders.left.color,
+        knave_ui::Color::rgba(0, 0, 255, 255)
+    );
+    assert_eq!(style.style.radius, 4.0);
+    let radius = style.style.radii.unwrap();
+    assert_eq!(
+        [
+            radius.top_left,
+            radius.top_right,
+            radius.bottom_right,
+            radius.bottom_left
+        ],
+        [4.0, 20.0, 12.0, 16.0]
+    );
+    assert!(
+        s.set_stylesheet("button { border-top-left-radius: 1px 2px; }")
+            .is_err()
+    );
+}
+
+#[test]
+fn hover_border_width_reflows_and_preserves_hit_testing() {
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![
+        Element::new(1, Widget::Button("First".into())).class("first"),
+        Element::new(2, Widget::Button("Second".into())),
+    ]))
+    .unwrap();
+    s.set_stylesheet(".first:hover { border-top: 4px solid #f00; border-bottom: 8px solid #00f; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let before = s.bounds(ElementId(2)).unwrap().y;
+    s.event(Input::PointerMove([20.0, 20.0]));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(s.bounds(ElementId(2)).unwrap().y, before + 12.0);
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    assert_eq!(
+        s.hit_test([bounds.x + 4.0, bounds.y + bounds.height - 1.0]),
+        Some(ElementId(1))
+    );
+}
+
+#[test]
+fn explicit_layout_border_edges_are_retained_and_validated() {
+    let mut item = Element::new(1, Widget::Text("test".into()));
+    item.layout.border_edges = Insets {
+        top: 3.0,
+        right: 0.0,
+        bottom: 5.0,
+        left: 0.0,
+    };
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![item.clone()])).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(s.bounds(ElementId(1)).unwrap().height, 26.0);
+    item.layout.border_edges.top = -1.0;
+    assert!(Scene::new(item).is_err());
 }
