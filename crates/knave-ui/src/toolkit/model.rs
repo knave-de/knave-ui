@@ -476,6 +476,10 @@ pub struct Element {
     pub semantics: super::Semantics,
     pub selection_group: Option<super::SelectionGroup>,
     pub id: ElementId,
+    /// CSS class names used by the scene stylesheet.
+    pub classes: Vec<String>,
+    /// CSS style ID, independent of the retained scene ElementId.
+    pub style_id: Option<String>,
     pub widget: Widget,
     pub layout: Layout,
     pub style: Style,
@@ -508,6 +512,8 @@ impl Element {
             semantics: super::Semantics::default(),
             selection_group: None,
             id: ElementId(id),
+            classes: Vec::new(),
+            style_id: None,
             widget,
             layout: Layout::default(),
             style,
@@ -539,6 +545,14 @@ impl Element {
     }
     pub fn cursor(mut self, cursor: CursorShape) -> Self {
         self.cursor = Some(cursor);
+        self
+    }
+    pub fn class(mut self, name: impl Into<String>) -> Self {
+        self.classes.push(name.into());
+        self
+    }
+    pub fn style_id(mut self, name: impl Into<String>) -> Self {
+        self.style_id = Some(name.into());
         self
     }
     pub fn children(mut self, children: Vec<Self>) -> Self {

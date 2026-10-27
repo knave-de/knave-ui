@@ -13,9 +13,13 @@ required values from `TextStyle::default()`. Images, icons and the color picker'
 selected color are sample content. Explicit fixture sizes, split dimensions,
 rows, columns, grids, clipping and scrolling demonstrate structural layout.
 
-Global CSS, theme tokens, light/high-contrast palettes and custom CSS overrides
-remain deferred. Action variants record semantic intent and currently share the
-default button appearance. They do not install a provisional gallery theme.
+The toolkit bundles a bounded CSS subset for widget appearance, semantic
+interaction states and inherited color/typography. Applications can replace the
+scene stylesheet atomically and target elements by widget, class or style ID.
+Built-in appearance rules remain beneath replacement rules, so omitted
+declarations retain default palette values and fallback surfaces.
+Action variants remain semantic intent and share the default button appearance;
+light/high-contrast palettes and theme installation remain deferred.
 
 ## Heading presets
 
@@ -84,7 +88,7 @@ Enter navigate/select them while clipboard and caret editing remain available.
 | Long text/narrow layouts | Shared wrapping/clipping and constrained-width samples |
 | Scaling | Logical coordinates; host scales input/paint together; fractional output scaling remains an external runtime check |
 | Keyboard only | Roving groups, retained page state, disabled/hidden exclusion and modal traversal |
-| Light/high contrast | Deferred with global CSS/theming |
+| Light/high contrast | Alternate bundled palettes remain deferred |
 
 `SceneSnapshot::capture` freezes a real scene display list using the common text
 measurer. The public snapshot widget renders it through the common painter;

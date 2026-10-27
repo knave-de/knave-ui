@@ -1,0 +1,35 @@
+:root {
+    --accent: accent;
+    --warning: warning;
+    --danger: danger;
+    --canvas: #080a0e;
+    --panel-surface: #10141a;
+    --surface: #191f28;
+    --surface-hover: #2d3744;
+    --surface-pressed: #111820;
+    --surface-selected: #164f65;
+    --surface-menu: #111820;
+    --surface-tooltip: #283543;
+    --surface-overlay: #000000aa;
+    --text-disabled: #87909b;
+    --control-muted: #394450;
+}
+:disabled { color: var(--text-disabled); }
+.warning { color: var(--warning); }
+.danger { color: var(--danger); }
+canvas { background-color: var(--canvas); }
+surface { background-color: var(--surface); }
+modal-overlay { background-color: var(--surface-overlay); }
+panel, scene-snapshot { background-color: var(--panel-surface); }
+button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { color: #f0f3f6; background-color: var(--surface); }
+button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
+button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
+button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
+collection:selected { background-color: var(--surface-selected); }
+button:focus, link:focus, text-input:focus, dropdown:focus, checkbox:focus, toggle:focus { border-color: var(--accent); border-width: 1px; }
+menu, context-menu { background-color: var(--surface-menu); }
+text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: #f0f3f6; }
+slider, checkbox:selected, mixed-checkbox:selected, toggle:selected, progress, spinner { color: var(--accent); }
+progress, separator, scroll { background-color: var(--control-muted); }
+tooltip { color: #f7f8fa; background-color: var(--surface-tooltip); padding: 8px; }
+text, paragraph, heading { color: #f0f3f6; }

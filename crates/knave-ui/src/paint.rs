@@ -232,6 +232,7 @@ mod tests {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct TextSpan {
     pub text: String,
-    pub color: Color,
+    /// An explicit run color. `None` uses the containing widget's computed text color.
+    pub color: Option<Color>,
     pub weight: u16,
 }

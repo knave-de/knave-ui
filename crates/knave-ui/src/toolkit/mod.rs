@@ -5,6 +5,9 @@ mod color_picker;
 mod combo;
 mod components;
 mod context_menu;
+mod css;
+use css::Stylesheet;
+pub use css::{ComputedStyle, StylesheetError, Theme};
 mod cursor;
 mod snapshot;
 pub use snapshot::*;
@@ -74,6 +77,9 @@ struct MenuState {
 
 /// Owns scene structure, widget values and input state. Storage is bounded by `MAX_ELEMENTS`.
 pub struct Scene {
+    theme: Theme,
+    stylesheet: Stylesheet,
+    stylesheet_override: String,
     clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -97,8 +103,100 @@ pub struct Scene {
     pub inspect: bool,
 }
 impl Scene {
+    /// Atomically replace application CSS rules over the selected theme defaults.
+    /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
+    pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
+        let next = Stylesheet::for_theme(self.theme, source)?;
+        self.update_stylesheet(next);
+        self.stylesheet_override = source.to_owned();
+        Ok(())
+    }
+
+    /// Select a bundled base palette while retaining and revalidating application CSS.
+    /// Invalid combined styles leave the current theme and stylesheet active.
+    pub fn set_theme(&mut self, theme: Theme) -> Result<(), StylesheetError> {
+        let next = Stylesheet::for_theme(theme, &self.stylesheet_override)?;
+        self.update_stylesheet(next);
+        self.theme = theme;
+        Ok(())
+    }
+
+    /// Returns the currently selected bundled palette.
+    pub fn theme(&self) -> Theme {
+        self.theme
+    }
+
+    fn update_stylesheet(&mut self, next: Stylesheet) {
+        if !self.stylesheet.same_as(&next) {
+            let old = self
+                .nodes
+                .iter()
+                .map(|n| self.computed_style(n.element.id))
+                .collect::<Vec<_>>();
+            let _previous = std::mem::replace(&mut self.stylesheet, next);
+            let new = self
+                .nodes
+                .iter()
+                .map(|n| self.computed_style(n.element.id))
+                .collect::<Vec<_>>();
+            let changed = old != new;
+            if changed {
+                let metrics_changed = old.iter().zip(&new).any(|(a, b)| {
+                    a.as_ref().zip(b.as_ref()).is_some_and(|(a, b)| {
+                        a.padding != b.padding
+                            || a.margin != b.margin
+                            || a.gap != b.gap
+                            || a.style.text.font_family != b.style.text.font_family
+                            || a.style.text.font_size != b.style.text.font_size
+                            || a.style.text.line_height != b.style.text.line_height
+                            || a.style.text.weight != b.style.text.weight
+                            || a.style.text.wrap != b.style.text.wrap
+                            || a.style.text.align != b.style.text.align
+                    })
+                });
+                if metrics_changed {
+                    self.invalidate_layout();
+                } else {
+                    self.paint_dirty = true;
+                }
+            } else {
+                self.paint_dirty = true;
+            }
+        }
+    }
+    pub fn computed_style(&self, id: ElementId) -> Option<ComputedStyle> {
+        self.computed_style_for(id, self.interaction(id)?)
+    }
+    pub fn computed_style_for(
+        &self,
+        id: ElementId,
+        state: InteractionState,
+    ) -> Option<ComputedStyle> {
+        css::compute(self, id, state)
+    }
+    pub(super) fn auxiliary_style(&self, kind: &str) -> ComputedStyle {
+        css::auxiliary(self, kind)
+    }
+    pub(super) fn theme_color(&self, name: &str) -> Option<Color> {
+        css::theme_color(self, name)
+    }
+    pub(super) fn effective_layout(&self, index: usize) -> Layout {
+        let mut layout = self.nodes[index].element.layout;
+        if let Some(style) = self.computed_style(self.nodes[index].element.id) {
+            if style.padding_explicit {
+                layout.padding_edges = Some(style.padding);
+            }
+            layout.margin = style.margin;
+            layout.gap = style.gap;
+        }
+        layout
+    }
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
+            theme: Theme::Dark,
+            stylesheet: Stylesheet::for_theme(Theme::Dark, "")
+                .expect("bundled dark stylesheet is valid"),
+            stylesheet_override: String::new(),
             clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
@@ -176,10 +274,14 @@ impl Scene {
         let (Widget::TextInput(edit) | Widget::ComboBox { edit, .. }) = &node.element.widget else {
             return None;
         };
+        let layout = self.effective_layout(self.indices[&id]);
+        let style = self
+            .computed_style(id)
+            .map_or_else(|| node.element.style.clone(), |style| style.style);
         let caret = node.text.caret(edit.cursor()).unwrap_or_default();
         let x = caret.x;
         let password = edit.mode() == InputMode::Password;
-        let area = label_content(node.bounds, node.element.layout);
+        let area = label_content(node.bounds, layout);
         Some(TextInputState {
             purpose: match edit.mode() {
                 InputMode::Password => TextPurpose::Password,
@@ -197,20 +299,15 @@ impl Scene {
             cursor: if password { 0 } else { edit.cursor() },
             anchor: if password { 0 } else { edit.anchor() },
             cursor_rectangle: Rect::new(
-                control_content(node.bounds, node.element.layout).x + x - node.text_offset,
+                control_content(node.bounds, layout).x + x - node.text_offset,
                 area.y
                     + if edit.mode() == InputMode::Multiline {
                         caret.y - node.text_scroll_y
                     } else {
-                        ((area.height - node.element.style.text.line_height) / 2.0).max(0.0)
+                        ((area.height - style.text.line_height) / 2.0).max(0.0)
                     },
                 2.0,
-                node.element
-                    .style
-                    .text
-                    .line_height
-                    .min(area.height)
-                    .max(1.0),
+                style.text.line_height.min(area.height).max(1.0),
             ),
         })
     }
@@ -426,7 +523,7 @@ impl Scene {
             Widget::Toggle { checked: true, .. }
                 | Widget::Checkbox { checked: true, .. }
                 | Widget::Selectable { selected: true, .. }
-        );
+        ) || matches!(&node.element.widget, Widget::Collection(collection) if collection.selected.is_some());
         Some(InteractionState {
             hovered: self.hover == Some(id),
             focused: self.surface_focused && self.focus == Some(id),
@@ -437,6 +534,35 @@ impl Scene {
             selected,
             expanded: self.menu.as_ref().is_some_and(|m| m.owner == id),
         })
+    }
+    pub(super) fn interaction_style_snapshot(&self) -> Vec<Option<ComputedStyle>> {
+        self.nodes
+            .iter()
+            .map(|node| self.computed_style(node.element.id))
+            .collect()
+    }
+    pub(super) fn finish_interaction_style_change(&mut self, previous: Vec<Option<ComputedStyle>>) {
+        let metrics_changed = previous.iter().enumerate().any(|(index, before)| {
+            before
+                .as_ref()
+                .zip(self.computed_style(self.nodes[index].element.id).as_ref())
+                .is_some_and(|(before, after)| {
+                    before.padding != after.padding
+                        || before.margin != after.margin
+                        || before.gap != after.gap
+                        || before.style.text.font_family != after.style.text.font_family
+                        || before.style.text.font_size != after.style.text.font_size
+                        || before.style.text.line_height != after.style.text.line_height
+                        || before.style.text.weight != after.style.text.weight
+                        || before.style.text.wrap != after.style.text.wrap
+                        || before.style.text.align != after.style.text.align
+                })
+        });
+        if metrics_changed {
+            self.invalidate_layout();
+        } else {
+            self.paint_dirty = true;
+        }
     }
     fn invalidate_layout(&mut self) {
         self.measure_dirty = true;
@@ -637,6 +763,14 @@ fn validate(e: &Element) -> Result<(), UiError> {
         || e.widget.label().len() > MAX_TEXT_BYTES
     {
         return Err(UiError::TextTooLong);
+    }
+    if e.classes.len() > 64
+        || e.classes.iter().any(|c| c.is_empty() || c.len() > 128)
+        || e.style_id
+            .as_ref()
+            .is_some_and(|id| id.is_empty() || id.len() > 128)
+    {
+        return Err(UiError::InvalidLayout);
     }
     if let Widget::Paragraph(spans) = &e.widget
         && spans.iter().map(|s| s.text.len()).sum::<usize>() > MAX_TEXT_BYTES

@@ -117,6 +117,7 @@ impl Scene {
         {
             return Err(UiError::MissingElement(id));
         }
+        let previous_styles = self.interaction_style_snapshot();
         if let Some(id) = target {
             self.select_group_item(self.indices[&id]);
         }
@@ -127,9 +128,13 @@ impl Scene {
             self.reveal_focus();
             self.paint_dirty = true;
         }
+        self.finish_interaction_style_change(previous_styles);
         Ok(())
     }
     pub fn event(&mut self, input: Input) -> EventResult {
+        let previous_styles = self
+            .interaction_styles_may_change(&input)
+            .then(|| self.interaction_style_snapshot());
         let focus_visible = match &input {
             Input::Key { pressed: true, .. } => Some(true),
             Input::PointerDown(_) => Some(false),
@@ -255,6 +260,9 @@ impl Scene {
             }
             _ => {}
         }
+        if let Some(previous_styles) = previous_styles {
+            self.finish_interaction_style_change(previous_styles);
+        }
         EventResult {
             redraw: self.needs_frame(),
             action,
@@ -331,8 +339,8 @@ impl Scene {
                 })
             }
             Widget::TextInput(_) | Widget::ComboBox { .. } => {
-                let x = p[0]
-                    - control_content(self.nodes[i].bounds, self.nodes[i].element.layout).x
+                let layout = self.effective_layout(i);
+                let x = p[0] - control_content(self.nodes[i].bounds, layout).x
                     + self.nodes[i].text_offset;
                 let byte = self.nodes[i].text.hit_at(x, self.input_hit_y(i, p[1]));
                 if let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
@@ -407,7 +415,7 @@ impl Scene {
                 capture.value = slider.value();
                 let fraction = slider.fraction();
                 let vertical = slider.orientation == Orientation::Vertical;
-                let b = control_content(self.nodes[i].bounds, self.nodes[i].element.layout);
+                let b = control_content(self.nodes[i].bounds, self.effective_layout(i));
                 let center = if vertical {
                     b.y + (1.0 - fraction) * b.height
                 } else {
@@ -425,8 +433,9 @@ impl Scene {
                 self.move_slider(id, p, capture.offset[0])
             }
             Widget::TextInput(_) | Widget::ComboBox { .. } => {
+                let layout = self.effective_layout(i);
                 let byte = self.nodes[i].text.hit_at(
-                    p[0] - control_content(self.nodes[i].bounds, self.nodes[i].element.layout).x
+                    p[0] - control_content(self.nodes[i].bounds, layout).x
                         + self.nodes[i].text_offset,
                     self.input_hit_y(i, p[1]),
                 );
@@ -546,15 +555,14 @@ impl Scene {
     fn move_slider(&mut self, id: ElementId, p: [f32; 2], offset: f32) -> Option<Action> {
         let i = self.indices[&id];
         let splitter = matches!(self.nodes[i].element.widget, Widget::Splitter(_));
+        let layout = self.effective_layout(i);
         let b = if splitter {
             let parent = self.nodes[i].parent?;
-            self.nodes[parent]
-                .element
-                .layout
+            self.effective_layout(parent)
                 .insets()
                 .apply(self.nodes[parent].bounds)
         } else {
-            control_content(self.nodes[i].bounds, self.nodes[i].element.layout)
+            control_content(self.nodes[i].bounds, layout)
         };
         if let Widget::Slider(slider) | Widget::Splitter(slider) = &mut self.nodes[i].element.widget
         {
@@ -861,10 +869,40 @@ impl Scene {
     }
     fn input_hit_y(&self, i: usize, y: f32) -> f32 {
         let n = &self.nodes[i];
+        let layout = self.effective_layout(i);
         if matches!(&n.element.widget, Widget::TextInput(e) if e.mode() == InputMode::Multiline) {
-            y - label_content(n.bounds, n.element.layout).y + n.text_scroll_y
+            y - label_content(n.bounds, layout).y + n.text_scroll_y
         } else {
             0.0
+        }
+    }
+    fn interaction_styles_may_change(&self, input: &Input) -> bool {
+        match input {
+            Input::PointerMove(position) => self.hit_test(*position) != self.hover,
+            Input::PointerDown(_) => true,
+            Input::PointerUp(_) => self.capture.is_some() || self.key_pressed.is_some(),
+            Input::PointerLeave => self.hover.is_some(),
+            Input::Key { key, .. } => matches!(
+                key,
+                Key::Tab
+                    | Key::Enter
+                    | Key::Space
+                    | Key::Left
+                    | Key::Right
+                    | Key::Up
+                    | Key::Down
+                    | Key::Home
+                    | Key::End
+                    | Key::Escape
+            ),
+            Input::FocusGained => !self.surface_focused,
+            Input::FocusLost => {
+                self.surface_focused || self.hover.is_some() || self.capture.is_some()
+            }
+            Input::Cancel => {
+                self.hover.is_some() || self.capture.is_some() || self.key_pressed.is_some()
+            }
+            _ => false,
         }
     }
     fn insert_text(&mut self, text: &str) -> Option<Action> {

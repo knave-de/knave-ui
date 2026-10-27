@@ -353,6 +353,7 @@ impl Scene {
         Some(Some(Action::Selected(self.nodes[i].element.id, id)))
     }
     fn reveal_collection_selection(&mut self, i: usize) {
+        let layout = self.effective_layout(i);
         let node = &self.nodes[i];
         let Widget::Collection(collection) = &node.element.widget else {
             return;
@@ -364,7 +365,7 @@ impl Scene {
         else {
             return;
         };
-        let area = node.element.layout.insets().apply(node.bounds);
+        let area = layout.insets().apply(node.bounds);
         let height = (area.height - collection.header_height()).max(0.0);
         let y = (position / collection.columns()) as f32 * COLLECTION_ROW_HEIGHT;
         let mut scroll = node.scroll;
@@ -377,11 +378,12 @@ impl Scene {
         self.nodes[i].scroll = scroll;
     }
     pub(super) fn collection_click(&mut self, i: usize, p: [f32; 2]) -> Option<Action> {
+        let layout = self.effective_layout(i);
         let n = &self.nodes[i];
         let Widget::Collection(c) = &n.element.widget else {
             return None;
         };
-        let area = n.element.layout.insets().apply(n.bounds);
+        let area = layout.insets().apply(n.bounds);
         let header = c.header_height();
         let x = (p[0] - area.x).max(0.0);
         let y = p[1] - area.y;
