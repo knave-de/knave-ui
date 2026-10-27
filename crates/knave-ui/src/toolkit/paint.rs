@@ -238,9 +238,9 @@ impl Scene {
                 value.clone(),
                 style.text.clone(),
             ),
-            Widget::Paragraph(spans) => self.list.commands.push(DisplayCommand::RichText {
+            Widget::Paragraph(_) => self.list.commands.push(DisplayCommand::RichText {
                 bounds: layout.insets().apply(b),
-                spans: spans.clone(),
+                spans: self.paragraph_spans(i),
                 style: style.text.clone(),
                 transform: Transform2D::IDENTITY,
                 clip,
@@ -335,6 +335,7 @@ impl Scene {
                     mark_base.text = mark_style.clone();
                     mark_base.background = None;
                     let mark_state = part_hover_state(self, i, "checkbox-mark", state, rect);
+                    let mut mark = if mixed { "−" } else { "✓" }.to_owned();
                     if let Some(part) =
                         css::part_style(self, i, "checkbox-mark", mark_state, mark_base.clone())
                     {
@@ -349,15 +350,12 @@ impl Scene {
                             );
                             shape(&mut self.list, rect, clip, paint);
                         }
+                        if let Some(content) = part.computed.content {
+                            mark = content;
+                        }
                         mark_style = part.computed.style.text;
                     }
-                    text_cmd(
-                        &mut self.list,
-                        rect,
-                        clip,
-                        if mixed { "−" } else { "✓" }.into(),
-                        mark_style,
-                    );
+                    text_cmd(&mut self.list, rect, clip, mark, mark_style);
                 }
                 text_cmd(
                     &mut self.list,

@@ -83,11 +83,11 @@ fn semantic_elements_and_groups_have_distinct_selectors() {
         matches(&mut s, i as u64 + 1, name);
     }
     let variants = [
-        (ButtonVariant::Primary, "primary-button"),
-        (ButtonVariant::Secondary, "secondary-button"),
-        (ButtonVariant::Ghost, "ghost-button"),
-        (ButtonVariant::Destructive, "destructive-button"),
-        (ButtonVariant::Icon, "icon-button"),
+        (ButtonVariant::Primary, "button.primary"),
+        (ButtonVariant::Secondary, "button.secondary"),
+        (ButtonVariant::Ghost, "button.ghost"),
+        (ButtonVariant::Destructive, "button.destructive"),
+        (ButtonVariant::Icon, "button.icon"),
     ];
     let mut s = scene(
         variants
@@ -182,7 +182,7 @@ fn semantic_elements_and_groups_have_distinct_selectors() {
         (2, "caption"),
         (3, "badge"),
         (4, "alert"),
-        (5, "loading-button:busy"),
+        (5, "button:busy"),
     ] {
         matches(&mut s, id, name);
     }
@@ -623,4 +623,213 @@ fn hover_tracks_the_actual_part_even_for_noninteractive_progress() {
     s.event(Input::PointerMove([499.0, 599.0]));
     let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command, DisplayCommand::Shape { paint, .. } if paint.fill == Some(Color::rgba(0x11, 0x22, 0x33, 255)))));
+}
+
+#[test]
+fn css_comments_wildcards_dimensions_and_live_relayout_work_together() {
+    let mut s = scene(vec![Element::badge(1, "Small")]);
+    s.set_stylesheet("/* heading */ :root { --bg-primary: #123456; } * { background: var(--bg-primary); } badge { width: fit-content; height: 30px; font-style: italic; font-weight: bold; } /* end */").unwrap();
+    s.layout([500.0, 600.0], &mut Metrics);
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    assert_eq!((bounds.width, bounds.height), (40.0, 30.0));
+    let style = s.computed_style(ElementId(1)).unwrap();
+    assert_eq!(style.style.text.font_style, knave_ui::FontStyle::Italic);
+    assert_eq!(style.style.text.weight, 700);
+    assert_eq!(
+        style.style.background.unwrap().fill,
+        Some(Color::rgba(0x12, 0x34, 0x56, 255))
+    );
+    s.set_stylesheet("badge { width: 50%; height: 44px; font-style: oblique; font-weight: 550; }")
+        .unwrap();
+    s.layout([500.0, 600.0], &mut Metrics);
+    let bounds = s.bounds(ElementId(1)).unwrap();
+    assert_eq!((bounds.width, bounds.height), (250.0, 44.0));
+    assert_eq!(
+        s.computed_style(ElementId(1)).unwrap().style.text.weight,
+        550
+    );
+    assert!(
+        s.set_stylesheet("badge { width: 10px; } /* unterminated")
+            .is_err()
+    );
+    s.layout([500.0, 600.0], &mut Metrics);
+    assert_eq!(s.bounds(ElementId(1)).unwrap().width, 250.0);
+}
+
+#[test]
+fn checkbox_mark_content_and_quoted_css_survive_live_changes() {
+    let mut s = scene(vec![Element::new(
+        1,
+        Widget::Checkbox {
+            label: "ok".into(),
+            checked: true,
+        },
+    )]);
+    s.set_stylesheet("/* comment */ checkbox-mark { content: \";/*text*/}\"; color: #abcdef; }")
+        .unwrap();
+    let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
+    assert!(
+        list.commands
+            .iter()
+            .any(|cmd| matches!(cmd, DisplayCommand::Text { text, .. } if text == ";/*text*/}"))
+    );
+    s.set_stylesheet("checkbox-mark { content: 'o'; }").unwrap();
+    let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
+    assert!(
+        list.commands
+            .iter()
+            .any(|cmd| matches!(cmd, DisplayCommand::Text { text, .. } if text == "o"))
+    );
+    assert!(s.set_stylesheet("button { content: 'x'; }").is_err());
+}
+
+#[test]
+fn spans_are_classed_elements_with_dynamic_text_and_inherited_typography() {
+    let paragraph = Element::new(1, Widget::Paragraph(vec![])).children(vec![
+        Element::span(2, "Hello "),
+        Element::span(3, "world").class("highlight"),
+    ]);
+    let mut s = scene(vec![paragraph]);
+    s.set_stylesheet("paragraph { color: #123456; } span.highlight { color: #abcdef; font-style: italic; font-weight: 650; font-size: 20px; }").unwrap();
+    let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
+    let spans = list
+        .commands
+        .iter()
+        .find_map(|cmd| match cmd {
+            DisplayCommand::RichText { spans, .. } => Some(spans),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        spans.iter().map(|s| s.text.as_str()).collect::<String>(),
+        "Hello world"
+    );
+    assert_eq!(spans[0].color, Some(Color::rgba(0x12, 0x34, 0x56, 255)));
+    assert_eq!(spans[1].color, Some(Color::rgba(0xab, 0xcd, 0xef, 255)));
+    assert_eq!(spans[1].weight, 650);
+    assert_eq!(spans[1].font_style, Some(knave_ui::FontStyle::Italic));
+    assert_eq!(spans[1].font_size, Some(20.0));
+    s.set_text(ElementId(3), "friend").unwrap();
+    let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
+    let spans = list
+        .commands
+        .iter()
+        .find_map(|cmd| match cmd {
+            DisplayCommand::RichText { spans, .. } => Some(spans),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(spans[1].text, "friend");
+}
+
+#[test]
+fn explicit_css_width_and_height_override_rust_layout_including_root() {
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(400.0),
+            height: Length::Px(300.0),
+            ..Default::default()
+        })
+        .children(vec![
+            Element::new(1, Widget::Button("Action".into())).layout(Layout {
+                width: Length::Px(200.0),
+                ..Default::default()
+            }),
+        ]);
+    let mut s = Scene::new(root).unwrap();
+    s.set_stylesheet(":root { width: 50%; height: 120px; } button { width: 40px; height: 25px; }")
+        .unwrap();
+    s.layout([500.0, 600.0], &mut Metrics);
+    assert_eq!(
+        (
+            s.bounds(ElementId(0)).unwrap().width,
+            s.bounds(ElementId(0)).unwrap().height
+        ),
+        (250.0, 120.0)
+    );
+    assert_eq!(
+        (
+            s.bounds(ElementId(1)).unwrap().width,
+            s.bounds(ElementId(1)).unwrap().height
+        ),
+        (40.0, 25.0)
+    );
+}
+
+#[test]
+fn span_updates_obey_paragraph_text_limit_and_preserve_old_text_on_error() {
+    let paragraph = Element::new(1, Widget::Paragraph(vec![]))
+        .children(vec![Element::span(2, "hello"), Element::span(3, "world")]);
+    let mut s = scene(vec![paragraph]);
+    assert!(matches!(
+        s.set_text(ElementId(3), "x".repeat(MAX_TEXT_BYTES)),
+        Err(UiError::TextTooLong)
+    ));
+    assert!(matches!(s.widget(ElementId(3)), Some(Widget::Text(value)) if value == "world"));
+}
+
+#[test]
+fn css_variable_fallbacks_and_quoted_var_text_are_handled() {
+    let mut s = scene(vec![Element::new(
+        1,
+        Widget::Checkbox {
+            label: "x".into(),
+            checked: true,
+        },
+    )]);
+    s.set_stylesheet("checkbox:checked { color: var(--missing, var(--other, #123456)); } checkbox-mark { content: 'var(--literal)'; }").unwrap();
+    assert_eq!(
+        s.computed_style(ElementId(1)).unwrap().style.text.color,
+        Color::rgba(0x12, 0x34, 0x56, 255)
+    );
+    let list = s.display_list([500.0, 600.0], &mut Metrics).clone();
+    assert!(
+        list.commands.iter().any(
+            |cmd| matches!(cmd, DisplayCommand::Text { text, .. } if text == "var(--literal)")
+        )
+    );
+}
+
+#[test]
+fn universal_user_background_overrides_bundled_widget_and_hover_defaults() {
+    let mut s = scene(vec![Element::new(1, Widget::Button("button".into()))]);
+    s.set_stylesheet(":root { --bg-primary: #123456; } * { background: var(--bg-primary); }")
+        .unwrap();
+    let normal = s.computed_style(ElementId(1)).unwrap();
+    assert_eq!(
+        normal.style.background.unwrap().fill,
+        Some(Color::rgba(0x12, 0x34, 0x56, 255))
+    );
+    let hover = s
+        .computed_style_for(
+            ElementId(1),
+            InteractionState {
+                hovered: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        hover.style.background.unwrap().fill,
+        Some(Color::rgba(0x12, 0x34, 0x56, 255))
+    );
+}
+
+#[test]
+fn percentage_sizes_leave_the_correct_space_for_fill_siblings() {
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Row,
+            gap: 0.0,
+            ..Default::default()
+        })
+        .children(vec![
+            Element::new(1, Widget::Text("percent".into())).style_id("percent"),
+            Element::new(2, Widget::Text("fill".into())),
+        ]);
+    let mut s = Scene::new(root).unwrap();
+    s.set_stylesheet("#percent { width: 50%; }").unwrap();
+    s.layout([500.0, 100.0], &mut Metrics);
+    assert_eq!(s.bounds(ElementId(1)).unwrap().width, 250.0);
+    assert_eq!(s.bounds(ElementId(2)).unwrap().width, 250.0);
 }

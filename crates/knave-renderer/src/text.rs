@@ -33,6 +33,7 @@ struct LayoutKey {
     font_size: u32,
     line_height: u32,
     weight: u16,
+    font_style: knave_ui::FontStyle,
     wrap: TextWrap,
     align: TextAlign,
 }
@@ -47,7 +48,8 @@ impl LayoutKey {
             height: sane_dimension(bounds.height).to_bits(),
             font_size: sane_font_metric(style.font_size).to_bits(),
             line_height: sane_font_metric(style.line_height).to_bits(),
-            weight: style.weight.clamp(100, 900),
+            weight: style.weight.clamp(1, 1000),
+            font_style: style.font_style,
             wrap: style.wrap,
             align: style.align,
         }
@@ -447,7 +449,12 @@ fn create_buffer(font_system: &mut FontSystem, item: &TextItem<'_>) -> Buffer {
     };
     let attrs = Attrs::new()
         .family(family)
-        .weight(Weight(item.style.weight.clamp(100, 900)));
+        .style(match item.style.font_style {
+            knave_ui::FontStyle::Normal => glyphon::cosmic_text::Style::Normal,
+            knave_ui::FontStyle::Italic => glyphon::cosmic_text::Style::Italic,
+            knave_ui::FontStyle::Oblique => glyphon::cosmic_text::Style::Oblique,
+        })
+        .weight(Weight(item.style.weight.clamp(1, 1000)));
     let align = match item.style.align {
         TextAlign::Start => None,
         TextAlign::Center => Some(glyphon::cosmic_text::Align::Center),
@@ -457,11 +464,35 @@ fn create_buffer(font_system: &mut FontSystem, item: &TextItem<'_>) -> Buffer {
         buffer.set_rich_text(
             spans.iter().map(|span| {
                 let color = resolved_span_color(span, item.style);
+                let family = match span
+                    .font_family
+                    .as_deref()
+                    .unwrap_or(&item.style.font_family)
+                {
+                    "serif" => Family::Serif,
+                    "sans-serif" => Family::SansSerif,
+                    "cursive" => Family::Cursive,
+                    "fantasy" => Family::Fantasy,
+                    "monospace" => Family::Monospace,
+                    name => Family::Name(name),
+                };
+                let font_style = match span.font_style.unwrap_or(item.style.font_style) {
+                    knave_ui::FontStyle::Normal => glyphon::cosmic_text::Style::Normal,
+                    knave_ui::FontStyle::Italic => glyphon::cosmic_text::Style::Italic,
+                    knave_ui::FontStyle::Oblique => glyphon::cosmic_text::Style::Oblique,
+                };
+                let metrics = Metrics::new(
+                    sane_font_metric(span.font_size.unwrap_or(item.style.font_size)),
+                    sane_font_metric(span.line_height.unwrap_or(item.style.line_height)),
+                );
                 (
                     span.text.as_str(),
                     attrs
                         .clone()
-                        .weight(Weight(span.weight.clamp(100, 900)))
+                        .family(family)
+                        .style(font_style)
+                        .metrics(metrics)
+                        .weight(Weight(span.weight.clamp(1, 1000)))
                         .color(glyphon::Color::rgba(
                             color.red,
                             color.green,
@@ -587,11 +618,13 @@ mod tests {
             text: "inherited".into(),
             color: None,
             weight: 400,
+            ..Default::default()
         };
         let explicit = TextSpan {
             text: "explicit".into(),
             color: Some(explicit_color),
             weight: 700,
+            ..Default::default()
         };
 
         assert_eq!(resolved_span_color(&inherited, &style), theme_color);
