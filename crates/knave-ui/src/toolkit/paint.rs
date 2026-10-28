@@ -104,16 +104,22 @@ impl Scene {
             shape(&mut self.list, self.viewport, Some(self.viewport), overlay);
         }
         let control = e.widget.focusable() || matches!(e.widget, Widget::Popup { .. });
-        let mut background = style.background.clone().or_else(|| {
-            control.then(|| {
-                self.auxiliary_style("surface")
-                    .style
-                    .background
-                    .or_else(|| self.theme_color("--surface").map(ShapePaint::fill))
-                    .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
+        let mut background = e
+            .paint_surface
+            .then(|| {
+                style.background.clone().or_else(|| {
+                    control.then(|| {
+                        self.auxiliary_style("surface")
+                            .style
+                            .background
+                            .or_else(|| self.theme_color("--surface").map(ShapePaint::fill))
+                            .unwrap_or_else(|| ShapePaint::fill(Color::BACKGROUND))
+                    })
+                })
             })
-        });
-        if background.is_none()
+            .flatten();
+        if e.paint_surface
+            && background.is_none()
             && computed.as_ref().is_some_and(|c| {
                 [
                     c.borders.top.width,
@@ -153,12 +159,17 @@ impl Scene {
             }
             shape(&mut self.list, b, clip, paint.clone());
         }
-        let outline = computed.as_ref().and_then(|c| c.outline).or_else(|| {
-            (state.focused && self.focus_visible && !state.disabled).then_some(Border {
-                color: style.focus,
-                width: 1.0,
+        let outline = e
+            .paint_surface
+            .then(|| {
+                computed.as_ref().and_then(|c| c.outline).or_else(|| {
+                    (state.focused && self.focus_visible && !state.disabled).then_some(Border {
+                        color: style.focus,
+                        width: 1.0,
+                    })
+                })
             })
-        });
+            .flatten();
         if let Some(outline) = outline.filter(|o| o.width > 0.0) {
             let offset = computed.as_ref().map_or(0.0, |c| c.outline_offset);
             let expand = offset + outline.width;

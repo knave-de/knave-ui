@@ -6,3 +6,6 @@ license.workspace = true
 description = "Renderer-independent UI scene and interaction primitives for Knave"
 [dependencies]
 unicode-segmentation = "1.12"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["fs", "event", "pipe"] }

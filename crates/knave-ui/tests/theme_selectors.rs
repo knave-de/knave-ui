@@ -54,6 +54,44 @@ fn selectable(id: u64) -> Element {
         },
     )
 }
+
+#[test]
+fn structural_surface_opt_out_ignores_aggressive_user_box_css_but_paints_children() {
+    for theme in [Theme::Dark, Theme::Light] {
+        let child = Element::new(2, Widget::Panel)
+            .class("card")
+            .layout(Layout {
+                width: Length::Px(120.0),
+                height: Length::Px(60.0),
+                ..Default::default()
+            })
+            .children(vec![Element::new(3, Widget::Text("Child remains".into()))]);
+        let root = Element::new(1, Widget::Panel)
+            .without_surface()
+            .children(vec![child]);
+        let mut scene = Scene::new(root).unwrap();
+        let css = format!(
+            "{}\n* {{ background-color: #aabbcc; border: 2px solid #334455; outline: 3px solid #667788; }}",
+            theme.stylesheet()
+        );
+        scene.set_theme_stylesheets(theme, "", &css).unwrap();
+        let list = scene.display_list([400.0, 300.0], &mut Metrics).clone();
+        assert!(!list.commands.iter().any(|command| matches!(
+            command,
+            DisplayCommand::Shape { bounds, .. }
+                if bounds.width == 400.0 && bounds.height == 300.0
+        )));
+        assert!(list.commands.iter().any(|command| matches!(
+            command,
+            DisplayCommand::Shape { bounds, .. }
+                if bounds.width == 120.0 && bounds.height == 60.0
+        )));
+        assert!(list.commands.iter().any(|command| matches!(
+            command,
+            DisplayCommand::Text { text, .. } if text == "Child remains"
+        )));
+    }
+}
 #[test]
 fn semantic_elements_and_groups_have_distinct_selectors() {
     let components = [

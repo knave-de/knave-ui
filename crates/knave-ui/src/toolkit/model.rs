@@ -498,6 +498,9 @@ pub struct Element {
     pub style: Style,
     pub enabled: bool,
     pub visible: bool,
+    /// Whether this element paints its own background, border and outline.
+    /// Structural host surfaces can disable box painting while retaining layout and content.
+    pub paint_surface: bool,
     pub children: Vec<Element>,
     pub tooltip: Option<String>,
     /// None selects the widget default; explicit shapes also apply to its passive children.
@@ -533,6 +536,7 @@ impl Element {
             style,
             enabled: true,
             visible: true,
+            paint_surface: true,
             children: Vec::new(),
             tooltip: None,
             cursor: None,
@@ -577,6 +581,11 @@ impl Element {
     }
     pub fn cursor(mut self, cursor: CursorShape) -> Self {
         self.cursor = Some(cursor);
+        self
+    }
+    /// Suppress this element's decorative box while preserving its layout, content and children.
+    pub fn without_surface(mut self) -> Self {
+        self.paint_surface = false;
         self
     }
     pub fn class(mut self, name: impl Into<String>) -> Self {

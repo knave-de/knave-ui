@@ -84,6 +84,7 @@ struct Rule {
     selectors: Vec<Selector>,
     declarations: Vec<(String, String)>,
     order: usize,
+    layer: u8,
 }
 #[derive(Clone, Debug, PartialEq)]
 struct Selector {
@@ -180,16 +181,27 @@ impl Stylesheet {
         self.rules == other.rules && self.base_rule_count == other.base_rule_count
     }
     pub fn for_theme(theme: Theme, desktop: &str, source: &str) -> Result<Self, StylesheetError> {
+        Self::for_theme_layers(theme, desktop, "", source)
+    }
+
+    pub fn for_theme_layers(
+        theme: Theme,
+        shell: &str,
+        user_theme: &str,
+        application: &str,
+    ) -> Result<Self, StylesheetError> {
         let mut sheet = Self::parse_rules(theme.stylesheet())?;
         sheet.base_rule_count = sheet.rules.len();
-        let mut custom = Self::parse_rules(desktop)?;
-        custom.rules.extend(Self::parse_rules(source)?.rules);
-        if sheet.rules.len() + custom.rules.len() > 256 {
-            return Err(StylesheetError::Syntax);
-        }
-        for mut rule in custom.rules {
-            rule.order = sheet.rules.len();
-            sheet.rules.push(rule);
+        for (layer, source) in [(1, shell), (2, user_theme), (3, application)] {
+            let custom = Self::parse_rules(source)?;
+            for mut rule in custom.rules {
+                rule.order = sheet.rules.len();
+                rule.layer = layer;
+                sheet.rules.push(rule);
+                if sheet.rules.len() > 256 {
+                    return Err(StylesheetError::Syntax);
+                }
+            }
         }
         sheet.validate()?;
         Ok(sheet)
@@ -298,6 +310,7 @@ impl Stylesheet {
                 selectors,
                 declarations,
                 order: sheet.rules.len(),
+                layer: 0,
             });
             if sheet.rules.len() > 256 {
                 return Err(StylesheetError::Syntax);
@@ -792,18 +805,9 @@ fn widget_name(w: &Widget) -> &'static str {
         Widget::Popup { .. } => "popup",
     }
 }
-fn cascade_specificity(
-    sheet: &Stylesheet,
-    rule: &Rule,
-    selector: &Selector,
-) -> (u16, u16, u16, u16) {
+fn cascade_specificity(rule: &Rule, selector: &Selector) -> (u16, u16, u16, u16) {
     let (ids, classes, types) = selector.specificity;
-    (
-        u16::from(rule.order >= sheet.base_rule_count),
-        ids,
-        classes,
-        types,
-    )
+    (u16::from(rule.layer), ids, classes, types)
 }
 fn widget_matches(scene: &Scene, index: usize, selector: &str) -> bool {
     let element = &scene.nodes[index].element;
@@ -985,10 +989,7 @@ pub(super) fn compute(
                     {
                         continue;
                     }
-                    let key = (
-                        cascade_specificity(&scene.stylesheet, rule, selector),
-                        rule.order,
-                    );
+                    let key = (cascade_specificity(rule, selector), rule.order);
                     if declarations
                         .get(name)
                         .is_none_or(|(old, order, _)| key >= (*old, *order))
@@ -1048,10 +1049,7 @@ pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
                 && selector.parts[0].states.is_empty()
             {
                 for (name, value) in &rule.declarations {
-                    let key = (
-                        cascade_specificity(&scene.stylesheet, rule, selector),
-                        rule.order,
-                    );
+                    let key = (cascade_specificity(rule, selector), rule.order);
                     if decl.get(name).is_none_or(|(s, o, _)| key >= (*s, *o)) {
                         decl.insert(name.clone(), (key.0, key.1, value.clone()));
                     }
@@ -1114,10 +1112,7 @@ fn inherited_vars(
             if selector_matches(scene, index, state, selector) {
                 for (name, value) in &rule.declarations {
                     if name.starts_with("--") {
-                        let key = (
-                            cascade_specificity(&scene.stylesheet, rule, selector),
-                            rule.order,
-                        );
+                        let key = (cascade_specificity(rule, selector), rule.order);
                         if cascaded
                             .get(name)
                             .is_none_or(|(spec, order, _)| key > (*spec, *order))
@@ -1309,10 +1304,7 @@ pub(super) fn part_style(
         for selector in &rule.selectors {
             if virtual_selector_matches(scene, owner, kind, state, selector) {
                 for (name, value) in &rule.declarations {
-                    let key = (
-                        cascade_specificity(&scene.stylesheet, rule, selector),
-                        rule.order,
-                    );
+                    let key = (cascade_specificity(rule, selector), rule.order);
                     if declarations
                         .get(name)
                         .is_none_or(|(spec, order, _)| key >= (*spec, *order))
@@ -1762,6 +1754,58 @@ mod tests {
             scene.computed_style(ElementId(2)).unwrap().padding,
             Insets::all(4.0)
         );
+    }
+
+    #[test]
+    fn stylesheet_layers_override_specificity_in_declared_order() {
+        let child = Element::new(2, Widget::Button("Save".into()))
+            .class("action")
+            .style_id("save");
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+        scene
+            .set_theme_stylesheets(
+                Theme::Dark,
+                "#save { color: var(--accent); } :root { --accent: #ff0000; }",
+                ".action { color: var(--accent); } :root { --accent: #0000ff; }",
+            )
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.text.color,
+            Color::rgba(0, 0, 255, 255),
+            "the selected theme layer outranks shell selector specificity"
+        );
+        scene.set_stylesheet("button { color: #00ff00; }").unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.text.color,
+            Color::rgba(0, 255, 0, 255),
+            "application CSS remains the final layer"
+        );
+    }
+
+    #[test]
+    fn theme_replacement_retains_user_theme_and_application_css() {
+        let child = Element::new(2, Widget::Button("Save".into())).class("action");
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+        scene
+            .set_theme_stylesheets(Theme::Dark, "", ".action { color: #112233; }")
+            .unwrap();
+        scene.set_stylesheet("button { padding: 7px; }").unwrap();
+        scene.set_theme(Theme::Light).unwrap();
+        let style = scene.computed_style(ElementId(2)).unwrap();
+        assert_eq!(style.style.text.color, Color::rgba(0x11, 0x22, 0x33, 255));
+        assert_eq!(style.padding, Insets::all(7.0));
+        assert_eq!(scene.user_theme_stylesheet(), ".action { color: #112233; }");
+        assert!(
+            scene
+                .set_stylesheet("button { color: not-a-color; }")
+                .is_err()
+        );
+        let retained = scene.computed_style(ElementId(2)).unwrap();
+        assert_eq!(
+            retained.style.text.color,
+            Color::rgba(0x11, 0x22, 0x33, 255)
+        );
+        assert_eq!(retained.padding, Insets::all(7.0));
     }
     #[test]
     fn interaction_selectors_and_atomic_replacement() {
