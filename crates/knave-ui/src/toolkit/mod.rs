@@ -28,6 +28,7 @@ pub use selection::*;
 pub use semantics::*;
 mod paint;
 mod text_edit;
+pub mod theme_file;
 
 use crate::{Color, DisplayList, Rect};
 pub use input::{Action, EventResult, Input, Key, KeyModifiers};
@@ -84,6 +85,7 @@ pub struct Scene {
     style_cache: Mutex<Vec<Option<(InteractionState, ComputedStyle)>>>,
     stylesheet_override: String,
     desktop_stylesheet: String,
+    user_theme_stylesheet: String,
     clock: std::time::Duration,
     nodes: Vec<Node>,
     order: Vec<usize>,
@@ -110,7 +112,12 @@ impl Scene {
     /// Atomically replace application CSS rules over the selected theme defaults.
     /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
     pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme(self.theme, &self.desktop_stylesheet, source)?;
+        let next = Stylesheet::for_theme_layers(
+            self.theme,
+            &self.desktop_stylesheet,
+            &self.user_theme_stylesheet,
+            source,
+        )?;
         self.update_stylesheet(next);
         self.stylesheet_override = source.to_owned();
         Ok(())
@@ -119,8 +126,12 @@ impl Scene {
     /// Select a bundled base palette while retaining and revalidating application CSS.
     /// Invalid combined styles leave the current theme and stylesheet active.
     pub fn set_theme(&mut self, theme: Theme) -> Result<(), StylesheetError> {
-        let next =
-            Stylesheet::for_theme(theme, &self.desktop_stylesheet, &self.stylesheet_override)?;
+        let next = Stylesheet::for_theme_layers(
+            theme,
+            &self.desktop_stylesheet,
+            &self.user_theme_stylesheet,
+            &self.stylesheet_override,
+        )?;
         self.update_stylesheet(next);
         self.theme = theme;
         Ok(())
@@ -128,16 +139,34 @@ impl Scene {
 
     /// Atomically apply a desktop palette and CSS below application overrides.
     pub fn set_desktop_theme(&mut self, theme: Theme, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme(theme, source, &self.stylesheet_override)?;
+        self.set_theme_stylesheets(theme, source, &self.user_theme_stylesheet.clone())
+    }
+
+    /// Atomically apply toolkit defaults, shell CSS, the selected named theme,
+    /// and any application CSS in increasing precedence order.
+    pub fn set_theme_stylesheets(
+        &mut self,
+        theme: Theme,
+        shell: &str,
+        user_theme: &str,
+    ) -> Result<(), StylesheetError> {
+        let next =
+            Stylesheet::for_theme_layers(theme, shell, user_theme, &self.stylesheet_override)?;
         self.update_stylesheet(next);
         self.theme = theme;
-        self.desktop_stylesheet = source.to_owned();
+        self.desktop_stylesheet = shell.to_owned();
+        self.user_theme_stylesheet = user_theme.to_owned();
         Ok(())
     }
 
     /// Returns the active desktop CSS layer.
     pub fn desktop_stylesheet(&self) -> &str {
         &self.desktop_stylesheet
+    }
+
+    /// Returns the active named-theme CSS layer.
+    pub fn user_theme_stylesheet(&self) -> &str {
+        &self.user_theme_stylesheet
     }
 
     /// Returns the currently selected bundled palette.
@@ -290,6 +319,7 @@ impl Scene {
             style_cache: Mutex::new(Vec::new()),
             stylesheet_override: String::new(),
             desktop_stylesheet: String::new(),
+            user_theme_stylesheet: String::new(),
             clock: std::time::Duration::ZERO,
             nodes: Vec::new(),
             order: Vec::new(),
@@ -636,6 +666,7 @@ impl Scene {
         next.stylesheet = std::mem::take(&mut self.stylesheet);
         next.stylesheet_override = std::mem::take(&mut self.stylesheet_override);
         next.desktop_stylesheet = std::mem::take(&mut self.desktop_stylesheet);
+        next.user_theme_stylesheet = std::mem::take(&mut self.user_theme_stylesheet);
         next.focus = self.focus;
         next.surface_focused = self.surface_focused;
         next.focus_visible = self.focus_visible;

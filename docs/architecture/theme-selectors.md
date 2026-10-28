@@ -1,14 +1,19 @@
 # Theme selector reference
 
-Knave UI implements a bounded CSS subset, not a web browser. Themes are loaded
-from the configured theme's `light.css` or `dark.css`; changes are applied live.
+Knave UI implements a bounded CSS subset, not a web browser. Named themes are
+loaded from `$XDG_DATA_HOME/knave/themes/<theme-name>/light.css` or `dark.css`
+(`$XDG_DATA_HOME` defaults to `~/.local/share`). Changes are applied live.
 CSS block comments (`/* ... */`) are supported. Selectors can use a type, `.class`, `#style-id`, descendant spaces, commas and
 these states: `:hover`, `:focus`, `:pressed` (also `:active`), `:selected`,
 `:checked`, `:indeterminate`, `:expanded`, `:invalid`, `:busy`, `:enabled`,
 `:disabled` and `:root`. `*` matches retained elements. Custom properties and
 `var(--name)` are inherited; `var(--name, fallback)` is supported.
-Custom theme/application rules take precedence over bundled defaults. Within a
-layer, normal specificity and later-rule ordering apply.
+Stylesheets cascade in four ordered layers: toolkit defaults, shell/component
+styles, the selected named theme, then application overrides. A later layer
+always takes precedence over an earlier layer, even when its selector is less
+specific. Within one layer, normal specificity and later-rule ordering apply.
+Missing theme files act as an empty named-theme layer. Theme files are limited
+to 64 KiB; invalid replacements leave the last valid styles active.
 An unknown type, unsupported selector or unsupported declaration rejects the
 new stylesheet; the last valid stylesheet remains active.
 
@@ -107,7 +112,7 @@ pixels. Colors support `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `transparent`, `white`,
 `black`, `accent`, `warning`, `danger`, `text` and `background`. See
 [component coverage](widget-catalog.md) for border and layout details. The
 bundled defaults preserve explicit Rust background paint; a custom stylesheet
-can override it. Application-defined CSS may override the desktop theme.
+can override it. Application-defined CSS may override the selected named theme.
 
 Images and swatch values are content, and explicitly colored rich-text spans
 retain their own color. A `SceneSnapshot` is a frozen display list: recapture
