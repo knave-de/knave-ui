@@ -1,35 +1,463 @@
+/* Knave light — the logo’s graphite, off-white and cyan palette.
+ *
+ * Surfaces distinguish the page, raised content and controls:
+ * canvas, raised content, controls and hover each have a distinct value.
+ * The accent is kept for focus, primary actions, checked controls and
+ * selection, so it always means "this one".
+ *
+ * The first block is the public palette shared with dark.css; desktop themes
+ * and applications override these names. The second block is private to this
+ * stylesheet. */
 :root {
-    --accent: #005fa8;
-    --warning: #8a4b00;
-    --danger: #ae1725;
-    --canvas: #ffffff;
-    --panel-surface: #f4f7fa;
-    --surface: #e3eaf0;
-    --surface-hover: #c4d5e2;
-    --surface-pressed: #d0dce5;
-    --surface-selected: #9ac9e2;
-    --surface-menu: #f9fbfd;
-    --surface-tooltip: #fff4cf;
-    --surface-overlay: #26394a55;
-    --text-disabled: #6c7882;
-    --control-muted: #b0bec8;
+	--accent: #08A9D8;
+	--warning: #92600C;
+	--danger: #B43A43;
+	--canvas: #F5F6F8;
+	--panel-surface: #F5F6F8;
+	--surface: #DDE5EA;
+	--surface-hover: #C9D7DF;
+	--surface-pressed: #BFCFD7;
+	--surface-selected: #08A9D83D;
+	--surface-menu: #FFFFFF;
+	--surface-tooltip: #DDE4E9;
+	--surface-overlay: #18222D80;
+	--text-disabled: #66727B;
+	--control-muted: #D9DFE4;
+
+	--text: #17181C;
+	--text-secondary: #35414A;
+	--text-accent: #00516B;
+	--surface-raised: #FFFFFF;
+	--surface-sunken: #E8EDF0;
+	--surface-tint: #08A9D83D;
+	--border: #D4DBE0;
+	--border-strong: #AFBBC4;
+	--accent-hover: #0788AE;
+	--accent-pressed: #087394;
+	--on-accent: #17181C;
+	--danger-surface: #FBE8E9;
 }
-:disabled { color: var(--text-disabled); }
-.warning { color: var(--warning); }
-.danger { color: var(--danger); }
-canvas { background-color: var(--canvas); }
-surface { background-color: var(--surface); }
-modal-overlay { background-color: var(--surface-overlay); }
-panel, scene-snapshot { background-color: var(--panel-surface); }
-button, link, dropdown, menu, context-menu, checkbox, mixed-checkbox, toggle, slider, splitter, disclosure, text-input, combo-box, selectable, pagination, popup { color: #17232d; background-color: var(--surface); }
-button:hover, link:hover, dropdown:hover, menu:hover, context-menu:hover, selectable:hover { background-color: var(--surface-hover); }
-button:pressed, link:pressed, selectable:pressed { background-color: var(--surface-pressed); }
-button:selected, selectable:selected, checkbox:selected, toggle:selected { background-color: var(--surface-selected); }
-collection:selected { background-color: var(--surface-selected); }
-button:focus, link:focus, text-input:focus, dropdown:focus, checkbox:focus, toggle:focus { outline-color: var(--accent); outline-width: 1px; }
-menu, context-menu { background-color: var(--surface-menu); }
-text, paragraph, icon, image, color-swatch, collection, progress, spinner, toast, separator, scroll, popup, draggable { color: #17232d; }
-slider, checkbox:selected, mixed-checkbox:selected, toggle:selected, progress, spinner { color: var(--accent); }
-progress, separator, scroll { background-color: var(--control-muted); }
-tooltip { color: #17232d; background-color: var(--surface-tooltip); padding: 8px; }
-text, paragraph, heading { color: #17232d; }
+
+/* Structure and typography. */
+:root {
+	color: var(--text);
+}
+
+canvas {
+	background-color: var(--canvas);
+}
+
+surface {
+	background-color: var(--surface);
+}
+
+modal-overlay {
+	background-color: var(--surface-overlay);
+}
+
+panel,
+scene-snapshot {
+	background-color: var(--panel-surface);
+}
+
+card,
+empty-state {
+	background-color: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 12px;
+	gap: 8px;
+}
+
+text,
+paragraph,
+heading,
+icon,
+image,
+color-swatch,
+collection,
+toast,
+popup,
+draggable {
+	color: var(--text);
+}
+
+subtitle,
+caption,
+status {
+	color: var(--text-secondary);
+}
+
+.highlight {
+	color: var(--text-accent);
+}
+
+separator {
+	color: var(--text);
+	background-color: var(--border);
+}
+
+link {
+	color: var(--text-accent);
+	background-color: transparent;
+	padding: 0;
+	width: fit-content;
+}
+
+link:hover {
+	color: #00445B;
+}
+
+link:pressed {
+	color: #00394C;
+}
+
+badge {
+	color: var(--text-accent);
+	width: fit-content;
+}
+
+/* Controls are filled and borderless: borders reflow layout, and the toolkit
+ * keeps the same control geometry in every Knave application. Fill contrast
+ * separates them from the page instead. */
+button,
+dropdown,
+menu,
+context-menu,
+text-input,
+combo-box,
+selectable,
+disclosure,
+pagination {
+	color: var(--text);
+	background-color: var(--surface);
+	border-radius: 6px;
+	text-align: center;
+}
+
+checkbox,
+mixed-checkbox,
+toggle,
+slider,
+splitter,
+popup {
+	color: var(--text);
+	background-color: var(--surface);
+}
+
+button:hover,
+dropdown:hover,
+menu:hover,
+context-menu:hover,
+selectable:hover,
+disclosure:hover,
+pagination:hover {
+	background-color: var(--surface-hover);
+}
+
+button:pressed,
+selectable:pressed,
+disclosure:pressed {
+	background-color: var(--surface-pressed);
+}
+
+button:selected,
+selectable:selected {
+	background-color: var(--surface-selected);
+}
+
+button:focus,
+link:focus,
+text-input:focus,
+dropdown:focus,
+checkbox:focus,
+toggle:focus {
+	outline-color: var(--accent);
+	outline-width: 1px;
+}
+
+menu,
+context-menu {
+	background-color: var(--surface-menu);
+}
+
+button.primary {
+	color: var(--surface-raised);
+	background-color: var(--accent);
+}
+
+button.primary:hover {
+	background-color: var(--accent-hover);
+}
+
+button.primary:pressed {
+	background-color: var(--accent-pressed);
+}
+
+button.secondary {
+	background-color: var(--control-muted);
+}
+
+button.secondary:hover {
+	background-color: #C9D2D9;
+}
+
+button.ghost {
+	background-color: transparent;
+}
+
+button.ghost:hover {
+	background-color: var(--surface);
+}
+
+button.destructive {
+	color: var(--danger);
+	background-color: var(--danger-surface);
+}
+
+button.destructive:hover {
+	color: var(--danger);
+	background-color: #F4CFD2;
+}
+
+button.destructive:pressed {
+	background-color: #EAB7BB;
+}
+
+button:busy {
+	color: var(--text-secondary);
+}
+
+:disabled {
+	color: var(--text-disabled);
+}
+
+button:disabled,
+dropdown:disabled,
+menu:disabled,
+context-menu:disabled,
+text-input:disabled,
+combo-box:disabled,
+selectable:disabled,
+disclosure:disabled {
+	background-color: var(--surface-raised);
+}
+
+/* Inputs sit below the page so they read as places to type. */
+text-input,
+combo-box {
+	background-color: var(--surface-sunken);
+}
+
+text-input:hover,
+combo-box:hover {
+	background-color: #DCE4E9;
+}
+
+text-input:invalid,
+combo-box:invalid {
+	background-color: var(--danger-surface);
+}
+
+text-selection {
+	background-color: #08A9D859;
+}
+
+text-caret {
+	background-color: var(--accent);
+}
+
+checkbox,
+mixed-checkbox,
+toggle {
+	background-color: transparent;
+}
+
+checkbox-indicator {
+	background-color: var(--surface-sunken);
+	border: 1px solid #8796A1;
+	border-radius: 4px;
+}
+
+checkbox:hover checkbox-indicator,
+mixed-checkbox:hover checkbox-indicator {
+	border-color: var(--accent);
+}
+
+checkbox:checked checkbox-indicator,
+mixed-checkbox:checked checkbox-indicator,
+mixed-checkbox:indeterminate checkbox-indicator {
+	background-color: var(--accent);
+	border-color: var(--accent);
+}
+
+checkbox-mark {
+	color: var(--on-accent);
+	background-color: transparent;
+}
+
+switch-track {
+	background-color: var(--control-muted);
+	border: 1px solid var(--border-strong);
+	border-radius: 12px;
+}
+
+toggle:checked switch-track {
+	background-color: var(--accent);
+	border-color: var(--accent);
+}
+
+toggle:checked switch-thumb {
+	background-color: var(--surface);
+}
+
+slider,
+splitter {
+	color: var(--accent);
+	background-color: transparent;
+}
+
+slider-track,
+progress-track {
+	background-color: var(--control-muted);
+	border-radius: 3px;
+}
+
+slider-fill,
+progress-fill {
+	background-color: var(--accent);
+	border-radius: 3px;
+}
+
+slider-thumb {
+	background-color: #FFFFFF;
+	border: 2px solid var(--accent);
+	border-radius: 8px;
+}
+
+progress,
+spinner {
+	color: var(--accent);
+	background-color: transparent;
+}
+
+spinner-dot {
+	background-color: var(--accent);
+}
+
+scroll {
+	background-color: transparent;
+}
+
+/* Navigation stays quiet until selected, then takes a soft accent tint. */
+tab,
+sidebar-item,
+radio,
+segment,
+chip {
+	color: var(--text);
+	background-color: var(--surface-raised);
+}
+
+tab:hover,
+sidebar-item:hover,
+radio:hover,
+segment:hover,
+chip:hover {
+	color: var(--text);
+	background-color: var(--surface);
+}
+
+tab:selected,
+sidebar-item:selected,
+radio:selected,
+segment:selected,
+chip:selected {
+	color: var(--text-accent);
+	background-color: var(--surface-tint);
+}
+
+collection-item:hover,
+table-cell:hover {
+	background-color: var(--surface);
+}
+
+table-header {
+	color: var(--text-secondary);
+	background-color: var(--surface);
+	border-color: var(--border);
+}
+
+scrollbar-thumb {
+	background-color: #A4B0B9;
+	border-radius: 4px;
+}
+
+scrollbar-thumb:hover {
+	background-color: #798994;
+}
+
+/* Floating surfaces sit one step above the page. */
+menu-surface {
+	background-color: var(--surface-menu);
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+}
+
+menu-item {
+	color: var(--text);
+}
+
+collection-item,
+table-cell {
+	color: var(--text);
+}
+
+menu-item:hover,
+menu-item:selected {
+	background-color: var(--surface-selected);
+}
+
+menu-item:disabled {
+	color: var(--text-disabled);
+}
+
+menu-separator {
+	background-color: var(--border-strong);
+}
+
+dialog,
+command-palette {
+	background-color: var(--surface-menu);
+	border: 1px solid var(--border-strong);
+	border-radius: 10px;
+}
+
+tooltip {
+	color: var(--text);
+	background-color: var(--surface-tooltip);
+	border-radius: 6px;
+	padding: 8px;
+}
+
+toast {
+	background-color: var(--surface-menu);
+	border: 1px solid var(--border-strong);
+	border-radius: 8px;
+}
+
+alert {
+	background-color: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-left: 3px solid var(--accent);
+	border-radius: 6px;
+	padding: 8px 12px;
+}
+
+.warning {
+	color: var(--warning);
+}
+
+.danger {
+	color: var(--danger);
+}
