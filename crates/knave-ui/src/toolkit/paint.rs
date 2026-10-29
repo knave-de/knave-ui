@@ -88,15 +88,7 @@ impl Scene {
         let clip = node.clip;
         let state = self.interaction(e.id).unwrap();
         let computed = self.computed_style(e.id);
-        let mut opacity = computed.as_ref().map_or(1.0, |style| style.opacity);
-        let mut ancestor = node.parent;
-        while let Some(index) = ancestor {
-            let parent = &self.nodes[index];
-            opacity *= self
-                .computed_style(parent.element.id)
-                .map_or(1.0, |style| style.opacity);
-            ancestor = parent.parent;
-        }
+        let opacity = cumulative_opacity(self, i);
         let mut style = computed
             .as_ref()
             .map_or_else(|| e.style.clone(), |s| s.style.clone());
@@ -371,10 +363,10 @@ impl Scene {
                             );
                             shape(&mut self.list, rect, clip, paint);
                         }
+                        mark_style = part.text_style();
                         if let Some(content) = part.computed.content {
                             mark = content;
                         }
-                        mark_style = part.computed.style.text;
                     }
                     text_cmd(&mut self.list, rect, clip, mark, mark_style);
                 }
@@ -702,7 +694,9 @@ impl Scene {
         let Some(menu) = &self.menu else {
             return;
         };
+        let command_start = self.list.commands.len();
         let owner = self.indices[&menu.owner];
+        let opacity = cumulative_opacity(self, owner);
         let node = &self.nodes[owner];
         let menu_style = self
             .computed_style_for(node.element.id, InteractionState::default())
@@ -752,6 +746,7 @@ impl Scene {
         );
         shape(&mut self.list, b, clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
+            apply_opacity(&mut self.list.commands[command_start..], opacity);
             return;
         };
         let mut y = b.y - menu.scroll;
@@ -815,7 +810,7 @@ impl Scene {
                             part_background(self, owner, "menu-item", state, &base, default);
                         shape(&mut self.list, row, clip, paint);
                     }
-                    let mut text = part.map_or(base.text, |part| part.computed.style.text);
+                    let mut text = part.map_or(base.text, |part| part.text_style());
                     text.wrap = TextWrap::None;
                     if !enabled {
                         text.color.alpha = 100;
@@ -831,6 +826,20 @@ impl Scene {
         for (bounds, label, style) in labels {
             text_cmd(&mut self.list, bounds, clip, label, style);
         }
+        apply_opacity(&mut self.list.commands[command_start..], opacity);
+    }
+}
+fn cumulative_opacity(scene: &Scene, mut node: usize) -> f32 {
+    let mut opacity = 1.0;
+    loop {
+        let current = &scene.nodes[node];
+        opacity *= scene
+            .computed_style(current.element.id)
+            .map_or(1.0, |style| style.opacity);
+        let Some(parent) = current.parent else {
+            return opacity;
+        };
+        node = parent;
     }
 }
 fn part_hover_state(

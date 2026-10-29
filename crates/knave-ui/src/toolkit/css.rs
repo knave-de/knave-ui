@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint};
+use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint, TextStyle};
 
 const DARK_STYLESHEET: &str = include_str!("../dark.css");
 const LIGHT_STYLESHEET: &str = include_str!("../light.css");
@@ -1290,6 +1290,13 @@ pub(super) struct PartStyle {
     pub color_explicit: bool,
     pub background_explicit: bool,
 }
+impl PartStyle {
+    pub(super) fn text_style(&self) -> TextStyle {
+        let mut style = self.computed.style.text.clone();
+        style.color.alpha = (f32::from(style.color.alpha) * self.computed.opacity).round() as u8;
+        style
+    }
+}
 /// Compute a synthetic paint part using the owner as its CSS parent.
 pub(super) fn part_style(
     scene: &Scene,
@@ -1345,8 +1352,6 @@ pub(super) fn part_style(
             apply_decl(&mut result, &name, &resolve_vars(&raw, &vars, 0).ok()?).ok()?;
         }
     }
-    result.style.text.color.alpha =
-        (f32::from(result.style.text.color.alpha) * result.opacity).round() as u8;
     Some(PartStyle {
         computed: result,
         color_explicit,
