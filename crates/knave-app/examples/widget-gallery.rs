@@ -1,6 +1,6 @@
 //! Shared application widgets, behavior examples and frozen real-scene references.
 use knave_app::{AppResult, Application};
-use knave_ui::{HeadingLevel, toolkit::*};
+use knave_ui::{HeadingLevel, ShapePaint, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
@@ -56,6 +56,33 @@ fn core() -> Result<Vec<Element>, UiError> {
     tooltip.tooltip =
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
     let supporting_text = text(103, "Supporting text · toolkit defaults");
+    let mut opacity_back = Element::new(770_011, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(220.0),
+            height: Length::Px(72.0),
+            ..Default::default()
+        })
+        .children(vec![text(770_013, "Opaque red sibling")]);
+    opacity_back.style.background = Some(ShapePaint::fill(knave_ui::Color::rgba(190, 64, 72, 255)));
+    let mut opacity_front = Element::new(770_012, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(220.0),
+            height: Length::Px(72.0),
+            offset: [64.0, 32.0],
+            ..Default::default()
+        })
+        .children(vec![text(770_014, "Opaque blue sibling")]);
+    opacity_front.style.background =
+        Some(ShapePaint::fill(knave_ui::Color::rgba(52, 112, 190, 255)));
+    let opacity_demo = Element::new(770_010, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            width: Length::Px(300.0),
+            height: Length::Px(112.0),
+            ..Default::default()
+        })
+        .class("opacity-demo")
+        .children(vec![opacity_back, opacity_front]);
     Ok(vec![
         section(
             100,
@@ -306,6 +333,17 @@ fn core() -> Result<Vec<Element>, UiError> {
                     122,
                     "Numeric Up/Down steps; Enter validates. Password text is masked and excluded from copy/cut and IME surrounding text.",
                 ),
+            ],
+        ),
+        section(
+            770_000,
+            "CSS opacity · overlapping siblings",
+            vec![
+                text(
+                    770_015,
+                    "Both opaque sibling panels are faded together; their overlap is composited once as a group.",
+                ),
+                opacity_demo,
             ],
         ),
     ])
@@ -826,7 +864,7 @@ fn gallery() -> Result<Scene, UiError> {
             element
         })
         .collect();
-    Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             Element::new(40, Widget::Text("Appearance preview · applies to UI chrome; sample images retain their colors.".into())),
@@ -837,7 +875,11 @@ fn gallery() -> Result<Scene, UiError> {
             ]),
             Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
-            popup, command_palette()?.element("Commands")?]))
+            popup, command_palette()?.element("Commands")?]))?;
+    scene
+        .set_stylesheet(".opacity-demo { opacity: 0.55; }")
+        .expect("opacity demo stylesheet is valid");
+    Ok(scene)
 }
 struct Gallery {
     palette: CommandPalette,
