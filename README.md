@@ -41,6 +41,14 @@ rendering, input, cursor, clipboard and IME bridge. App state and service reques
 stay in your implementation. See the [gallery source](crates/knave-app/examples/widget-gallery.rs)
 and [hosting architecture](docs/architecture/standalone-apps.md).
 
+`run` leaves the application's scene theme unchanged and has no Knave
+configuration dependency.
+Applications that own theme settings can pass an `Arc<dyn ThemeProvider>` to
+`run_with_theme_provider`; the provider resolves its settings to a
+`ThemeSelection` and lists files to watch. This keeps configuration parsing and
+persistence in the application that owns them. `run_unthemed` remains as an
+alias for `run`.
+
 ## Build
 
 ```sh

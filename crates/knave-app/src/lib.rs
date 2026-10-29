@@ -2,7 +2,6 @@
 //!
 //! Clipboard requests use the system clipboard; actions also reach the application.
 mod clipboard;
-#[cfg(target_os = "linux")]
 mod theme;
 
 use std::{error::Error, sync::Arc};
@@ -18,6 +17,8 @@ use winit::{
     window::{CursorIcon, Window, WindowId},
 };
 
+pub use theme::{ThemeProvider, ThemeSelection};
+
 pub type AppResult<T = ()> = Result<T, Box<dyn Error>>;
 
 /// Application state and service integration stay outside the UI scene.
@@ -26,9 +27,14 @@ pub trait Application {
     fn ready(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
         Ok(())
     }
-    /// Called when a desktop theme is applied, including before the first frame.
+    /// Called when the theme scheme is applied, including before the first frame.
     fn theme_changed(&mut self, _theme: Theme) -> AppResult {
         Ok(())
+    }
+    /// Called after a provider applies a theme policy, including contrast and chroma.
+    /// Existing applications can keep overriding `theme_changed` to react to the scheme.
+    fn theme_policy_changed(&mut self, policy: ThemePolicy) -> AppResult {
+        self.theme_changed(policy.scheme)
     }
     /// Rebuild theme-dependent cached content using the text engine after a live update.
     fn refresh_theme(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
@@ -43,52 +49,74 @@ pub trait Application {
     }
 }
 
-/// Run one window until it closes, following Knave's live desktop theme on Linux.
+/// Run one window without loading or watching a desktop theme.
 pub fn run(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppResult {
-    run_inner(title, size, app, true)
+    run_inner(title, size, app, None)
 }
 
-/// Run without loading or watching desktop theme configuration.
+/// Run one window with a caller-supplied theme and optional live file updates.
+///
+/// On Linux, the provider's watched paths are monitored until the window closes.
+/// The provider is responsible for resolving application-owned configuration
+/// into a [`ThemeSelection`].
+pub fn run_with_theme_provider(
+    title: &str,
+    size: [f64; 2],
+    app: impl Application + 'static,
+    provider: Arc<dyn ThemeProvider>,
+) -> AppResult {
+    run_inner(title, size, app, Some(provider))
+}
+
+/// Compatibility alias for [`run`].
 pub fn run_unthemed(title: &str, size: [f64; 2], app: impl Application + 'static) -> AppResult {
-    run_inner(title, size, app, false)
+    run(title, size, app)
 }
 
 fn run_inner(
     title: &str,
     size: [f64; 2],
     mut app: impl Application + 'static,
-    themed: bool,
+    provider: Option<Arc<dyn ThemeProvider>>,
 ) -> AppResult {
     if size.iter().any(|v| !v.is_finite() || *v <= 0.0) {
         return Err("window dimensions must be finite and positive".into());
     }
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Wait);
+    if let Some(provider) = &provider {
+        match provider.load() {
+            Ok(selection) => match theme::apply(app.scene(), &selection) {
+                Ok(_) => app.theme_policy_changed(selection.policy)?,
+                Err(error) => {
+                    eprintln!("theme stylesheet: {error}");
+                    theme::apply_fallback(app.scene(), &selection)?;
+                    app.theme_policy_changed(selection.policy)?;
+                }
+            },
+            Err(error) => eprintln!("theme provider: {error}"),
+        }
+    }
     #[cfg(target_os = "linux")]
-    let watcher = if themed {
-        let watcher = match theme::Watcher::start(event_loop.create_proxy()) {
-            Ok(watcher) => Some(watcher),
-            Err(error) => {
-                eprintln!("theme watcher: {error}");
-                None
-            }
-        };
-        match theme::apply(app.scene()) {
-            Ok((theme, _)) => app.theme_changed(theme)?,
-            Err(error) => {
-                eprintln!("theme: {error}");
-                if let Ok(theme) = theme::apply_fallback(app.scene()) {
-                    app.theme_changed(theme)?;
+    let theme_provider = provider;
+    #[cfg(target_os = "linux")]
+    let watcher = theme_provider
+        .as_ref()
+        .filter(|provider| !provider.watch_paths().is_empty())
+        .and_then(|provider| {
+            match theme::Watcher::start(provider.clone(), event_loop.create_proxy()) {
+                Ok(watcher) => Some(watcher),
+                Err(error) => {
+                    eprintln!("theme watcher: {error}");
+                    None
                 }
             }
-        }
-        watcher
-    } else {
-        None
-    };
-    #[cfg(not(target_os = "linux"))]
-    let _ = (&mut app, themed);
+        });
     let mut host = Host {
+        #[cfg(target_os = "linux")]
+        watcher,
+        #[cfg(target_os = "linux")]
+        theme_provider,
         title: title.into(),
         size,
         app,
@@ -98,8 +126,6 @@ fn run_inner(
         composing: false,
         error: None,
         epoch: std::time::Instant::now(),
-        #[cfg(target_os = "linux")]
-        watcher,
     };
     event_loop.run_app(&mut host)?;
     match host.error {
@@ -252,6 +278,12 @@ impl Gpu {
 fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
     let scaling = Transform2D::scale(scale, scale);
     for command in &mut list.commands {
+        if matches!(
+            command,
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity
+        ) {
+            continue;
+        }
         let (transform, clip) = match command {
             DisplayCommand::Shape {
                 transform, clip, ..
@@ -265,6 +297,7 @@ fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
             | DisplayCommand::RichText {
                 transform, clip, ..
             } => (transform, clip),
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => unreachable!(),
         };
         *transform = scaling.compose(*transform);
         *clip = clip.map(|rect| scaling.transform_rect_bounds(rect));
@@ -274,6 +307,8 @@ fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
 struct Host<A> {
     #[cfg(target_os = "linux")]
     watcher: Option<theme::Watcher>,
+    #[cfg(target_os = "linux")]
+    theme_provider: Option<Arc<dyn ThemeProvider>>,
     epoch: std::time::Instant,
     title: String,
     size: [f64; 2],
@@ -285,6 +320,19 @@ struct Host<A> {
     error: Option<Box<dyn Error>>,
 }
 impl<A: Application> Host<A> {
+    #[cfg(target_os = "linux")]
+    fn watcher_selection(
+        &mut self,
+    ) -> Result<Option<(knave_ui::toolkit::ThemePolicy, bool)>, Box<dyn Error>> {
+        let Some(provider) = &self.theme_provider else {
+            return Ok(None);
+        };
+        let selection = provider.load().map_err(std::io::Error::other)?;
+        let policy = selection.policy;
+        let changed = theme::apply(self.app.scene(), &selection)?;
+        Ok(Some((policy, changed)))
+    }
+
     fn input(&mut self, input: Input) -> AppResult {
         let Some(gpu) = &mut self.gpu else {
             return Ok(());
@@ -483,9 +531,9 @@ impl<A: Application> ApplicationHandler for Host<A> {
             watcher
                 .pending
                 .store(false, std::sync::atomic::Ordering::Release);
-            match theme::apply(self.app.scene()) {
-                Ok((theme, true)) => {
-                    let result = self.app.theme_changed(theme).and_then(|()| {
+            match self.watcher_selection() {
+                Ok(Some((policy, true))) => {
+                    let result = self.app.theme_policy_changed(policy).and_then(|()| {
                         if let Some(gpu) = &mut self.gpu {
                             self.app.refresh_theme(&mut gpu.painter)
                         } else {
@@ -497,7 +545,7 @@ impl<A: Application> ApplicationHandler for Host<A> {
                         return;
                     }
                 }
-                Ok((_, false)) => {}
+                Ok(Some((_, false))) | Ok(None) => {}
                 Err(error) => eprintln!("theme: {error}"),
             }
             self.sync(true);

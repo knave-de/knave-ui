@@ -114,7 +114,9 @@ pub(super) fn paint_collection(
         let has_part_shape = part.as_ref().is_some_and(|part| {
             part.background_explicit || super::paint::has_borders(&part.computed)
         });
-        let part_opacity = part.as_ref().map_or(1.0, |part| part.computed.opacity);
+        let part_opacity = part
+            .as_ref()
+            .map_or(1.0, |part| part.computed.style.opacity);
         if selected || has_part_shape {
             let default = if selected {
                 computed

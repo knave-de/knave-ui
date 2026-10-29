@@ -25,6 +25,7 @@
 	--control-muted: #2C3138;
 
 	--text: #E8EBEF;
+	--text-tooltip: #F7F8FA;
 	--text-secondary: #9AA3AE;
 	--text-accent: #93CDEE;
 	--surface-raised: #1A1D22;
@@ -195,7 +196,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-	background-color: #3A414A;
+	background-color: var(--surface-hover);
 }
 
 button.ghost {
@@ -213,11 +214,11 @@ button.destructive {
 
 button.destructive:hover {
 	color: var(--text);
-	background-color: #5A262C;
+	background-color: var(--danger-surface);
 }
 
 button.destructive:pressed {
-	background-color: #2C1619;
+	background-color: var(--surface-pressed);
 }
 
 button:busy {
@@ -247,7 +248,7 @@ combo-box {
 
 text-input:hover,
 combo-box:hover {
-	background-color: #15181C;
+	background-color: var(--surface-sunken);
 }
 
 text-input:invalid,
@@ -256,7 +257,7 @@ combo-box:invalid {
 }
 
 text-selection {
-	background-color: #5DADE259;
+	background-color: var(--surface-selected);
 }
 
 text-caret {
@@ -271,7 +272,7 @@ toggle {
 
 checkbox-indicator {
 	background-color: var(--surface-sunken);
-	border: 1px solid #5A626D;
+	border: 1px solid var(--border-strong);
 	border-radius: 4px;
 }
 
@@ -322,7 +323,7 @@ progress-fill {
 }
 
 slider-thumb {
-	background-color: #FFFFFF;
+	background-color: var(--surface-raised);
 	border: 2px solid var(--accent);
 	border-radius: 8px;
 }
@@ -381,12 +382,12 @@ table-header {
 }
 
 scrollbar-thumb {
-	background-color: #3D444D;
+	background-color: var(--border);
 	border-radius: 4px;
 }
 
 scrollbar-thumb:hover {
-	background-color: #59616C;
+	background-color: var(--border-strong);
 }
 
 /* Floating surfaces sit one step above the page. */
@@ -417,7 +418,7 @@ command-palette {
 }
 
 tooltip {
-	color: #F7F8FA;
+	color: var(--text-tooltip);
 	background-color: var(--surface-tooltip);
 	border-radius: 6px;
 	padding: 8px;

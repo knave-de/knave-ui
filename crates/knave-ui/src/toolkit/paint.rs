@@ -19,12 +19,42 @@ impl Scene {
             .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
+        let mut opacity_path = Vec::new();
         for i in order {
             if self.nodes[i].clip.is_none() {
                 continue;
             }
+            let mut ancestors = Vec::new();
+            let mut current = Some(i);
+            while let Some(index) = current {
+                ancestors.push(index);
+                current = self.nodes[index].parent;
+            }
+            ancestors.reverse();
+            let path = ancestors
+                .into_iter()
+                .filter(|index| self.opacity(*index) < 1.0)
+                .collect::<Vec<_>>();
+            let common = opacity_path
+                .iter()
+                .zip(&path)
+                .take_while(|(active, next)| active == next)
+                .count();
+            while opacity_path.len() > common {
+                opacity_path.pop();
+                self.list.commands.push(DisplayCommand::EndOpacity);
+            }
+            for index in path.into_iter().skip(common) {
+                self.list.commands.push(DisplayCommand::BeginOpacity {
+                    opacity: self.opacity(index),
+                });
+                opacity_path.push(index);
+            }
             self.stats.visible_elements += 1;
             self.paint_node(i);
+        }
+        while opacity_path.pop().is_some() {
+            self.list.commands.push(DisplayCommand::EndOpacity);
         }
         self.paint_menu();
         if self.menu.is_none()
@@ -80,15 +110,17 @@ impl Scene {
         self.stats.paints += 1;
         &self.list
     }
+    fn opacity(&self, index: usize) -> f32 {
+        self.computed_style(self.nodes[index].element.id)
+            .map_or(1.0, |style| style.style.opacity)
+    }
     fn paint_node(&mut self, i: usize) {
-        let command_start = self.list.commands.len();
         let node = &self.nodes[i];
         let e = &node.element;
         let b = node.bounds;
         let clip = node.clip;
         let state = self.interaction(e.id).unwrap();
         let computed = self.computed_style(e.id);
-        let opacity = cumulative_opacity(self, i);
         let mut style = computed
             .as_ref()
             .map_or_else(|| e.style.clone(), |s| s.style.clone());
@@ -302,7 +334,10 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255))
+                        .unwrap_or_else(|| {
+                            self.theme_color("--control-muted")
+                                .unwrap_or(Color::BACKGROUND)
+                        })
                 });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
                 let part = if toggle {
@@ -407,7 +442,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -590,7 +628,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -644,7 +685,7 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                        .unwrap_or(style.text.color),
                 ),
             ),
             Widget::Scroll if node.scroll_max > 0.0 => {
@@ -666,7 +707,10 @@ impl Scene {
                             .background
                             .as_ref()
                             .and_then(|paint| paint.fill)
-                            .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                            .unwrap_or_else(|| {
+                                self.theme_color("--control-muted")
+                                    .unwrap_or(Color::BACKGROUND)
+                            }),
                     ),
                 );
                 shape(&mut self.list, thumb_rect, clip, paint);
@@ -677,26 +721,32 @@ impl Scene {
             text_cmd(&mut self.list, text_area, clip, label, style.text);
         }
         if self.inspect {
+            let inspect_color = if state.captured {
+                self.theme_color("--accent")
+            } else {
+                self.theme_color("--border-strong")
+            }
+            .unwrap_or(Color::TEXT);
             let mut paint = ShapePaint::fill(Color::rgba(0, 0, 0, 0));
             paint.border = Some(Border {
-                color: if state.captured {
-                    Color::rgba(255, 150, 60, 255)
-                } else {
-                    Color::rgba(70, 210, 150, 160)
-                },
+                color: inspect_color,
                 width: 1.0,
             });
             shape(&mut self.list, b, clip, paint);
         }
-        apply_opacity(&mut self.list.commands[command_start..], opacity);
     }
     fn paint_menu(&mut self) {
         let Some(menu) = &self.menu else {
             return;
         };
-        let command_start = self.list.commands.len();
         let owner = self.indices[&menu.owner];
         let opacity = cumulative_opacity(self, owner);
+        let grouped = opacity < 1.0;
+        if grouped {
+            self.list
+                .commands
+                .push(DisplayCommand::BeginOpacity { opacity });
+        }
         let node = &self.nodes[owner];
         let menu_style = self
             .computed_style_for(node.element.id, InteractionState::default())
@@ -717,7 +767,10 @@ impl Scene {
             .style
             .background
             .and_then(|paint| paint.fill)
-            .unwrap_or(Color::rgba(80, 92, 111, 255));
+            .unwrap_or_else(|| {
+                self.theme_color("--control-muted")
+                    .unwrap_or(Color::BACKGROUND)
+            });
         let b = menu.bounds;
         let clip = Some(b);
         let mut menu_paint = menu_style.background.clone().unwrap_or_else(|| {
@@ -746,7 +799,9 @@ impl Scene {
         );
         shape(&mut self.list, b, clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
-            apply_opacity(&mut self.list.commands[command_start..], opacity);
+            if grouped {
+                self.list.commands.push(DisplayCommand::EndOpacity);
+            }
             return;
         };
         let mut y = b.y - menu.scroll;
@@ -826,7 +881,9 @@ impl Scene {
         for (bounds, label, style) in labels {
             text_cmd(&mut self.list, bounds, clip, label, style);
         }
-        apply_opacity(&mut self.list.commands[command_start..], opacity);
+        if grouped {
+            self.list.commands.push(DisplayCommand::EndOpacity);
+        }
     }
 }
 fn cumulative_opacity(scene: &Scene, mut node: usize) -> f32 {
@@ -835,7 +892,7 @@ fn cumulative_opacity(scene: &Scene, mut node: usize) -> f32 {
         let current = &scene.nodes[node];
         opacity *= scene
             .computed_style(current.element.id)
-            .map_or(1.0, |style| style.opacity);
+            .map_or(1.0, |style| style.style.opacity);
         let Some(parent) = current.parent else {
             return opacity;
         };
@@ -920,7 +977,7 @@ fn styled_part_paint(
     } else {
         default.clone()
     };
-    paint.opacity = default.opacity * part.computed.opacity;
+    paint.opacity = default.opacity * part.computed.style.opacity;
     paint.radii = part.computed.style.radii.unwrap_or(default.radii);
     if has_borders(&part.computed) {
         paint.edge_borders = Some(part.computed.borders);
@@ -938,29 +995,6 @@ fn shape(list: &mut DisplayList, bounds: Rect, clip: Option<Rect>, paint: ShapeP
         transform: Transform2D::IDENTITY,
         clip,
     });
-}
-fn apply_opacity(commands: &mut [DisplayCommand], opacity: f32) {
-    if opacity >= 1.0 {
-        return;
-    }
-    for command in commands {
-        match command {
-            DisplayCommand::Shape { paint, .. } => paint.opacity *= opacity,
-            DisplayCommand::RichText { style, spans, .. } => {
-                scale_alpha(&mut style.color.alpha, opacity);
-                for span in spans {
-                    if let Some(color) = &mut span.color {
-                        scale_alpha(&mut color.alpha, opacity);
-                    }
-                }
-            }
-            DisplayCommand::Text { style, .. } => scale_alpha(&mut style.color.alpha, opacity),
-            DisplayCommand::Image { style, .. } => style.opacity *= opacity,
-        }
-    }
-}
-fn scale_alpha(alpha: &mut u8, opacity: f32) {
-    *alpha = (f32::from(*alpha) * opacity).round() as u8;
 }
 fn text_cmd(
     list: &mut DisplayList,

@@ -56,7 +56,7 @@ fn selectable(id: u64) -> Element {
 }
 
 #[test]
-fn css_opacity_is_applied_to_shapes_and_text() {
+fn css_opacity_is_applied_to_elements_and_painted_parts() {
     let button = Element::new(2, Widget::Button("20% opacity".into())).class("faded");
     let checkbox = Element::new(
         3,
@@ -81,16 +81,20 @@ fn css_opacity_is_applied_to_shapes_and_text() {
 
     assert!(list.commands.iter().any(|command| matches!(
         command,
-        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.1).abs() < f32::EPSILON
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.5).abs() < f32::EPSILON
     )));
     assert!(list.commands.iter().any(|command| matches!(
         command,
-        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.125).abs() < f32::EPSILON
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.2).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.25).abs() < f32::EPSILON
     )));
     assert!(list.commands.iter().any(|command| matches!(
         command,
         DisplayCommand::Text { text, style, .. }
-            if text == "20% opacity" && style.color.alpha < 255
+            if text == "20% opacity" && style.color.alpha == 255
     )));
 }
 
@@ -114,7 +118,7 @@ fn part_opacity_is_applied_once_to_color_fills_and_collection_icons() {
     let mut scene = Scene::new(Element::new(0, Widget::Panel).children(vec![
         toggle,
         Element::new(2, Widget::Collection(collection)).layout(Layout {
-            height: Length::Px(72.0),
+            height: Length::Px(100.0),
             ..Default::default()
         }),
     ]))
@@ -183,13 +187,49 @@ fn open_menu_commands_apply_owner_and_ancestor_opacity() {
         .clone();
     assert!(commands.iter().any(|command| matches!(
         command,
-        DisplayCommand::Text { text, style, .. }
-            if text == "First" && style.color.alpha == 64
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.25).abs() < f32::EPSILON
     )));
     assert!(commands.iter().any(|command| matches!(
         command,
-        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.25).abs() < f32::EPSILON
+        DisplayCommand::Text { text, style, .. }
+            if text == "First" && style.color.alpha == 255
     )));
+}
+
+#[test]
+fn monochrome_policy_keeps_ui_chrome_grayscale_in_both_schemes() {
+    for scheme in [Theme::Dark, Theme::Light] {
+        let button = Element::new(2, Widget::Button("Action".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene
+            .set_theme_policy_stylesheets(
+                ThemePolicy::new(scheme, Contrast::Standard, Chroma::Monochrome),
+                "",
+                "",
+            )
+            .unwrap();
+        let style = scene.computed_style(ElementId(2)).unwrap();
+        let text = style.style.text.color;
+        let fill = style.style.background.unwrap().fill.unwrap();
+        for color in [text, fill] {
+            assert_eq!(color.red, color.green);
+            assert_eq!(color.green, color.blue);
+        }
+    }
+}
+
+#[test]
+fn high_contrast_policy_strengthens_focus_outline_and_preserves_scheme() {
+    let button = Element::new(2, Widget::Button("Action".into()));
+    let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+    let policy = ThemePolicy::new(Theme::Light, Contrast::High, Chroma::FullColor);
+    scene.set_theme_policy_stylesheets(policy, "", "").unwrap();
+    assert_eq!(scene.theme_policy(), policy);
+    assert!(
+        policy
+            .stylesheet()
+            .contains("*:focus { outline-width: 2px; }")
+    );
 }
 
 #[test]

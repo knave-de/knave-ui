@@ -17,6 +17,13 @@ to add without growing the same module further.
   and nested rectangular clip state in each command.
 - `knave-renderer` coordinates separate shape, image, and text GPU modules in
   one render pass, visiting commands in their declared order.
+- CSS opacity emits balanced begin/end group commands. The painter renders each
+  group into a transparent RGBA8 target, then composites it once with premultiplied
+  alpha; overlapping children therefore retain correct group-opacity semantics.
+  Targets are reused by nesting depth, with a 128 MiB combined active/cache
+  budget and at most 48 nested groups. A 3840x2160 target uses about 31.6 MiB,
+  so five simultaneously nested targets exceed the budget and return a typed
+  frame error.
 - Shapes use signed-distance rounded rectangles with fill, border, opacity,
   spread, offset, and blurred shadows. Images support stretch/contain/cover,
   opacity, rounded clipping, affine transforms, and a byte-budgeted GPU LRU.
@@ -35,9 +42,10 @@ to add without growing the same module further.
 `DisplayCommand` variants/fields and the fallible, sRGB-only
 `WgpuPainter::new` changed at the Rust crate boundary; the renderer, Wayland,
 and shell workspace consumers were updated together. There is no change to the
-Knave desktop API, shell/Wayland protocol, configuration, or compositor
-behavior. These renderer crates are workspace-internal implementation APIs;
-external Rust consumers would need a source update before adopting this
+Knave desktop configuration API or compositor behavior. The new opacity group
+display commands are part of the workspace-internal Rust boundary; exhaustive
+`DisplayCommand` matches and host display-list transforms must preserve them.
+External Rust consumers would need a source update before adopting this
 revision.
 
 Text currently supports translation and positive uniform scaling. Rotation,

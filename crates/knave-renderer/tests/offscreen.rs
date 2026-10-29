@@ -157,6 +157,38 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
                 transform: Transform2D::IDENTITY,
                 clip: None,
             },
+            DisplayCommand::BeginOpacity { opacity: 0.5 },
+            DisplayCommand::Shape {
+                bounds: Rect::new(40.0, 2.0, 12.0, 12.0),
+                paint: ShapePaint::fill(Color::rgba(255, 0, 0, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::Shape {
+                bounds: Rect::new(46.0, 2.0, 12.0, 12.0),
+                paint: ShapePaint::fill(Color::rgba(0, 0, 255, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::EndOpacity,
+            DisplayCommand::BeginOpacity { opacity: 0.5 },
+            DisplayCommand::BeginOpacity { opacity: 0.5 },
+            DisplayCommand::Shape {
+                bounds: Rect::new(20.0, 31.0, 12.0, 4.0),
+                paint: ShapePaint::fill(Color::rgba(255, 255, 255, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::EndOpacity,
+            DisplayCommand::EndOpacity,
+            DisplayCommand::BeginOpacity { opacity: 0.25 },
+            DisplayCommand::Shape {
+                bounds: Rect::new(40.0, 18.0, 12.0, 12.0),
+                paint: ShapePaint::fill(Color::rgba(0, 255, 0, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::EndOpacity,
         ],
     };
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -308,6 +340,24 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
         "a later text run after a shape should retain its glyph-atlas entries"
     );
 
+    let red_only = pixels[8 * size.0 as usize + 43];
+    assert!(red_only[0] > 180 && red_only[2] < 60 && red_only[3] == 255);
+    let overlap = pixels[8 * size.0 as usize + 49];
+    assert!(
+        overlap[0] < 80 && overlap[2] > 150 && overlap[3] == 255,
+        "the overlap must composite the opaque child group once before applying group opacity: {overlap:?}"
+    );
+    let later_group = pixels[22 * size.0 as usize + 43];
+    assert!(
+        later_group[1] < 150 && later_group[1] > later_group[0],
+        "sibling groups must retain their own opacity values within one frame: {later_group:?}"
+    );
+    let nested_group = pixels[33 * size.0 as usize + 23];
+    assert!(
+        nested_group[0] > 100 && nested_group[0] < 170,
+        "nested opacity groups multiply alpha during isolated compositing: {nested_group:?}"
+    );
+
     let warm = painter.stats();
     let mut second = device.create_command_encoder(&Default::default());
     painter
@@ -325,6 +375,38 @@ fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
         reused.image_buffer_allocations,
         warm.image_buffer_allocations
     );
+    assert_eq!(
+        reused.opacity_target_allocations,
+        warm.opacity_target_allocations
+    );
+
+    let mut grouped_text = DisplayList::new(2, Color::BACKGROUND);
+    for index in 0..129 {
+        grouped_text
+            .commands
+            .push(DisplayCommand::BeginOpacity { opacity: 0.5 });
+        grouped_text.commands.push(DisplayCommand::Text {
+            bounds: Rect::new(1.0, 1.0, 62.0, 10.0),
+            style: TextStyle::default(),
+            text: format!("faded label {index}"),
+            transform: Transform2D::IDENTITY,
+            clip: None,
+        });
+        grouped_text.commands.push(DisplayCommand::EndOpacity);
+    }
+    let mut text_encoder = device.create_command_encoder(&Default::default());
+    painter
+        .encode(
+            &device,
+            &queue,
+            &mut text_encoder,
+            &view,
+            size,
+            &grouped_text,
+        )
+        .expect("129 opacity groups with text stay within the bounded renderer limits");
+    queue.submit([text_encoder.finish()]);
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
     use knave_ui::toolkit::TextMeasurer;
     // Heading construction must use the same real shaping/wrapping path as plain text.
     for level in [

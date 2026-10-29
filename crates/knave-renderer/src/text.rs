@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 const MAX_CACHED_LAYOUTS: usize = 128;
 const MAX_LAYOUT_CACHE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CACHED_TEXT_BYTES: usize = 16 * 1024;
-const MAX_TEXT_RENDERERS: usize = 128;
+const MAX_TEXT_RENDERERS: usize = knave_ui::toolkit::MAX_ELEMENTS;
 const MAX_FRAME_TEXT_BYTES: usize = 512 * 1024;
 const MAX_FONT_FAMILY_BYTES: usize = 256;
 

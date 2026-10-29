@@ -125,9 +125,16 @@ buffer allocation counts. Full display-list preparation still occurs on each
 painted frame; dirty-region rendering is not implemented.
 
 Bounds: 2,048 elements, depth 48, 16 KiB per text value, 1,024 options per menu;
-renderer limits remain 8,192 commands, 512 KiB text per frame, 128 text runs,
-128 cached layouts/4 MiB estimated layout storage, and 64 MiB cached images.
-The renderer reports unsupported transforms or exceeded frame budgets.
+renderer limits remain 8,192 commands, 512 KiB text per frame, 2,048 text
+renderers, 128 cached layouts/4 MiB estimated layout storage, and 64 MiB cached
+images. Layout metrics are limited to 1,000,000 logical pixels; computed
+extents and text-measurer results are kept finite and within that range.
+Opacity groups use isolated RGBA8 targets with at most 48 nested layers and a
+128 MiB combined active/cache budget. A 3840x2160 target consumes about 31.6
+MiB, so five simultaneously active groups exceed that budget. Exceeding the
+opacity budget returns an explicit frame error; it is not silently rendered
+with altered opacity. The renderer also reports unsupported transforms or
+exceeded text/frame budgets.
 
 ## Compatibility, adoption and rollback
 

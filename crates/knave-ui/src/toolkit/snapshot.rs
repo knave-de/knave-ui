@@ -60,6 +60,13 @@ impl SceneSnapshot {
             Transform2D::translation(bounds.x, bounds.y).compose(Transform2D::scale(scale, scale));
         for original in &self.list.commands {
             let mut command = original.clone();
+            if matches!(
+                command,
+                DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity
+            ) {
+                target.commands.push(command);
+                continue;
+            }
             let (transform, clip) = match &mut command {
                 DisplayCommand::Text {
                     transform, clip, ..
@@ -73,6 +80,9 @@ impl SceneSnapshot {
                 | DisplayCommand::Image {
                     transform, clip, ..
                 } => (transform, clip),
+                DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => {
+                    unreachable!("opacity markers are handled before geometry transforms")
+                }
             };
             *transform = local.compose(*transform);
             *clip = match (*clip, outer_clip) {
