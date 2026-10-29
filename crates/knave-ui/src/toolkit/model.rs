@@ -4,6 +4,9 @@ pub const MAX_ELEMENTS: usize = 2048;
 pub const MAX_DEPTH: usize = 48;
 pub const MAX_TEXT_BYTES: usize = 16 * 1024;
 pub const MAX_MENU_ITEMS: usize = 1024;
+/// Upper bound for caller supplied layout dimensions, in logical pixels.
+/// This keeps layout arithmetic finite and bounds renderer inputs.
+pub const MAX_LAYOUT_METRIC: f32 = 1_000_000.0;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ElementId(pub u64);
@@ -77,7 +80,7 @@ impl Insets {
     pub(super) fn valid(self) -> bool {
         [self.top, self.right, self.bottom, self.left]
             .iter()
-            .all(|v| v.is_finite() && *v >= 0.0)
+            .all(|v| v.is_finite() && (0.0..=MAX_LAYOUT_METRIC).contains(v))
     }
 }
 /// Controls child overflow. Scroll containers always clip to their content area.
@@ -145,6 +148,8 @@ impl Layout {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
+    /// Opacity applied to this element and its descendants as one painted group.
+    pub opacity: f32,
     pub background: Option<ShapePaint>,
     pub text: TextStyle,
     pub hover: Color,
@@ -157,6 +162,7 @@ pub struct Style {
 impl Default for Style {
     fn default() -> Self {
         Self {
+            opacity: 1.0,
             background: None,
             text: TextStyle::default(),
             hover: Color::rgba(49, 64, 83, 255),
@@ -166,6 +172,21 @@ impl Default for Style {
             radius: 6.0,
             radii: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_metric_tests {
+    use super::*;
+
+    #[test]
+    fn inset_metrics_are_bounded_before_layout_arithmetic() {
+        assert!(Insets::all(MAX_LAYOUT_METRIC).valid());
+        assert!(!Insets::all(MAX_LAYOUT_METRIC + 1.0).valid());
+        let paired = Insets::symmetric(MAX_LAYOUT_METRIC, MAX_LAYOUT_METRIC);
+        assert!(paired.valid());
+        assert!(paired.horizontal().is_finite());
+        assert!(paired.vertical().is_finite());
     }
 }
 

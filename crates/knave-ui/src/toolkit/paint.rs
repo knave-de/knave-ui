@@ -19,12 +19,42 @@ impl Scene {
             .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
+        let mut opacity_path = Vec::new();
         for i in order {
             if self.nodes[i].clip.is_none() {
                 continue;
             }
+            let mut ancestors = Vec::new();
+            let mut current = Some(i);
+            while let Some(index) = current {
+                ancestors.push(index);
+                current = self.nodes[index].parent;
+            }
+            ancestors.reverse();
+            let path = ancestors
+                .into_iter()
+                .filter(|index| self.opacity(*index) < 1.0)
+                .collect::<Vec<_>>();
+            let common = opacity_path
+                .iter()
+                .zip(&path)
+                .take_while(|(active, next)| active == next)
+                .count();
+            while opacity_path.len() > common {
+                opacity_path.pop();
+                self.list.commands.push(DisplayCommand::EndOpacity);
+            }
+            for index in path.into_iter().skip(common) {
+                self.list.commands.push(DisplayCommand::BeginOpacity {
+                    opacity: self.opacity(index),
+                });
+                opacity_path.push(index);
+            }
             self.stats.visible_elements += 1;
             self.paint_node(i);
+        }
+        while opacity_path.pop().is_some() {
+            self.list.commands.push(DisplayCommand::EndOpacity);
         }
         self.paint_menu();
         if self.menu.is_none()
@@ -79,6 +109,10 @@ impl Scene {
         self.paint_dirty = false;
         self.stats.paints += 1;
         &self.list
+    }
+    fn opacity(&self, index: usize) -> f32 {
+        self.computed_style(self.nodes[index].element.id)
+            .map_or(1.0, |style| style.style.opacity)
     }
     fn paint_node(&mut self, i: usize) {
         let node = &self.nodes[i];
@@ -300,7 +334,10 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255))
+                        .unwrap_or_else(|| {
+                            self.theme_color("--control-muted")
+                                .unwrap_or(Color::BACKGROUND)
+                        })
                 });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
                 let part = if toggle {
@@ -405,7 +442,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -588,7 +628,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -642,7 +685,7 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                        .unwrap_or(style.text.color),
                 ),
             ),
             Widget::Scroll if node.scroll_max > 0.0 => {
@@ -664,7 +707,10 @@ impl Scene {
                             .background
                             .as_ref()
                             .and_then(|paint| paint.fill)
-                            .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                            .unwrap_or_else(|| {
+                                self.theme_color("--control-muted")
+                                    .unwrap_or(Color::BACKGROUND)
+                            }),
                     ),
                 );
                 shape(&mut self.list, thumb_rect, clip, paint);
@@ -675,13 +721,15 @@ impl Scene {
             text_cmd(&mut self.list, text_area, clip, label, style.text);
         }
         if self.inspect {
+            let inspect_color = if state.captured {
+                self.theme_color("--accent")
+            } else {
+                self.theme_color("--border-strong")
+            }
+            .unwrap_or(Color::TEXT);
             let mut paint = ShapePaint::fill(Color::rgba(0, 0, 0, 0));
             paint.border = Some(Border {
-                color: if state.captured {
-                    Color::rgba(255, 150, 60, 255)
-                } else {
-                    Color::rgba(70, 210, 150, 160)
-                },
+                color: inspect_color,
                 width: 1.0,
             });
             shape(&mut self.list, b, clip, paint);
@@ -712,7 +760,10 @@ impl Scene {
             .style
             .background
             .and_then(|paint| paint.fill)
-            .unwrap_or(Color::rgba(80, 92, 111, 255));
+            .unwrap_or_else(|| {
+                self.theme_color("--control-muted")
+                    .unwrap_or(Color::BACKGROUND)
+            });
         let b = menu.bounds;
         let clip = Some(b);
         let mut menu_paint = menu_style.background.clone().unwrap_or_else(|| {

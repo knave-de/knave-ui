@@ -1,9 +1,12 @@
 //! Shared application widgets, behavior examples and frozen real-scene references.
 use knave_app::{AppResult, Application};
-use knave_ui::{HeadingLevel, toolkit::*};
+use knave_ui::{HeadingLevel, ShapePaint, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
+const CONTRAST_BUTTON: ElementId = ElementId(42);
+const CHROMA_BUTTON: ElementId = ElementId(43);
+const SCHEME_BUTTON: ElementId = ElementId(44);
 const PAGES: [(u64, &str); 6] = [
     (1000, "Core"),
     (2000, "Layout"),
@@ -53,6 +56,33 @@ fn core() -> Result<Vec<Element>, UiError> {
     tooltip.tooltip =
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
     let supporting_text = text(103, "Supporting text · toolkit defaults");
+    let mut opacity_back = Element::new(770_011, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(220.0),
+            height: Length::Px(72.0),
+            ..Default::default()
+        })
+        .children(vec![text(770_013, "Opaque red sibling")]);
+    opacity_back.style.background = Some(ShapePaint::fill(knave_ui::Color::rgba(190, 64, 72, 255)));
+    let mut opacity_front = Element::new(770_012, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(220.0),
+            height: Length::Px(72.0),
+            offset: [64.0, 32.0],
+            ..Default::default()
+        })
+        .children(vec![text(770_014, "Opaque blue sibling")]);
+    opacity_front.style.background =
+        Some(ShapePaint::fill(knave_ui::Color::rgba(52, 112, 190, 255)));
+    let opacity_demo = Element::new(770_010, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            width: Length::Px(300.0),
+            height: Length::Px(112.0),
+            ..Default::default()
+        })
+        .class("opacity-demo")
+        .children(vec![opacity_back, opacity_front]);
     Ok(vec![
         section(
             100,
@@ -303,6 +333,17 @@ fn core() -> Result<Vec<Element>, UiError> {
                     122,
                     "Numeric Up/Down steps; Enter validates. Password text is masked and excluded from copy/cut and IME surrounding text.",
                 ),
+            ],
+        ),
+        section(
+            770_000,
+            "CSS opacity · overlapping siblings",
+            vec![
+                text(
+                    770_015,
+                    "Both opaque sibling panels are faded together; their overlap is composited once as a group.",
+                ),
+                opacity_demo,
             ],
         ),
     ])
@@ -823,22 +864,54 @@ fn gallery() -> Result<Scene, UiError> {
             element
         })
         .collect();
-    Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
+            Element::new(40, Widget::Text("Appearance preview · applies to UI chrome; sample images retain their colors.".into())),
+            Element::new(41, Widget::Panel).layout(Layout { flow: Flow::Row, ..Default::default() }).children(vec![
+                Element::new(CONTRAST_BUTTON.0, Widget::Button("Contrast: Standard".into())),
+                Element::new(CHROMA_BUTTON.0, Widget::Button("Palette: Full color".into())),
+                Element::new(SCHEME_BUTTON.0, Widget::Button("Scheme: Dark".into())),
+            ]),
             Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
-            popup, command_palette()?.element("Commands")?]))
+            popup, command_palette()?.element("Commands")?]))?;
+    scene
+        .set_stylesheet(".opacity-demo { opacity: 0.55; }")
+        .expect("opacity demo stylesheet is valid");
+    Ok(scene)
 }
 struct Gallery {
     palette: CommandPalette,
     fixtures_ready: bool,
-    theme: knave_ui::toolkit::Theme,
+    theme_policy: ThemePolicy,
     scene: Scene,
     clicks: u32,
     trace: bool,
 }
 impl Gallery {
+    fn apply_policy_preview(&mut self) -> AppResult {
+        let shell = self.scene.desktop_stylesheet().to_owned();
+        let named = self.scene.user_theme_stylesheet().to_owned();
+        self.scene
+            .set_theme_policy_stylesheets(self.theme_policy, &shell, &named)?;
+        self.scene.set_widget(
+            CONTRAST_BUTTON,
+            Widget::Button(format!("Contrast: {:?}", self.theme_policy.contrast)),
+        )?;
+        self.scene.set_widget(
+            CHROMA_BUTTON,
+            Widget::Button(format!("Palette: {:?}", self.theme_policy.chroma)),
+        )?;
+        self.scene.set_widget(
+            SCHEME_BUTTON,
+            Widget::Button(format!("Scheme: {:?}", self.theme_policy.scheme)),
+        )?;
+        self.scene
+            .set_widget(STATUS, Widget::Text("Appearance preview updated".into()))?;
+        Ok(())
+    }
+
     fn select_page(&mut self, index: usize) -> Result<(), UiError> {
         for (i, (page, label)) in PAGES.iter().enumerate() {
             self.scene.set_visible(ElementId(*page), i == index)?;
@@ -866,6 +939,7 @@ impl Application for Gallery {
             return Ok(());
         }
         let desktop_css = self.scene.desktop_stylesheet().to_owned();
+        let named_css = self.scene.user_theme_stylesheet().to_owned();
         for (kind, title) in [
             "Button",
             "Checkbox",
@@ -929,7 +1003,11 @@ impl Application for Gallery {
                 ];
                 let mut fixture =
                     Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
-                fixture.set_desktop_theme(self.theme, &desktop_css)?;
+                fixture.set_theme_policy_stylesheets(
+                    self.theme_policy,
+                    &desktop_css,
+                    &named_css,
+                )?;
                 fixture.layout(size, text);
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
@@ -1006,19 +1084,21 @@ impl Application for Gallery {
         }
         // `Scene::insert` rebuilds the retained tree; restore the startup
         // preference after the gallery's one-time fixture population.
-        self.scene.set_theme(self.theme)?;
+        let named_css = self.scene.user_theme_stylesheet().to_owned();
+        self.scene
+            .set_theme_policy_stylesheets(self.theme_policy, &desktop_css, &named_css)?;
         self.fixtures_ready = true;
         Ok(())
     }
 
-    fn theme_changed(&mut self, theme: knave_ui::toolkit::Theme) -> AppResult {
+    fn theme_policy_changed(&mut self, policy: ThemePolicy) -> AppResult {
         if self.fixtures_ready {
             for kind in 0..20 {
                 self.scene.remove(ElementId(5600 + kind * 20))?;
             }
             self.fixtures_ready = false;
         }
-        self.theme = theme;
+        self.theme_policy = policy;
         Ok(())
     }
 
@@ -1053,6 +1133,27 @@ impl Application for Gallery {
             return Ok(());
         }
         match action {
+            Action::Activated(CONTRAST_BUTTON) => {
+                self.theme_policy.contrast = match self.theme_policy.contrast {
+                    Contrast::Standard => Contrast::High,
+                    Contrast::High => Contrast::Standard,
+                };
+                self.apply_policy_preview()?;
+            }
+            Action::Activated(CHROMA_BUTTON) => {
+                self.theme_policy.chroma = match self.theme_policy.chroma {
+                    Chroma::FullColor => Chroma::Monochrome,
+                    Chroma::Monochrome => Chroma::FullColor,
+                };
+                self.apply_policy_preview()?;
+            }
+            Action::Activated(SCHEME_BUTTON) => {
+                self.theme_policy.scheme = match self.theme_policy.scheme {
+                    Theme::Dark => Theme::Light,
+                    Theme::Light => Theme::Dark,
+                };
+                self.apply_policy_preview()?;
+            }
             Action::Activated(ElementId(3407)) => self.palette.open(&mut self.scene)?,
             Action::Selected(ElementId(4), id) if (NAV..NAV + PAGES.len() as u64).contains(&id) => {
                 self.select_page((id - NAV) as usize)?
@@ -1105,7 +1206,7 @@ impl Application for Gallery {
     }
 }
 fn main() -> AppResult {
-    let theme = knave_ui::toolkit::Theme::Dark;
+    let theme_policy = ThemePolicy::default();
     let scene = gallery()?;
     knave_app::run(
         "Knave UI · Component catalog",
@@ -1113,7 +1214,7 @@ fn main() -> AppResult {
         Gallery {
             palette: command_palette()?,
             fixtures_ready: false,
-            theme,
+            theme_policy,
             scene,
             clicks: 0,
             trace: std::env::args().any(|arg| arg == "--trace"),
@@ -1128,7 +1229,7 @@ mod tests {
         Gallery {
             palette: command_palette().unwrap(),
             fixtures_ready: false,
-            theme: knave_ui::toolkit::Theme::Dark,
+            theme_policy: ThemePolicy::default(),
             scene: gallery().unwrap(),
             clicks: 0,
             trace: false,

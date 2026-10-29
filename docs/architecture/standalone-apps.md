@@ -52,12 +52,48 @@ the actual gallery on an isolated desktop, including click/keyboard activation,
 text editing, clipboard, menus, popups, scrolling, resize, close and idle behavior.
 Nested software rendering does not establish direct-TTY or hardware-GPU behavior.
 
-## Desktop themes
+## Theme providers
 
-On Linux `run` reads Knave's named theme and watches its configuration
-and selected CSS file. It wakes the window event loop on changes, preserves
-the last valid stylesheet on errors and joins the single watcher at shutdown.
-`run_unthemed` is available for applications independent of desktop theming. The desktop CSS layer sits
-between the bundled palette and `Scene::set_stylesheet` application rules.
-Applications with cached scene snapshots can invalidate them in `theme_changed`
-and rebuild them with a text engine in `refresh_theme`.
+`run` does not read desktop configuration or change the scene's existing theme.
+An application that owns theme settings can pass a `ThemeProvider` to
+`run_with_theme_provider`. The provider resolves its configuration into a
+`ThemeSelection` containing a toolkit `ThemePolicy` and user stylesheet, and
+returns the configuration and stylesheet paths from `watch_paths`.
+
+For example, an application that owns a CSS file can implement the provider
+without exposing its settings format to the host:
+
+```rust
+use std::{path::PathBuf, sync::Arc};
+use knave_app::{ThemeProvider, ThemeSelection, run_with_theme_provider};
+use knave_ui::toolkit::{Chroma, Contrast, Theme, ThemePolicy};
+
+struct AppTheme { css: PathBuf }
+
+impl ThemeProvider for AppTheme {
+    fn load(&self) -> Result<ThemeSelection, String> {
+        let stylesheet = knave_ui::toolkit::theme_file::load_css(&self.css)
+            .map_err(|error| error.to_string())?
+            .unwrap_or_default();
+        Ok(ThemeSelection {
+            policy: ThemePolicy::new(Theme::Dark, Contrast::Standard, Chroma::FullColor),
+            stylesheet,
+        })
+    }
+
+    fn watch_paths(&self) -> Vec<PathBuf> { vec![self.css.clone()] }
+}
+
+// Pass Arc::new(AppTheme { css: app_css_path }) to run_with_theme_provider.
+```
+
+On Linux the host watches those paths, wakes the window event loop on changes,
+and drops and joins the watcher when the window closes. A failed reload leaves
+the current scene in place; an invalid initial stylesheet falls back to that
+selection's bundled palette. Knave's adapter belongs in the
+configuration-owning repository and maps Knave's typed appearance settings to
+the provider API; the host does not parse `config.toml` or duplicate its schema.
+Applications with cached scene snapshots can invalidate them in
+`theme_policy_changed` and rebuild them with a text engine in `refresh_theme`.
+Existing `theme_changed` overrides are called by the default policy callback,
+which preserves compatibility for applications that only inspect dark or light.

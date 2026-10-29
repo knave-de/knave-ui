@@ -3,6 +3,7 @@
 use std::{error::Error, fmt};
 
 mod images;
+mod opacity;
 mod painter;
 mod shapes;
 mod text;

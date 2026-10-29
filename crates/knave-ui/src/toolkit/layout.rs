@@ -5,7 +5,7 @@ impl Scene {
         if size.iter().any(|s| !s.is_finite() || *s <= 0.0) {
             return;
         }
-        let viewport = Rect::new(0.0, 0.0, size[0], size[1]);
+        let viewport = Rect::new(0.0, 0.0, bounded_extent(size[0]), bounded_extent(size[1]));
         if self.viewport != viewport {
             self.viewport = viewport;
             self.invalidate_layout();
@@ -74,13 +74,13 @@ impl Scene {
             return [0.0; 2];
         }
         let layout = self.effective_layout(i);
-        let available = match layout.width {
+        let available = bounded_extent(match layout.width {
             Length::Px(w) => w,
             Length::Percent(fraction) => (width - layout.margin.horizontal()).max(0.0) * fraction,
             _ => (width - layout.margin.horizontal()).max(0.0),
-        };
+        });
         let padding = layout.insets();
-        let inner = (available - padding.horizontal()).max(1.0);
+        let inner = bounded_extent(available - padding.horizontal()).max(1.0);
         let mut intrinsic = match &self.nodes[i].element.widget {
             Widget::Text(value) => {
                 let value = value.clone();
@@ -242,10 +242,10 @@ impl Scene {
         if let Length::Px(v) = layout.height {
             intrinsic[1] = v;
         }
-        self.nodes[i].natural = intrinsic;
+        self.nodes[i].natural = [bounded_extent(intrinsic[0]), bounded_extent(intrinsic[1])];
         [
-            intrinsic[0] + layout.margin.horizontal(),
-            intrinsic[1] + layout.margin.vertical(),
+            bounded_extent(intrinsic[0] + layout.margin.horizontal()),
+            bounded_extent(intrinsic[1] + layout.margin.vertical()),
         ]
     }
     fn arrange(&mut self, i: usize, mut bounds: Rect, parent_clip: Option<Rect>) {
@@ -491,11 +491,18 @@ fn dimension(layout: Layout, axis: usize) -> Length {
     }
 }
 fn resolve(length: Length, natural: f32, available: f32) -> f32 {
-    match length {
+    bounded_extent(match length {
         Length::Px(v) => v,
         Length::Percent(fraction) => available * fraction,
         Length::Auto => natural.min(available),
         Length::Fill => available,
+    })
+}
+fn bounded_extent(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, MAX_LAYOUT_METRIC)
+    } else {
+        0.0
     }
 }
 fn align(a: Align, available: f32, size: f32) -> f32 {

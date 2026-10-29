@@ -3,6 +3,10 @@ use crate::{Color, ImageStyle, Rect, ShapePaint, TextStyle, Transform2D, UiImage
 /// One renderer-independent drawing operation in back-to-front order.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DisplayCommand {
+    /// Begin isolated group painting at the requested opacity.
+    BeginOpacity { opacity: f32 },
+    /// Composite the current isolated opacity group.
+    EndOpacity,
     RichText {
         bounds: Rect,
         spans: Vec<crate::TextSpan>,

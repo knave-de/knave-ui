@@ -270,6 +270,50 @@ fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
     );
 }
 #[test]
+fn centered_text_input_uses_field_width_for_measurement_and_painting() {
+    struct RecordingMetrics(Vec<f32>);
+    impl TextMeasurer for RecordingMetrics {
+        fn measure(&mut self, text: &str, style: &TextStyle, width: f32) -> TextLayout {
+            self.0.push(width);
+            Metrics.measure(text, style, width)
+        }
+
+        fn measure_spans(
+            &mut self,
+            spans: &[TextSpan],
+            style: &TextStyle,
+            width: f32,
+        ) -> TextLayout {
+            self.0.push(width);
+            Metrics.measure_spans(spans, style, width)
+        }
+    }
+
+    let mut scene = Scene::new(Element::new(
+        1,
+        Widget::TextInput(TextEdit::new("centered").unwrap()),
+    ))
+    .unwrap();
+    scene
+        .set_stylesheet("text-input { padding: 20px; text-align: center; }")
+        .unwrap();
+    let mut metrics = RecordingMetrics(Vec::new());
+    scene.layout([240.0, 120.0], &mut metrics);
+    let field_bounds = scene.bounds(ElementId(1)).unwrap();
+    let text_area_width = field_bounds.width - 40.0;
+    assert_eq!(metrics.0.last().copied(), Some(text_area_width));
+
+    metrics.0.clear();
+    let list = scene.display_list([240.0, 120.0], &mut metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Text { text, bounds, style, .. }
+            if text == "centered"
+                && bounds.x == field_bounds.x + 20.0
+                && bounds.width == text_area_width
+                && style.align == knave_ui::TextAlign::Center
+    )));
+}
+#[test]
 fn focused_border_color_and_width_follow_css_cascade() {
     let field = Element::new(1, Widget::TextInput(TextEdit::new("value").unwrap())).class("field");
     let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![field])).unwrap();
@@ -1375,6 +1419,188 @@ fn group_semantics_exclude_hidden_content_and_validate_grid_columns() {
         )),
         Err(UiError::InvalidLayout)
     ));
+}
+
+#[test]
+fn extreme_layout_metrics_are_rejected_before_scene_arithmetic() {
+    let mut scene = scene(vec![Element::new(1, Widget::Panel)]);
+    let oversized = Layout::default().with_margin(Insets::all(MAX_LAYOUT_METRIC + 1.0));
+    assert_eq!(
+        scene.set_layout(ElementId(1), oversized),
+        Err(UiError::InvalidLayout)
+    );
+    let oversized_padding = Layout::default().with_padding(Insets::symmetric(
+        MAX_LAYOUT_METRIC,
+        MAX_LAYOUT_METRIC + 1.0,
+    ));
+    assert_eq!(
+        scene.set_layout(ElementId(1), oversized_padding),
+        Err(UiError::InvalidLayout)
+    );
+}
+
+#[test]
+fn deeply_nested_percent_layouts_remain_finite_at_extreme_viewport_sizes() {
+    let mut root = Element::new(1, Widget::Panel);
+    root.layout.width = Length::Percent(MAX_LAYOUT_METRIC);
+    root.layout.height = Length::Px(MAX_LAYOUT_METRIC);
+    for id in 2..MAX_DEPTH as u64 {
+        let mut parent = Element::new(id, Widget::Panel).children(vec![root]);
+        parent.layout.width = Length::Percent(MAX_LAYOUT_METRIC);
+        parent.layout.height = Length::Px(MAX_LAYOUT_METRIC);
+        root = parent;
+    }
+    let mut scene = Scene::new(root).unwrap();
+    let mut metrics = Metrics;
+    scene.layout([MAX_LAYOUT_METRIC, MAX_LAYOUT_METRIC], &mut metrics);
+    for id in 1..MAX_DEPTH as u64 {
+        let bounds = scene.bounds(ElementId(id)).unwrap();
+        assert!(
+            [bounds.x, bounds.y, bounds.width, bounds.height]
+                .iter()
+                .all(|value| value.is_finite())
+        );
+        assert!(bounds.width <= MAX_LAYOUT_METRIC);
+        assert!(bounds.height <= MAX_LAYOUT_METRIC);
+    }
+}
+
+#[test]
+fn measured_text_extents_are_clamped_before_layout() {
+    struct HugeMeasurements;
+    impl TextMeasurer for HugeMeasurements {
+        fn measure(&mut self, _text: &str, _style: &TextStyle, _width: f32) -> TextLayout {
+            TextLayout {
+                size: [f32::MAX, f32::MAX],
+                carets: vec![Caret {
+                    byte: 0,
+                    x: f32::MAX,
+                    y: f32::MAX,
+                    height: f32::MAX,
+                }],
+            }
+        }
+
+        fn measure_spans(
+            &mut self,
+            _spans: &[TextSpan],
+            _style: &TextStyle,
+            _width: f32,
+        ) -> TextLayout {
+            self.measure("", &TextStyle::default(), 0.0)
+        }
+    }
+
+    let mut text = Element::new(2, Widget::Text("large font metrics".into()));
+    text.style.text = TextStyle {
+        font_size: MAX_LAYOUT_METRIC,
+        line_height: MAX_LAYOUT_METRIC,
+        ..TextStyle::default()
+    };
+    let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![text])).unwrap();
+    let mut metrics = HugeMeasurements;
+    scene.layout([64.0, 48.0], &mut metrics);
+    for id in [ElementId(1), ElementId(2)] {
+        let bounds = scene.bounds(id).unwrap();
+        assert!(
+            [bounds.x, bounds.y, bounds.width, bounds.height]
+                .iter()
+                .all(|value| value.is_finite())
+        );
+        assert!(bounds.width <= MAX_LAYOUT_METRIC && bounds.height <= MAX_LAYOUT_METRIC);
+    }
+    let list = scene.display_list([64.0, 48.0], &mut metrics);
+    assert!(list.commands.iter().all(|command| {
+        match command {
+            DisplayCommand::Text { bounds, .. } | DisplayCommand::RichText { bounds, .. } => {
+                [bounds.x, bounds.y, bounds.width, bounds.height]
+                    .iter()
+                    .all(|value| value.is_finite())
+            }
+            DisplayCommand::Shape { bounds, .. } => {
+                [bounds.x, bounds.y, bounds.width, bounds.height]
+                    .iter()
+                    .all(|value| value.is_finite())
+            }
+            DisplayCommand::Image { .. } => true,
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => true,
+        }
+    }));
+}
+
+#[test]
+fn large_but_valid_padding_on_small_viewport_clips_content_safely() {
+    let child = Element::new(2, Widget::Button("Hidden by padding".into()));
+    let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+    scene
+        .set_stylesheet("panel { padding: 100000px; }")
+        .unwrap();
+    let mut metrics = Metrics;
+    let list = scene.display_list([64.0, 48.0], &mut metrics);
+    assert!(list.commands.iter().all(|command| {
+        let bounds = match command {
+            DisplayCommand::Shape { bounds, .. } => *bounds,
+            DisplayCommand::Image { .. }
+            | DisplayCommand::Text { .. }
+            | DisplayCommand::RichText { .. } => return false,
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => return true,
+        };
+        [bounds.x, bounds.y, bounds.width, bounds.height]
+            .iter()
+            .all(|value| value.is_finite())
+    }));
+    for id in [ElementId(1), ElementId(2)] {
+        let bounds = scene.bounds(id).unwrap();
+        assert!(
+            [bounds.x, bounds.y, bounds.width, bounds.height]
+                .iter()
+                .all(|value| value.is_finite())
+        );
+    }
+}
+
+#[test]
+fn opacity_wraps_element_and_descendants_in_balanced_display_list_groups() {
+    let child = Element::new(2, Widget::Panel)
+        .class("translucent")
+        .children(vec![Element::new(3, Widget::Button("Inside".into()))]);
+    let mut scene = scene(vec![child]);
+    scene
+        .set_stylesheet(".translucent { opacity: 0.35; }")
+        .unwrap();
+    let mut metrics = Metrics;
+    let commands = &scene.display_list([200.0, 120.0], &mut metrics).commands;
+    let begin = commands
+        .iter()
+        .position(|command| matches!(command, DisplayCommand::BeginOpacity { opacity } if *opacity == 0.35))
+        .unwrap();
+    let end = commands
+        .iter()
+        .rposition(|command| matches!(command, DisplayCommand::EndOpacity))
+        .unwrap();
+    assert!(begin < end);
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|command| matches!(command, DisplayCommand::BeginOpacity { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|command| matches!(command, DisplayCommand::EndOpacity))
+            .count(),
+        1
+    );
+    let invalid = Style {
+        opacity: 1.1,
+        ..Style::default()
+    };
+    assert_eq!(
+        scene.set_style(ElementId(2), invalid),
+        Err(UiError::InvalidLayout)
+    );
 }
 
 #[test]

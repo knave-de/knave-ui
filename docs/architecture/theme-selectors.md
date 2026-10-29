@@ -8,10 +8,11 @@ these states: `:hover`, `:focus`, `:pressed` (also `:active`), `:selected`,
 `:checked`, `:indeterminate`, `:expanded`, `:invalid`, `:busy`, `:enabled`,
 `:disabled` and `:root`. `*` matches retained elements. Custom properties and
 `var(--name)` are inherited; `var(--name, fallback)` is supported.
-Stylesheets cascade in four ordered layers: toolkit defaults, shell/component
-styles, the selected named theme, then application overrides. A later layer
-always takes precedence over an earlier layer, even when its selector is less
-specific. Within one layer, normal specificity and later-rule ordering apply.
+Stylesheets cascade in five ordered layers: scheme defaults, shell/component
+styles, the selected named theme, the high-contrast or monochrome policy, then
+application overrides. A later layer always takes precedence over an earlier
+layer, even when its selector is less specific. Within one layer, normal
+specificity and later-rule ordering apply.
 Missing theme files act as an empty named-theme layer. Theme files are limited
 to 64 KiB; invalid replacements leave the last valid styles active.
 An unknown type, unsupported selector or unsupported declaration rejects the
@@ -114,6 +115,31 @@ pixels. Colors support `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `transparent`, `white`,
 bundled defaults preserve explicit Rust background paint; a custom stylesheet
 can override it. Application-defined CSS may override the selected named theme.
 
+`opacity` accepts a finite number from `0` through `1`. It is paint-only and
+applies to the element and its retained descendants as one isolated group, so
+overlapping opaque children are composited before the group alpha is applied.
+It is not inherited as a computed style. Menus and tooltips are painted as
+scene-level overlays after the retained tree, so an ancestor's opacity does not
+dim those overlays. Group nesting is limited to the scene depth (48); the
+renderer also bounds all cached and active opacity targets to 128 MiB and
+returns a typed frame error when a viewport/depth combination exceeds that
+budget. At 3840x2160, each RGBA8 target is about 31.6 MiB, so five simultaneously
+nested groups exceed the budget.
+
+Layout length, spacing and text metrics accept values up to 1,000,000 logical
+pixels. Values outside that range are rejected atomically; computed extents and
+measurer output are clamped to finite non-negative values within the same
+bound. These limits prevent overflow and unbounded coordinates, not a promise
+that every admitted size is inexpensive to rasterize.
+
 Images and swatch values are content, and explicitly colored rich-text spans
 retain their own color. A `SceneSnapshot` is a frozen display list: recapture
 it to reflect a later theme change.
+
+Contrast and chroma are independent of the dark/light scheme. High contrast
+raises text, border and focus distinctions. Monochrome maps the UI chrome
+palette to grayscales; image, color-swatch and explicitly colored rich-text
+content keeps its own colors. The policy overrides palette tokens supplied by
+a named theme. Explicit per-widget color declarations in named or application
+CSS can still override policy tokens; app-specific CSS must follow the selected
+accessibility preferences when it sets colors directly.
