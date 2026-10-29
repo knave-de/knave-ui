@@ -1422,6 +1422,36 @@ fn deeply_nested_percent_layouts_remain_finite_at_extreme_viewport_sizes() {
 }
 
 #[test]
+fn large_but_valid_padding_on_small_viewport_clips_content_safely() {
+    let child = Element::new(2, Widget::Button("Hidden by padding".into()));
+    let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+    scene
+        .set_stylesheet("panel { padding: 100000px; }")
+        .unwrap();
+    let mut metrics = Metrics;
+    let list = scene.display_list([64.0, 48.0], &mut metrics);
+    assert!(list.commands.iter().all(|command| {
+        let bounds = match command {
+            DisplayCommand::Shape { bounds, .. } => *bounds,
+            DisplayCommand::Image { .. }
+            | DisplayCommand::Text { .. }
+            | DisplayCommand::RichText { .. } => return false,
+        };
+        [bounds.x, bounds.y, bounds.width, bounds.height]
+            .iter()
+            .all(|value| value.is_finite())
+    }));
+    for id in [ElementId(1), ElementId(2)] {
+        let bounds = scene.bounds(id).unwrap();
+        assert!(
+            [bounds.x, bounds.y, bounds.width, bounds.height]
+                .iter()
+                .all(|value| value.is_finite())
+        );
+    }
+}
+
+#[test]
 fn password_is_masked_in_paint_clipboard_semantics_and_ime() {
     let secret = "sëcret👩‍💻";
     let edit = TextEdit::new(secret)
