@@ -278,6 +278,12 @@ impl Gpu {
 fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
     let scaling = Transform2D::scale(scale, scale);
     for command in &mut list.commands {
+        if matches!(
+            command,
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity
+        ) {
+            continue;
+        }
         let (transform, clip) = match command {
             DisplayCommand::Shape {
                 transform, clip, ..
@@ -291,6 +297,7 @@ fn scale_list(list: &mut knave_ui::DisplayList, scale: f32) {
             | DisplayCommand::RichText {
                 transform, clip, ..
             } => (transform, clip),
+            DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => unreachable!(),
         };
         *transform = scaling.compose(*transform);
         *clip = clip.map(|rect| scaling.transform_rect_bounds(rect));

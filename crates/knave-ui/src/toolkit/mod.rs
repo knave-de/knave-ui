@@ -969,6 +969,8 @@ fn validate(e: &Element) -> Result<(), UiError> {
     if !e.style.radius.is_finite()
         || e.style.radius < 0.0
         || e.style.radius > MAX_LAYOUT_METRIC
+        || !e.style.opacity.is_finite()
+        || !(0.0..=1.0).contains(&e.style.opacity)
         || !e.style.text.font_size.is_finite()
         || e.style.text.font_size <= 0.0
         || e.style.text.font_size > MAX_LAYOUT_METRIC

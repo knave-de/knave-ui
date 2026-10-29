@@ -4,11 +4,13 @@ use knave_ui::{DisplayCommand, Rect};
 
 use crate::{
     images::ImagePass,
+    opacity::OpacityPass,
     shapes::ShapePass,
     text::{TextItem, TextPass, TextPassError},
 };
 
 const MAX_DISPLAY_COMMANDS_PER_FRAME: usize = 8192;
+const MAX_OPACITY_DEPTH: usize = 8;
 
 #[derive(Debug)]
 pub enum PainterError {
@@ -20,6 +22,9 @@ pub enum PainterError {
     UnsupportedTextTransform,
     TextBytesExceeded,
     FontFamilyTooLong,
+    OpacityLayerLimit,
+    InvalidOpacityGroups,
+    OpacityTargetBudgetExceeded,
 }
 
 impl fmt::Display for PainterError {
@@ -50,6 +55,19 @@ impl fmt::Display for PainterError {
                 )
             }
             Self::FontFamilyTooLong => write!(formatter, "font family name exceeds 256 bytes"),
+            Self::OpacityLayerLimit => {
+                write!(
+                    formatter,
+                    "display list exceeds the opacity group depth limit"
+                )
+            }
+            Self::InvalidOpacityGroups => {
+                write!(formatter, "display list contains unbalanced opacity groups")
+            }
+            Self::OpacityTargetBudgetExceeded => write!(
+                formatter,
+                "opacity groups exceed the renderer's bounded offscreen target budget"
+            ),
         }
     }
 }
@@ -59,6 +77,7 @@ impl Error for PainterError {}
 pub struct WgpuPainter {
     shapes: ShapePass,
     images: ImagePass,
+    opacity: OpacityPass,
     text: TextPass,
     frames: u64,
 }
@@ -76,6 +95,7 @@ impl WgpuPainter {
         Ok(Self {
             shapes: ShapePass::new(device, format),
             images: ImagePass::new(device, format),
+            opacity: OpacityPass::new(device, format),
             text: TextPass::new(device, queue, format),
             frames: 0,
         })
@@ -86,6 +106,7 @@ impl WgpuPainter {
             frames: self.frames,
             shape_buffer_allocations: self.shapes.allocations,
             image_buffer_allocations: self.images.allocations,
+            opacity_target_allocations: self.opacity.allocations,
         }
     }
 
@@ -102,23 +123,114 @@ impl WgpuPainter {
         if render_list.commands.len() > MAX_DISPLAY_COMMANDS_PER_FRAME {
             return Err(PainterError::TooManyCommands(render_list.commands.len()));
         }
+        validate_opacity_groups(&render_list.commands)?;
+        self.opacity.begin_frame(viewport);
         self.shapes
             .prepare(device, queue, viewport, &render_list.commands);
         self.images
             .prepare(device, queue, viewport, &render_list.commands);
         self.text.begin_frame(queue, viewport);
+        let draws = self.prepare_draws(device, queue, viewport, &render_list.commands)?;
+        self.encode_stream(
+            device,
+            queue,
+            encoder,
+            view,
+            viewport,
+            &render_list.commands,
+            &draws,
+            0,
+            0,
+        )
+    }
 
-        let mut draws = Vec::with_capacity(render_list.commands.len());
-        let order = text_batch_order(&render_list.commands);
+    fn encode_stream(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        viewport: (u32, u32),
+        commands: &[DisplayCommand],
+        draws: &[PreparedDraw],
+        command_offset: usize,
+        depth: usize,
+    ) -> Result<(), PainterError> {
+        let mut segment_start = 0;
+        let mut index = 0;
+        while index < commands.len() {
+            let DisplayCommand::BeginOpacity { opacity } = commands[index] else {
+                index += 1;
+                continue;
+            };
+            if depth >= MAX_OPACITY_DEPTH {
+                return Err(PainterError::OpacityLayerLimit);
+            }
+            if segment_start < index {
+                self.encode_prepared(
+                    encoder,
+                    view,
+                    viewport,
+                    draws,
+                    command_offset + segment_start,
+                    command_offset + index,
+                )?;
+            }
+            let end = opacity_group_end(commands, index)?;
+            let target = self
+                .opacity
+                .acquire(device, viewport, depth)
+                .ok_or(PainterError::OpacityTargetBudgetExceeded)?;
+            self.opacity.clear(encoder, &target);
+            self.encode_stream(
+                device,
+                queue,
+                encoder,
+                &target.view,
+                viewport,
+                &commands[index + 1..end],
+                draws,
+                command_offset + index + 1,
+                depth + 1,
+            )?;
+            self.opacity
+                .composite(queue, encoder, view, &target, opacity);
+            self.opacity.release(depth, target);
+            index = end + 1;
+            segment_start = index;
+        }
+        if segment_start < commands.len() {
+            self.encode_prepared(
+                encoder,
+                view,
+                viewport,
+                draws,
+                command_offset + segment_start,
+                command_offset + commands.len(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn prepare_draws(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        viewport: (u32, u32),
+        commands: &[DisplayCommand],
+    ) -> Result<Vec<PreparedDraw>, PainterError> {
+        let mut draws = Vec::with_capacity(commands.len());
+        let order = text_batch_order(commands);
         let mut command_index = 0;
         while command_index < order.len() {
-            match &render_list.commands[order[command_index]] {
+            match &commands[order[command_index]] {
                 DisplayCommand::Shape { .. } => {
                     if let Some((instance_index, clip)) =
                         self.shapes.draw_for_command(order[command_index])
                         && let Some(scissor) = scissor_rect(clip, viewport)
                     {
                         draws.push(PreparedDraw::Shape {
+                            command_index: order[command_index],
                             instance_index,
                             scissor,
                         });
@@ -130,6 +242,7 @@ impl WgpuPainter {
                         && let Some(scissor) = scissor_rect(image.clip, viewport)
                     {
                         draws.push(PreparedDraw::Image {
+                            command_index: order[command_index],
                             instance_index: image.instance_index,
                             scissor,
                         });
@@ -137,10 +250,9 @@ impl WgpuPainter {
                     command_index += 1;
                 }
                 DisplayCommand::Text { .. } | DisplayCommand::RichText { .. } => {
+                    let first_command = order[command_index];
                     let mut items = Vec::new();
-                    while let Some(command) =
-                        order.get(command_index).map(|i| &render_list.commands[*i])
-                    {
+                    while let Some(command) = order.get(command_index).map(|i| &commands[*i]) {
                         let item = match command {
                             DisplayCommand::Text {
                                 bounds,
@@ -188,13 +300,43 @@ impl WgpuPainter {
                             TextPassError::FontFamilyTooLong => PainterError::FontFamilyTooLong,
                         })?;
                     if run != usize::MAX {
-                        draws.push(PreparedDraw::Text { run });
+                        draws.push(PreparedDraw::Text {
+                            command_index: first_command,
+                            run,
+                        });
                     }
+                }
+                DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => {
+                    command_index += 1;
                 }
             }
         }
 
-        if draws.is_empty() {
+        Ok(draws)
+    }
+
+    fn encode_prepared(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        viewport: (u32, u32),
+        draws: &[PreparedDraw],
+        command_start: usize,
+        command_end: usize,
+    ) -> Result<(), PainterError> {
+        let selected = draws
+            .iter()
+            .filter(|draw| {
+                let command = match draw {
+                    PreparedDraw::Shape { command_index, .. }
+                    | PreparedDraw::Image { command_index, .. }
+                    | PreparedDraw::Text { command_index, .. } => *command_index,
+                };
+                (command_start..command_end).contains(&command)
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
             return Ok(());
         }
         let full_scissor = [0, 0, viewport.0.max(1), viewport.1.max(1)];
@@ -220,17 +362,19 @@ impl WgpuPainter {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        for draw in draws {
+        for draw in selected {
             match draw {
                 PreparedDraw::Shape {
                     instance_index,
                     scissor,
+                    ..
                 } => shapes.draw(&mut pass, instance_index, scissor),
                 PreparedDraw::Image {
                     instance_index,
                     scissor,
+                    ..
                 } => images.draw(&mut pass, instance_index, scissor),
-                PreparedDraw::Text { run } => {
+                PreparedDraw::Text { run, .. } => {
                     pass.set_scissor_rect(
                         full_scissor[0],
                         full_scissor[1],
@@ -253,16 +397,65 @@ fn supports_output_format(format: wgpu::TextureFormat) -> bool {
     )
 }
 
+fn validate_opacity_groups(commands: &[DisplayCommand]) -> Result<(), PainterError> {
+    let mut depth = 0usize;
+    for command in commands {
+        match command {
+            DisplayCommand::BeginOpacity { opacity } => {
+                if !opacity.is_finite() || !(0.0..=1.0).contains(opacity) {
+                    return Err(PainterError::InvalidOpacityGroups);
+                }
+                depth += 1;
+                if depth > MAX_OPACITY_DEPTH {
+                    return Err(PainterError::OpacityLayerLimit);
+                }
+            }
+            DisplayCommand::EndOpacity => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or(PainterError::InvalidOpacityGroups)?;
+            }
+            _ => {}
+        }
+    }
+    (depth == 0)
+        .then_some(())
+        .ok_or(PainterError::InvalidOpacityGroups)
+}
+
+fn opacity_group_end(commands: &[DisplayCommand], start: usize) -> Result<usize, PainterError> {
+    let mut depth = 0usize;
+    for (index, command) in commands.iter().enumerate().skip(start) {
+        match command {
+            DisplayCommand::BeginOpacity { .. } => depth += 1,
+            DisplayCommand::EndOpacity => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or(PainterError::InvalidOpacityGroups)?;
+                if depth == 0 {
+                    return Ok(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    Err(PainterError::InvalidOpacityGroups)
+}
+
+#[derive(Clone, Copy)]
 enum PreparedDraw {
     Shape {
+        command_index: usize,
         instance_index: usize,
         scissor: [u32; 4],
     },
     Image {
+        command_index: usize,
         instance_index: usize,
         scissor: [u32; 4],
     },
     Text {
+        command_index: usize,
         run: usize,
     },
 }
@@ -318,6 +511,15 @@ fn text_batch_order(commands: &[DisplayCommand]) -> Vec<usize> {
                 None => bounds,
             });
         } else {
+            if matches!(
+                command,
+                DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity
+            ) {
+                result.append(&mut pending);
+                text_bounds = None;
+                result.push(i);
+                continue;
+            }
             if text_bounds.is_some_and(|text| {
                 !text.is_finite_positive()
                     || !bounds.is_finite_positive()
@@ -343,6 +545,12 @@ fn union(a: Rect, b: Rect) -> Rect {
     )
 }
 fn paint_bounds(command: &DisplayCommand) -> Rect {
+    if matches!(
+        command,
+        DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity
+    ) {
+        return Rect::default();
+    }
     let (bounds, transform) = match command {
         DisplayCommand::Shape {
             bounds,
@@ -379,6 +587,7 @@ fn paint_bounds(command: &DisplayCommand) -> Rect {
         | DisplayCommand::Image {
             bounds, transform, ..
         } => (*bounds, *transform),
+        DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => unreachable!(),
     };
     transform.transform_rect_bounds(bounds)
 }
@@ -457,6 +666,27 @@ mod tests {
     }
 
     #[test]
+    fn opacity_group_markers_are_balanced_and_bounded() {
+        assert!(
+            validate_opacity_groups(&[
+                DisplayCommand::BeginOpacity { opacity: 0.5 },
+                DisplayCommand::BeginOpacity { opacity: 0.25 },
+                DisplayCommand::EndOpacity,
+                DisplayCommand::EndOpacity,
+            ])
+            .is_ok()
+        );
+        assert!(matches!(
+            validate_opacity_groups(&[DisplayCommand::EndOpacity]),
+            Err(PainterError::InvalidOpacityGroups)
+        ));
+        assert!(matches!(
+            validate_opacity_groups(&[DisplayCommand::BeginOpacity { opacity: f32::NAN }]),
+            Err(PainterError::InvalidOpacityGroups)
+        ));
+    }
+
+    #[test]
     fn display_command_order_is_not_partitioned_by_primitive_type() {
         let list = knave_ui::DisplayList {
             revision: 0,
@@ -490,6 +720,7 @@ mod tests {
                 DisplayCommand::Shape { .. } => 0,
                 DisplayCommand::Text { .. } | DisplayCommand::RichText { .. } => 1,
                 DisplayCommand::Image { .. } => 2,
+                DisplayCommand::BeginOpacity { .. } | DisplayCommand::EndOpacity => 3,
             })
             .collect::<Vec<_>>();
         assert_eq!(kinds, [0, 2, 0]);
@@ -501,4 +732,5 @@ pub struct RendererStats {
     pub frames: u64,
     pub shape_buffer_allocations: u64,
     pub image_buffer_allocations: u64,
+    pub opacity_target_allocations: u64,
 }

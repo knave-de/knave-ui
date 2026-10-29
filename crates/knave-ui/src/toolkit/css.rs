@@ -174,6 +174,7 @@ impl Stylesheet {
                 !matches!(
                     name.as_str(),
                     "color"
+                        | "opacity"
                         | "background"
                         | "background-color"
                         | "border-top-color"
@@ -562,6 +563,7 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
             || matches!(
                 name,
                 "color"
+                    | "opacity"
                     | "background"
                     | "background-color"
                     | "font-size"
@@ -1600,6 +1602,16 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             }
         }
         "color" => c.style.text.color = parse_color(v)?,
+        "opacity" => {
+            let opacity = v
+                .trim()
+                .parse::<f32>()
+                .map_err(|_| StylesheetError::InvalidValue)?;
+            if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
+                return Err(StylesheetError::InvalidValue);
+            }
+            c.style.opacity = opacity;
+        }
         "background" | "background-color" => {
             let color = parse_color(v)?;
             if let Some(paint) = &mut c.style.background {
@@ -2210,5 +2222,32 @@ mod tests {
         let style = scene.computed_style(ElementId(1)).unwrap();
         assert_eq!(style.padding, Insets::all(12.0));
         assert_eq!(style.margin, Insets::all(4.0));
+    }
+
+    #[test]
+    fn opacity_cascades_as_a_paint_only_group_property() {
+        let child = Element::new(2, Widget::Panel)
+            .class("translucent")
+            .children(vec![Element::new(3, Widget::Button("Inside".into()))]);
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+        scene
+            .set_stylesheet(".translucent { opacity: 0.35; }")
+            .unwrap();
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.opacity,
+            0.35
+        );
+        assert_eq!(
+            scene.computed_style(ElementId(3)).unwrap().style.opacity,
+            1.0
+        );
+        assert_eq!(
+            scene.set_stylesheet(".translucent { opacity: 1.1; }"),
+            Err(StylesheetError::InvalidValue)
+        );
+        assert_eq!(
+            scene.computed_style(ElementId(2)).unwrap().style.opacity,
+            0.35
+        );
     }
 }

@@ -148,6 +148,8 @@ impl Layout {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Style {
+    /// Opacity applied to this element and its descendants as one painted group.
+    pub opacity: f32,
     pub background: Option<ShapePaint>,
     pub text: TextStyle,
     pub hover: Color,
@@ -160,6 +162,7 @@ pub struct Style {
 impl Default for Style {
     fn default() -> Self {
         Self {
+            opacity: 1.0,
             background: None,
             text: TextStyle::default(),
             hover: Color::rgba(49, 64, 83, 255),

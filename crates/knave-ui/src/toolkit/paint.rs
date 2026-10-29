@@ -19,12 +19,42 @@ impl Scene {
             .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
+        let mut opacity_path = Vec::new();
         for i in order {
             if self.nodes[i].clip.is_none() {
                 continue;
             }
+            let mut ancestors = Vec::new();
+            let mut current = Some(i);
+            while let Some(index) = current {
+                ancestors.push(index);
+                current = self.nodes[index].parent;
+            }
+            ancestors.reverse();
+            let path = ancestors
+                .into_iter()
+                .filter(|index| self.opacity(*index) < 1.0)
+                .collect::<Vec<_>>();
+            let common = opacity_path
+                .iter()
+                .zip(&path)
+                .take_while(|(active, next)| active == next)
+                .count();
+            while opacity_path.len() > common {
+                opacity_path.pop();
+                self.list.commands.push(DisplayCommand::EndOpacity);
+            }
+            for index in path.into_iter().skip(common) {
+                self.list.commands.push(DisplayCommand::BeginOpacity {
+                    opacity: self.opacity(index),
+                });
+                opacity_path.push(index);
+            }
             self.stats.visible_elements += 1;
             self.paint_node(i);
+        }
+        while opacity_path.pop().is_some() {
+            self.list.commands.push(DisplayCommand::EndOpacity);
         }
         self.paint_menu();
         if self.menu.is_none()
@@ -79,6 +109,10 @@ impl Scene {
         self.paint_dirty = false;
         self.stats.paints += 1;
         &self.list
+    }
+    fn opacity(&self, index: usize) -> f32 {
+        self.computed_style(self.nodes[index].element.id)
+            .map_or(1.0, |style| style.style.opacity)
     }
     fn paint_node(&mut self, i: usize) {
         let node = &self.nodes[i];
