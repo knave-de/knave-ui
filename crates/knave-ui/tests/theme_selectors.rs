@@ -56,6 +56,45 @@ fn selectable(id: u64) -> Element {
 }
 
 #[test]
+fn css_opacity_is_applied_to_shapes_and_text() {
+    let button = Element::new(2, Widget::Button("20% opacity".into())).class("faded");
+    let checkbox = Element::new(
+        3,
+        Widget::Checkbox {
+            label: "Part opacity".into(),
+            checked: true,
+        },
+    );
+    let mut scene = Scene::new(
+        Element::new(1, Widget::Panel)
+            .class("dim")
+            .children(vec![button, checkbox]),
+    )
+    .unwrap();
+    scene
+        .set_stylesheet(
+            ".dim { opacity: 0.5; } .faded { background-color: #ff0000; opacity: 20%; }\
+             checkbox-indicator { opacity: 0.25; }",
+        )
+        .unwrap();
+    let list = scene.display_list([500.0, 300.0], &mut Metrics).clone();
+
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.1).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.125).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "20% opacity" && style.color.alpha < 255
+    )));
+}
+
+#[test]
 fn structural_surface_opt_out_ignores_aggressive_user_box_css_but_paints_children() {
     for theme in [Theme::Dark, Theme::Light] {
         let child = Element::new(2, Widget::Panel)

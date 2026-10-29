@@ -81,8 +81,8 @@ owner with a descendant selector, such as `slider slider-thumb` or
 - `menu-surface`, `menu-item`, `menu-separator`, `collection-item`,
   `table-header`, `table-cell`.
 
-Parts accept `background`/`background-color`, `color`, border widths/colors and
-corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
+Parts accept `background`/`background-color`, `color`, `opacity`, border
+widths/colors and corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
 `collection-item`, `table-header`, `table-cell`) also accept typography. Part
 geometry is fixed by the control: padding, margin, gap and outline are not
 supported on parts. Their text is clipped to the existing row/cell geometry.
@@ -104,8 +104,11 @@ dimensions, and live changes remeasure the scene. Height percentages resolve
 against the available parent height. The root fills the viewport unless CSS
 explicitly sets its dimensions.
 
-Retained elements support color, background, padding, margin, gap, fonts,
-text alignment/wrapping, borders, corner radii and outlines. `font-style`
+Retained elements support color, background, opacity, padding, margin, gap,
+fonts, text alignment/wrapping, borders, corner radii and outlines. `opacity`
+accepts a number (`0` to `1`) or percentage (`0%` to `100%`); values outside
+that range are clamped. It affects the element's shapes, text (including rich
+text spans), images and descendants. `font-style`
 supports `normal`, `italic` and `oblique`; `font-weight` supports `normal`,
 `bold`, and numeric weights from 1 to 1000. Lengths are logical
 pixels. Colors support `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `transparent`, `white`,

@@ -25,6 +25,8 @@ impl Theme {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
     pub style: Style,
+    /// Opacity applied to this element and its rendered descendants.
+    pub opacity: f32,
     pub borders: EdgeBorders,
     pub outline: Option<Border>,
     pub outline_offset: f32,
@@ -47,6 +49,7 @@ impl From<&Element> for ComputedStyle {
         borders.left.width = element.layout.border_edges.left;
         Self {
             style: element.style.clone(),
+            opacity: 1.0,
             borders,
             outline: None,
             outline_offset: 0.0,
@@ -116,6 +119,7 @@ impl Stylesheet {
                 !matches!(
                     name.as_str(),
                     "color"
+                        | "opacity"
                         | "background"
                         | "background-color"
                         | "border-top-color"
@@ -339,6 +343,7 @@ impl Stylesheet {
                 apply_decl(
                     &mut ComputedStyle {
                         style: Style::default(),
+                        opacity: 1.0,
                         borders: empty_borders(),
                         outline: None,
                         outline_offset: 0.0,
@@ -485,6 +490,7 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
             || matches!(
                 name,
                 "color"
+                    | "opacity"
                     | "background"
                     | "background-color"
                     | "font-size"
@@ -646,7 +652,7 @@ fn is_paint_part(name: &str) -> bool {
 fn part_supports_property(part: &str, property: &str) -> bool {
     property.starts_with("--")
         || (part == "checkbox-mark" && property == "content")
-        || matches!(property, "background-color" | "color")
+        || matches!(property, "background-color" | "color" | "opacity")
         || (property.starts_with("border-")
             && (property.ends_with("-width")
                 || property.ends_with("-color")
@@ -1024,6 +1030,7 @@ pub(super) fn compute(
 pub(super) fn auxiliary(scene: &Scene, kind: &str) -> ComputedStyle {
     let mut result = ComputedStyle {
         style: Style::default(),
+        opacity: 1.0,
         borders: empty_borders(),
         outline: None,
         outline_offset: 0.0,
@@ -1338,6 +1345,8 @@ pub(super) fn part_style(
             apply_decl(&mut result, &name, &resolve_vars(&raw, &vars, 0).ok()?).ok()?;
         }
     }
+    result.style.text.color.alpha =
+        (f32::from(result.style.text.color.alpha) * result.opacity).round() as u8;
     Some(PartStyle {
         computed: result,
         color_explicit,
@@ -1494,6 +1503,20 @@ fn component_value(value: &str, index: usize, width: bool) -> Result<String, Sty
         Ok(value.to_owned())
     }
 }
+fn parse_opacity(v: &str) -> Result<f32, StylesheetError> {
+    let value = v.trim();
+    let (number, scale) = value
+        .strip_suffix('%')
+        .map_or((value, 1.0), |number| (number.trim(), 0.01));
+    let opacity = number
+        .parse::<f32>()
+        .map_err(|_| StylesheetError::InvalidValue)?
+        * scale;
+    if !opacity.is_finite() {
+        return Err(StylesheetError::InvalidValue);
+    }
+    Ok(opacity.clamp(0.0, 1.0))
+}
 fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), StylesheetError> {
     match name {
         "content" => {
@@ -1523,6 +1546,7 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             }
         }
         "color" => c.style.text.color = parse_color(v)?,
+        "opacity" => c.opacity = parse_opacity(v)?,
         "background" | "background-color" => {
             let color = parse_color(v)?;
             if let Some(paint) = &mut c.style.background {
@@ -1734,6 +1758,26 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn opacity_accepts_fraction_and_percentage_and_clamps() {
+        assert_eq!(parse_opacity("0.2").unwrap(), 0.2);
+        assert!((parse_opacity("20%").unwrap() - 0.2).abs() < f32::EPSILON);
+        assert_eq!(parse_opacity("20").unwrap(), 1.0);
+        assert_eq!(parse_opacity("-1").unwrap(), 0.0);
+        assert!(parse_opacity("NaN").is_err());
+    }
+
+    #[test]
+    fn stylesheet_computes_opacity_without_inheriting_it() {
+        let child = Element::new(2, Widget::Button("faded".into())).class("faded");
+        let root = Element::new(1, Widget::Panel).children(vec![child]);
+        let mut scene = Scene::new(root).unwrap();
+        scene.set_stylesheet(".faded { opacity: 0.2; }").unwrap();
+        assert_eq!(scene.computed_style(ElementId(2)).unwrap().opacity, 0.2);
+        assert_eq!(scene.computed_style(ElementId(1)).unwrap().opacity, 1.0);
+        assert!(scene.set_stylesheet(".faded { opacity: nope; }").is_err());
+    }
+
     #[test]
     fn cascade_specificity_inheritance_and_custom_properties() {
         let child = Element::new(2, Widget::Button("Save".into())).class("action");

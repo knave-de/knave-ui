@@ -81,12 +81,22 @@ impl Scene {
         &self.list
     }
     fn paint_node(&mut self, i: usize) {
+        let command_start = self.list.commands.len();
         let node = &self.nodes[i];
         let e = &node.element;
         let b = node.bounds;
         let clip = node.clip;
         let state = self.interaction(e.id).unwrap();
         let computed = self.computed_style(e.id);
+        let mut opacity = computed.as_ref().map_or(1.0, |style| style.opacity);
+        let mut ancestor = node.parent;
+        while let Some(index) = ancestor {
+            let parent = &self.nodes[index];
+            opacity *= self
+                .computed_style(parent.element.id)
+                .map_or(1.0, |style| style.opacity);
+            ancestor = parent.parent;
+        }
         let mut style = computed
             .as_ref()
             .map_or_else(|| e.style.clone(), |s| s.style.clone());
@@ -686,6 +696,7 @@ impl Scene {
             });
             shape(&mut self.list, b, clip, paint);
         }
+        apply_opacity(&mut self.list.commands[command_start..], opacity);
     }
     fn paint_menu(&mut self) {
         let Some(menu) = &self.menu else {
@@ -900,7 +911,7 @@ fn styled_part_paint(
     } else {
         default.clone()
     };
-    paint.opacity = default.opacity;
+    paint.opacity = default.opacity * part.computed.opacity;
     paint.radii = part.computed.style.radii.unwrap_or(default.radii);
     if has_borders(&part.computed) {
         paint.edge_borders = Some(part.computed.borders);
@@ -918,6 +929,29 @@ fn shape(list: &mut DisplayList, bounds: Rect, clip: Option<Rect>, paint: ShapeP
         transform: Transform2D::IDENTITY,
         clip,
     });
+}
+fn apply_opacity(commands: &mut [DisplayCommand], opacity: f32) {
+    if opacity >= 1.0 {
+        return;
+    }
+    for command in commands {
+        match command {
+            DisplayCommand::Shape { paint, .. } => paint.opacity *= opacity,
+            DisplayCommand::RichText { style, spans, .. } => {
+                scale_alpha(&mut style.color.alpha, opacity);
+                for span in spans {
+                    if let Some(color) = &mut span.color {
+                        scale_alpha(&mut color.alpha, opacity);
+                    }
+                }
+            }
+            DisplayCommand::Text { style, .. } => scale_alpha(&mut style.color.alpha, opacity),
+            DisplayCommand::Image { style, .. } => style.opacity *= opacity,
+        }
+    }
+}
+fn scale_alpha(alpha: &mut u8, opacity: f32) {
+    *alpha = (f32::from(*alpha) * opacity).round() as u8;
 }
 fn text_cmd(
     list: &mut DisplayList,

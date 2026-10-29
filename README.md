@@ -28,6 +28,12 @@ Tab/Shift+Tab moves focus; page switching preserves values and per-page scrollin
 See the [coverage matrix](docs/architecture/widget-catalog.md) for remaining gaps.
 It runs independently of Knave Shell.
 
+Try the CSS opacity comparison in a standalone window:
+
+```sh
+cargo run -p knave-app --example opacity-demo --locked
+```
+
 To build an app, depend on `knave-app` and `knave-ui`, implement
 `knave_app::Application` with `scene()` and `action()`, then call
 `knave_app::run(title, [width, height], app)`. The host handles the window,
