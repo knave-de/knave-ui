@@ -159,7 +159,14 @@ fn open_menu_commands_apply_owner_and_ancestor_opacity() {
         2,
         Widget::Menu {
             label: "Menu".into(),
-            items: vec![MenuItem::option(1, "First")],
+            items: vec![
+                MenuItem::option(1, "First"),
+                MenuItem::Option {
+                    id: 2,
+                    label: "Disabled".into(),
+                    enabled: false,
+                },
+            ],
         },
     )
     .layout(Layout {
@@ -173,7 +180,10 @@ fn open_menu_commands_apply_owner_and_ancestor_opacity() {
     )
     .unwrap();
     scene
-        .set_stylesheet(".dim { opacity: 50%; } .more-dim { opacity: 50%; }")
+        .set_stylesheet(
+            ".dim { opacity: 50%; } .more-dim { opacity: 50%; }\
+             menu-item:disabled { opacity: 0; }",
+        )
         .unwrap();
     scene.layout([300.0, 200.0], &mut Metrics);
     let bounds = scene.bounds(ElementId(2)).unwrap();
@@ -193,6 +203,11 @@ fn open_menu_commands_apply_owner_and_ancestor_opacity() {
         command,
         DisplayCommand::Text { text, style, .. }
             if text == "First" && style.color.alpha == 255
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Disabled" && style.color.alpha == 0
     )));
 }
 

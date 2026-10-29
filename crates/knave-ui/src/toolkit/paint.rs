@@ -868,7 +868,7 @@ impl Scene {
                     let mut text = part.map_or(base.text, |part| part.text_style());
                     text.wrap = TextWrap::None;
                     if !enabled {
-                        text.color.alpha = 100;
+                        text.color.alpha = ((u16::from(text.color.alpha) * 100 + 127) / 255) as u8;
                     }
                     labels.push((
                         Rect::new(row.x + 10.0, row.y, row.width - 20.0, row.height),

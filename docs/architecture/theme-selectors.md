@@ -121,9 +121,10 @@ can override it. Application-defined CSS may override the selected named theme.
 `opacity` accepts a finite number from `0` through `1`. It is paint-only and
 applies to the element and its retained descendants as one isolated group, so
 overlapping opaque children are composited before the group alpha is applied.
-It is not inherited as a computed style. Menus and tooltips are painted as
-scene-level overlays after the retained tree, so an ancestor's opacity does not
-dim those overlays. Group nesting is limited to the scene depth (48); the
+It is not inherited as a computed style. Menus are painted as scene-level
+overlays after the retained tree, but use their owner's cumulative opacity.
+Tooltips are painted without that group, so ancestor opacity does not dim them.
+Group nesting is limited to the scene depth (48); the
 renderer also bounds all cached and active opacity targets to 128 MiB and
 returns a typed frame error when a viewport/depth combination exceeds that
 budget. At 3840x2160, each RGBA8 target is about 31.6 MiB, so five simultaneously
