@@ -4,6 +4,9 @@ use knave_ui::{HeadingLevel, toolkit::*};
 
 const STATUS: ElementId = ElementId(2);
 const POPUP: ElementId = ElementId(30);
+const CONTRAST_BUTTON: ElementId = ElementId(42);
+const CHROMA_BUTTON: ElementId = ElementId(43);
+const SCHEME_BUTTON: ElementId = ElementId(44);
 const PAGES: [(u64, &str); 6] = [
     (1000, "Core"),
     (2000, "Layout"),
@@ -826,6 +829,12 @@ fn gallery() -> Result<Scene, UiError> {
     Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
+            Element::new(40, Widget::Text("Appearance preview · applies to UI chrome; sample images retain their colors.".into())),
+            Element::new(41, Widget::Panel).layout(Layout { flow: Flow::Row, ..Default::default() }).children(vec![
+                Element::new(CONTRAST_BUTTON.0, Widget::Button("Contrast: Standard".into())),
+                Element::new(CHROMA_BUTTON.0, Widget::Button("Palette: Full color".into())),
+                Element::new(SCHEME_BUTTON.0, Widget::Button("Scheme: Dark".into())),
+            ]),
             Element::selection_group(4, SelectionGroup::Tabs, nav).layout(Layout { flow: Flow::Grid { columns: 3 }, ..Default::default() }),
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
             popup, command_palette()?.element("Commands")?]))
@@ -833,12 +842,34 @@ fn gallery() -> Result<Scene, UiError> {
 struct Gallery {
     palette: CommandPalette,
     fixtures_ready: bool,
-    theme: knave_ui::toolkit::Theme,
+    theme_policy: ThemePolicy,
     scene: Scene,
     clicks: u32,
     trace: bool,
 }
 impl Gallery {
+    fn apply_policy_preview(&mut self) -> Result<(), UiError> {
+        let shell = self.scene.desktop_stylesheet().to_owned();
+        let named = self.scene.user_theme_stylesheet().to_owned();
+        self.scene
+            .set_theme_policy_stylesheets(self.theme_policy, &shell, &named)?;
+        self.scene.set_widget(
+            CONTRAST_BUTTON,
+            Widget::Button(format!("Contrast: {:?}", self.theme_policy.contrast)),
+        )?;
+        self.scene.set_widget(
+            CHROMA_BUTTON,
+            Widget::Button(format!("Palette: {:?}", self.theme_policy.chroma)),
+        )?;
+        self.scene.set_widget(
+            SCHEME_BUTTON,
+            Widget::Button(format!("Scheme: {:?}", self.theme_policy.scheme)),
+        )?;
+        self.scene
+            .set_widget(STATUS, Widget::Text("Appearance preview updated".into()))?;
+        Ok(())
+    }
+
     fn select_page(&mut self, index: usize) -> Result<(), UiError> {
         for (i, (page, label)) in PAGES.iter().enumerate() {
             self.scene.set_visible(ElementId(*page), i == index)?;
@@ -866,6 +897,7 @@ impl Application for Gallery {
             return Ok(());
         }
         let desktop_css = self.scene.desktop_stylesheet().to_owned();
+        let named_css = self.scene.user_theme_stylesheet().to_owned();
         for (kind, title) in [
             "Button",
             "Checkbox",
@@ -929,7 +961,11 @@ impl Application for Gallery {
                 ];
                 let mut fixture =
                     Scene::new(Element::new(0, Widget::Panel).children(vec![element]))?;
-                fixture.set_desktop_theme(self.theme, &desktop_css)?;
+                fixture.set_theme_policy_stylesheets(
+                    self.theme_policy,
+                    &desktop_css,
+                    &named_css,
+                )?;
                 fixture.layout(size, text);
                 let target = if kind == 19 { 3 } else { 1 };
                 let bounds = fixture.bounds(ElementId(target)).unwrap();
@@ -1006,19 +1042,21 @@ impl Application for Gallery {
         }
         // `Scene::insert` rebuilds the retained tree; restore the startup
         // preference after the gallery's one-time fixture population.
-        self.scene.set_theme(self.theme)?;
+        let named_css = self.scene.user_theme_stylesheet().to_owned();
+        self.scene
+            .set_theme_policy_stylesheets(self.theme_policy, &desktop_css, &named_css)?;
         self.fixtures_ready = true;
         Ok(())
     }
 
-    fn theme_changed(&mut self, theme: knave_ui::toolkit::Theme) -> AppResult {
+    fn theme_policy_changed(&mut self, policy: ThemePolicy) -> AppResult {
         if self.fixtures_ready {
             for kind in 0..20 {
                 self.scene.remove(ElementId(5600 + kind * 20))?;
             }
             self.fixtures_ready = false;
         }
-        self.theme = theme;
+        self.theme_policy = policy;
         Ok(())
     }
 
@@ -1053,6 +1091,27 @@ impl Application for Gallery {
             return Ok(());
         }
         match action {
+            Action::Activated(CONTRAST_BUTTON) => {
+                self.theme_policy.contrast = match self.theme_policy.contrast {
+                    Contrast::Standard => Contrast::High,
+                    Contrast::High => Contrast::Standard,
+                };
+                self.apply_policy_preview()?;
+            }
+            Action::Activated(CHROMA_BUTTON) => {
+                self.theme_policy.chroma = match self.theme_policy.chroma {
+                    Chroma::FullColor => Chroma::Monochrome,
+                    Chroma::Monochrome => Chroma::FullColor,
+                };
+                self.apply_policy_preview()?;
+            }
+            Action::Activated(SCHEME_BUTTON) => {
+                self.theme_policy.scheme = match self.theme_policy.scheme {
+                    Theme::Dark => Theme::Light,
+                    Theme::Light => Theme::Dark,
+                };
+                self.apply_policy_preview()?;
+            }
             Action::Activated(ElementId(3407)) => self.palette.open(&mut self.scene)?,
             Action::Selected(ElementId(4), id) if (NAV..NAV + PAGES.len() as u64).contains(&id) => {
                 self.select_page((id - NAV) as usize)?
@@ -1105,7 +1164,7 @@ impl Application for Gallery {
     }
 }
 fn main() -> AppResult {
-    let theme = knave_ui::toolkit::Theme::Dark;
+    let theme_policy = ThemePolicy::default();
     let scene = gallery()?;
     knave_app::run(
         "Knave UI · Component catalog",
@@ -1113,7 +1172,7 @@ fn main() -> AppResult {
         Gallery {
             palette: command_palette()?,
             fixtures_ready: false,
-            theme,
+            theme_policy,
             scene,
             clicks: 0,
             trace: std::env::args().any(|arg| arg == "--trace"),
@@ -1128,7 +1187,7 @@ mod tests {
         Gallery {
             palette: command_palette().unwrap(),
             fixtures_ready: false,
-            theme: knave_ui::toolkit::Theme::Dark,
+            theme_policy: ThemePolicy::default(),
             scene: gallery().unwrap(),
             clicks: 0,
             trace: false,

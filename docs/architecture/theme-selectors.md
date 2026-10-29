@@ -123,6 +123,6 @@ Contrast and chroma are independent of the dark/light scheme. High contrast
 raises text, border and focus distinctions. Monochrome maps the UI chrome
 palette to grayscales; image, color-swatch and explicitly colored rich-text
 content keeps its own colors. The policy overrides palette tokens supplied by
-a named theme. Application CSS remains the last layer and can override the
-policy, so app-specific CSS must follow the selected accessibility preferences
-when it sets colors directly.
+a named theme. Explicit per-widget color declarations in named or application
+CSS can still override policy tokens; app-specific CSS must follow the selected
+accessibility preferences when it sets colors directly.

@@ -25,6 +25,7 @@
 	--control-muted: #2C3138;
 
 	--text: #E8EBEF;
+	--text-tooltip: #F7F8FA;
 	--text-secondary: #9AA3AE;
 	--text-accent: #93CDEE;
 	--surface-raised: #1A1D22;
@@ -417,7 +418,7 @@ command-palette {
 }
 
 tooltip {
-	color: var(--text);
+	color: var(--text-tooltip);
 	background-color: var(--surface-tooltip);
 	border-radius: 6px;
 	padding: 8px;

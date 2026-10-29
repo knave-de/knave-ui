@@ -687,13 +687,15 @@ impl Scene {
             text_cmd(&mut self.list, text_area, clip, label, style.text);
         }
         if self.inspect {
+            let inspect_color = if state.captured {
+                self.theme_color("--accent")
+            } else {
+                self.theme_color("--border-strong")
+            }
+            .unwrap_or(Color::TEXT);
             let mut paint = ShapePaint::fill(Color::rgba(0, 0, 0, 0));
             paint.border = Some(Border {
-                color: if state.captured {
-                    Color::rgba(255, 150, 60, 255)
-                } else {
-                    Color::rgba(70, 210, 150, 160)
-                },
+                color: inspect_color,
                 width: 1.0,
             });
             shape(&mut self.list, b, clip, paint);
