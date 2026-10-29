@@ -533,7 +533,7 @@ impl Scene {
                     Rect::new(
                         text_area.x - offset,
                         base_y,
-                        if multiline { text_area.width } else { 16384.0 },
+                        text_area.width,
                         if multiline {
                             metrics.size[1].max(height)
                         } else {

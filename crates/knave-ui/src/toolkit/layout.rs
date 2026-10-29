@@ -115,11 +115,7 @@ impl Scene {
                 } else {
                     crate::TextWrap::None
                 };
-                let width = if multiline {
-                    label_content(Rect::new(0.0, 0.0, available, 0.0), layout).width
-                } else {
-                    16384.0
-                };
+                let width = label_content(Rect::new(0.0, 0.0, available, 0.0), layout).width;
                 self.nodes[i].text = text.measure(&value, &style, width.max(1.0));
                 edit.map_display_carets(&mut self.nodes[i].text);
                 self.stats.measured_texts += 1;
