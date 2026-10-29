@@ -7,7 +7,7 @@ mod components;
 mod context_menu;
 mod css;
 use css::Stylesheet;
-pub use css::{ComputedStyle, StylesheetError, Theme};
+pub use css::{Chroma, ComputedStyle, Contrast, StylesheetError, Theme, ThemePolicy};
 mod cursor;
 mod snapshot;
 pub use snapshot::*;
@@ -81,6 +81,7 @@ struct MenuState {
 /// Owns scene structure, widget values and input state. Storage is bounded by `MAX_ELEMENTS`.
 pub struct Scene {
     theme: Theme,
+    theme_policy: ThemePolicy,
     stylesheet: Stylesheet,
     style_cache: Mutex<Vec<Option<(InteractionState, ComputedStyle)>>>,
     stylesheet_override: String,
@@ -112,8 +113,8 @@ impl Scene {
     /// Atomically replace application CSS rules over the selected theme defaults.
     /// Omitted declarations retain their defaults; invalid replacements preserve the active sheet.
     pub fn set_stylesheet(&mut self, source: &str) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme_layers(
-            self.theme,
+        let next = Stylesheet::for_theme_policy_layers(
+            self.theme_policy,
             &self.desktop_stylesheet,
             &self.user_theme_stylesheet,
             source,
@@ -126,14 +127,19 @@ impl Scene {
     /// Select a bundled base palette while retaining and revalidating application CSS.
     /// Invalid combined styles leave the current theme and stylesheet active.
     pub fn set_theme(&mut self, theme: Theme) -> Result<(), StylesheetError> {
-        let next = Stylesheet::for_theme_layers(
-            theme,
+        let policy = ThemePolicy {
+            scheme: theme,
+            ..self.theme_policy
+        };
+        let next = Stylesheet::for_theme_policy_layers(
+            policy,
             &self.desktop_stylesheet,
             &self.user_theme_stylesheet,
             &self.stylesheet_override,
         )?;
         self.update_stylesheet(next);
         self.theme = theme;
+        self.theme_policy = policy;
         Ok(())
     }
 
@@ -150,10 +156,29 @@ impl Scene {
         shell: &str,
         user_theme: &str,
     ) -> Result<(), StylesheetError> {
-        let next =
-            Stylesheet::for_theme_layers(theme, shell, user_theme, &self.stylesheet_override)?;
+        self.set_theme_policy_stylesheets(
+            ThemePolicy::new(theme, Contrast::Standard, Chroma::FullColor),
+            shell,
+            user_theme,
+        )
+    }
+
+    /// Atomically apply a scheme and accessibility palette with stylesheet layers.
+    pub fn set_theme_policy_stylesheets(
+        &mut self,
+        policy: ThemePolicy,
+        shell: &str,
+        user_theme: &str,
+    ) -> Result<(), StylesheetError> {
+        let next = Stylesheet::for_theme_policy_layers(
+            policy,
+            shell,
+            user_theme,
+            &self.stylesheet_override,
+        )?;
         self.update_stylesheet(next);
-        self.theme = theme;
+        self.theme = policy.scheme;
+        self.theme_policy = policy;
         self.desktop_stylesheet = shell.to_owned();
         self.user_theme_stylesheet = user_theme.to_owned();
         Ok(())
@@ -172,6 +197,10 @@ impl Scene {
     /// Returns the currently selected bundled palette.
     pub fn theme(&self) -> Theme {
         self.theme
+    }
+
+    pub fn theme_policy(&self) -> ThemePolicy {
+        self.theme_policy
     }
 
     fn update_stylesheet(&mut self, next: Stylesheet) {
@@ -314,6 +343,7 @@ impl Scene {
     pub fn new(root: Element) -> Result<Self, UiError> {
         let mut result = Self {
             theme: Theme::Dark,
+            theme_policy: ThemePolicy::default(),
             stylesheet: Stylesheet::for_theme(Theme::Dark, "", "")
                 .expect("bundled dark stylesheet is valid"),
             style_cache: Mutex::new(Vec::new()),
@@ -663,6 +693,7 @@ impl Scene {
             }
         }
         next.theme = self.theme;
+        next.theme_policy = self.theme_policy;
         next.stylesheet = std::mem::take(&mut self.stylesheet);
         next.stylesheet_override = std::mem::take(&mut self.stylesheet_override);
         next.desktop_stylesheet = std::mem::take(&mut self.desktop_stylesheet);

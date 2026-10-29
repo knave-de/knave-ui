@@ -105,11 +105,11 @@ link {
 }
 
 link:hover {
-	color: #00445B;
+	color: var(--accent-hover);
 }
 
 link:pressed {
-	color: #00394C;
+	color: var(--accent-pressed);
 }
 
 badge {
@@ -199,7 +199,7 @@ button.secondary {
 }
 
 button.secondary:hover {
-	background-color: #C9D2D9;
+	background-color: var(--surface-hover);
 }
 
 button.ghost {
@@ -217,11 +217,11 @@ button.destructive {
 
 button.destructive:hover {
 	color: var(--danger);
-	background-color: #F4CFD2;
+	background-color: var(--danger-surface);
 }
 
 button.destructive:pressed {
-	background-color: #EAB7BB;
+	background-color: var(--surface-pressed);
 }
 
 button:busy {
@@ -251,7 +251,7 @@ combo-box {
 
 text-input:hover,
 combo-box:hover {
-	background-color: #DCE4E9;
+	background-color: var(--surface-hover);
 }
 
 text-input:invalid,
@@ -260,7 +260,7 @@ combo-box:invalid {
 }
 
 text-selection {
-	background-color: #08A9D859;
+	background-color: var(--surface-selected);
 }
 
 text-caret {
@@ -275,7 +275,7 @@ toggle {
 
 checkbox-indicator {
 	background-color: var(--surface-sunken);
-	border: 1px solid #8796A1;
+	border: 1px solid var(--border-strong);
 	border-radius: 4px;
 }
 
@@ -330,7 +330,7 @@ progress-fill {
 }
 
 slider-thumb {
-	background-color: #FFFFFF;
+	background-color: var(--surface-raised);
 	border: 2px solid var(--accent);
 	border-radius: 8px;
 }
@@ -389,12 +389,12 @@ table-header {
 }
 
 scrollbar-thumb {
-	background-color: #A4B0B9;
+	background-color: var(--border);
 	border-radius: 4px;
 }
 
 scrollbar-thumb:hover {
-	background-color: #798994;
+	background-color: var(--border-strong);
 }
 
 /* Floating surfaces sit one step above the page. */

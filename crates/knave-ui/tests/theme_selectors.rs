@@ -56,6 +56,42 @@ fn selectable(id: u64) -> Element {
 }
 
 #[test]
+fn monochrome_policy_keeps_ui_chrome_grayscale_in_both_schemes() {
+    for scheme in [Theme::Dark, Theme::Light] {
+        let button = Element::new(2, Widget::Button("Action".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+        scene
+            .set_theme_policy_stylesheets(
+                ThemePolicy::new(scheme, Contrast::Standard, Chroma::Monochrome),
+                "",
+                "",
+            )
+            .unwrap();
+        let style = scene.computed_style(ElementId(2)).unwrap();
+        let text = style.style.text.color;
+        let fill = style.style.background.unwrap().fill.unwrap();
+        for color in [text, fill] {
+            assert_eq!(color.red, color.green);
+            assert_eq!(color.green, color.blue);
+        }
+    }
+}
+
+#[test]
+fn high_contrast_policy_strengthens_focus_outline_and_preserves_scheme() {
+    let button = Element::new(2, Widget::Button("Action".into()));
+    let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![button])).unwrap();
+    let policy = ThemePolicy::new(Theme::Light, Contrast::High, Chroma::FullColor);
+    scene.set_theme_policy_stylesheets(policy, "", "").unwrap();
+    assert_eq!(scene.theme_policy(), policy);
+    assert!(
+        policy
+            .stylesheet()
+            .contains("*:focus { outline-width: 2px; }")
+    );
+}
+
+#[test]
 fn structural_surface_opt_out_ignores_aggressive_user_box_css_but_paints_children() {
     for theme in [Theme::Dark, Theme::Light] {
         let child = Element::new(2, Widget::Panel)

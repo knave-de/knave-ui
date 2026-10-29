@@ -300,7 +300,10 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255))
+                        .unwrap_or_else(|| {
+                            self.theme_color("--control-muted")
+                                .unwrap_or(Color::BACKGROUND)
+                        })
                 });
                 paint.radii = CornerRadii::uniform(if toggle { 9.0 } else { 3.0 });
                 let part = if toggle {
@@ -405,7 +408,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -588,7 +594,10 @@ impl Scene {
                     .background
                     .as_ref()
                     .and_then(|paint| paint.fill)
-                    .unwrap_or(Color::rgba(80, 92, 111, 255));
+                    .unwrap_or_else(|| {
+                        self.theme_color("--control-muted")
+                            .unwrap_or(Color::BACKGROUND)
+                    });
                 let track_paint = part_paint(
                     self,
                     i,
@@ -642,7 +651,7 @@ impl Scene {
                         .background
                         .as_ref()
                         .and_then(|paint| paint.fill)
-                        .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                        .unwrap_or(style.text.color),
                 ),
             ),
             Widget::Scroll if node.scroll_max > 0.0 => {
@@ -664,7 +673,10 @@ impl Scene {
                             .background
                             .as_ref()
                             .and_then(|paint| paint.fill)
-                            .unwrap_or(Color::rgba(80, 92, 111, 255)),
+                            .unwrap_or_else(|| {
+                                self.theme_color("--control-muted")
+                                    .unwrap_or(Color::BACKGROUND)
+                            }),
                     ),
                 );
                 shape(&mut self.list, thumb_rect, clip, paint);
@@ -712,7 +724,10 @@ impl Scene {
             .style
             .background
             .and_then(|paint| paint.fill)
-            .unwrap_or(Color::rgba(80, 92, 111, 255));
+            .unwrap_or_else(|| {
+                self.theme_color("--control-muted")
+                    .unwrap_or(Color::BACKGROUND)
+            });
         let b = menu.bounds;
         let clip = Some(b);
         let mut menu_paint = menu_style.background.clone().unwrap_or_else(|| {
