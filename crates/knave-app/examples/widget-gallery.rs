@@ -848,7 +848,7 @@ struct Gallery {
     trace: bool,
 }
 impl Gallery {
-    fn apply_policy_preview(&mut self) -> Result<(), UiError> {
+    fn apply_policy_preview(&mut self) -> AppResult {
         let shell = self.scene.desktop_stylesheet().to_owned();
         let named = self.scene.user_theme_stylesheet().to_owned();
         self.scene
