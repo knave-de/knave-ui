@@ -919,7 +919,9 @@ fn validate(e: &Element) -> Result<(), UiError> {
         return Err(UiError::InvalidRange);
     }
     if e.split_layout
-        .is_some_and(|s| !s.min_pane.is_finite() || s.min_pane < 0.0)
+        .is_some_and(|s| {
+            !s.min_pane.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&s.min_pane)
+        })
     {
         return Err(UiError::InvalidLayout);
     }
@@ -937,10 +939,13 @@ fn validate(e: &Element) -> Result<(), UiError> {
     }
     if !e.style.radius.is_finite()
         || e.style.radius < 0.0
+        || e.style.radius > MAX_LAYOUT_METRIC
         || !e.style.text.font_size.is_finite()
         || e.style.text.font_size <= 0.0
+        || e.style.text.font_size > MAX_LAYOUT_METRIC
         || !e.style.text.line_height.is_finite()
         || e.style.text.line_height <= 0.0
+        || e.style.text.line_height > MAX_LAYOUT_METRIC
         || e.style.text.font_family.len() > 256
     {
         return Err(UiError::InvalidLayout);
@@ -951,18 +956,24 @@ fn validate(e: &Element) -> Result<(), UiError> {
         || e.style.radii.is_some_and(|r| {
             [r.top_left, r.top_right, r.bottom_left, r.bottom_right]
                 .iter()
-                .any(|v| !v.is_finite() || *v < 0.0)
+                .any(|v| !v.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(v))
         })
     {
         return Err(UiError::InvalidLayout);
     }
     if [l.padding, l.gap]
         .into_iter()
-        .any(|v| !v.is_finite() || v < 0.0)
-        || l.offset.iter().any(|v| !v.is_finite())
-        || [l.width, l.height]
-            .into_iter()
-            .any(|v| matches!(v, Length::Px(x) | Length::Percent(x) if !x.is_finite() || x < 0.0))
+        .any(|v| !v.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&v))
+        || l.offset
+            .iter()
+            .any(|v| !v.is_finite() || v.abs() > MAX_LAYOUT_METRIC)
+        || [l.width, l.height].into_iter().any(|v| {
+            matches!(
+                v,
+                Length::Px(x) | Length::Percent(x)
+                    if !x.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&x)
+            )
+        })
         || matches!(l.flow, Flow::Grid { columns: 0 })
     {
         return Err(UiError::InvalidLayout);

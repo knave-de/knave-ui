@@ -1378,6 +1378,24 @@ fn group_semantics_exclude_hidden_content_and_validate_grid_columns() {
 }
 
 #[test]
+fn extreme_layout_metrics_are_rejected_before_scene_arithmetic() {
+    let mut scene = scene(vec![Element::new(1, Widget::Panel)]);
+    let oversized = Layout::default().with_margin(Insets::all(MAX_LAYOUT_METRIC + 1.0));
+    assert_eq!(
+        scene.set_layout(ElementId(1), oversized),
+        Err(UiError::InvalidLayout)
+    );
+    let oversized_padding = Layout::default().with_padding(Insets::symmetric(
+        MAX_LAYOUT_METRIC,
+        MAX_LAYOUT_METRIC + 1.0,
+    ));
+    assert_eq!(
+        scene.set_layout(ElementId(1), oversized_padding),
+        Err(UiError::InvalidLayout)
+    );
+}
+
+#[test]
 fn password_is_masked_in_paint_clipboard_semantics_and_ime() {
     let secret = "sëcret👩‍💻";
     let edit = TextEdit::new(secret)

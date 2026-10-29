@@ -1467,7 +1467,7 @@ fn px(v: &str) -> Result<f32, StylesheetError> {
     let f = v
         .parse::<f32>()
         .map_err(|_| StylesheetError::InvalidValue)?;
-    if !f.is_finite() || f < 0.0 {
+    if !f.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&f) {
         Err(StylesheetError::InvalidValue)
     } else {
         Ok(f)
@@ -2114,5 +2114,20 @@ mod tests {
             scene.computed_style(ElementId(3)).unwrap().padding,
             button_padding
         );
+    }
+
+    #[test]
+    fn extreme_css_spacing_is_rejected_without_replacing_active_stylesheet() {
+        let mut scene = Scene::new(Element::new(1, Widget::Panel)).unwrap();
+        scene
+            .set_stylesheet("panel { padding: 12px; margin: 4px; }")
+            .unwrap();
+        assert_eq!(
+            scene.set_stylesheet("panel { padding: 1000001px; }"),
+            Err(StylesheetError::InvalidValue)
+        );
+        let style = scene.computed_style(ElementId(1)).unwrap();
+        assert_eq!(style.padding, Insets::all(12.0));
+        assert_eq!(style.margin, Insets::all(4.0));
     }
 }
