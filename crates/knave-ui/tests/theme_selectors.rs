@@ -108,7 +108,9 @@ fn part_opacity_is_applied_once_to_color_fills_and_collection_icons() {
         icon: Some(image),
         ..CollectionItem::new(3, "With icon")
     };
-    let collection = Collection::new(CollectionKind::List, vec![item]).unwrap();
+    let mut disabled_item = CollectionItem::new(4, "Disabled item");
+    disabled_item.enabled = false;
+    let collection = Collection::new(CollectionKind::List, vec![item, disabled_item]).unwrap();
     let mut scene = Scene::new(Element::new(0, Widget::Panel).children(vec![
         toggle,
         Element::new(2, Widget::Collection(collection)).layout(Layout {
@@ -139,6 +141,11 @@ fn part_opacity_is_applied_once_to_color_fills_and_collection_icons() {
     assert!(commands.iter().any(|command| matches!(
         command,
         DisplayCommand::Image { style, .. } if style.opacity == 0.0
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Disabled item" && style.color.alpha == 0
     )));
 }
 

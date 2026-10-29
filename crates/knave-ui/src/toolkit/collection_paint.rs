@@ -142,7 +142,7 @@ pub(super) fn paint_collection(
         }
         let mut style = part.map_or_else(|| style.clone(), |part| part.text_style());
         if state.disabled {
-            style.color.alpha = 105;
+            style.color.alpha = ((u16::from(style.color.alpha) * 105 + 127) / 255) as u8;
         }
         let mut label_bounds = bounds;
         if let CollectionKind::Table { headers } = &collection.kind {
