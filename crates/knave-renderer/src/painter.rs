@@ -131,28 +131,21 @@ impl WgpuPainter {
             .prepare(device, queue, viewport, &render_list.commands);
         self.text.begin_frame(queue, viewport);
         let draws = self.prepare_draws(device, queue, viewport, &render_list.commands)?;
-        self.encode_stream(
+        let mut context = RenderContext {
             device,
             queue,
             encoder,
-            view,
             viewport,
-            &render_list.commands,
-            &draws,
-            0,
-            0,
-        )
+            draws: &draws,
+        };
+        self.encode_stream(&mut context, view, &render_list.commands, 0, 0)
     }
 
     fn encode_stream(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
+        context: &mut RenderContext<'_, '_>,
         view: &wgpu::TextureView,
-        viewport: (u32, u32),
         commands: &[DisplayCommand],
-        draws: &[PreparedDraw],
         command_offset: usize,
         depth: usize,
     ) -> Result<(), PainterError> {
@@ -168,10 +161,10 @@ impl WgpuPainter {
             }
             if segment_start < index {
                 self.encode_prepared(
-                    encoder,
+                    context.encoder,
                     view,
-                    viewport,
-                    draws,
+                    context.viewport,
+                    context.draws,
                     command_offset + segment_start,
                     command_offset + index,
                 )?;
@@ -179,23 +172,19 @@ impl WgpuPainter {
             let end = opacity_group_end(commands, index)?;
             let target = self
                 .opacity
-                .acquire(device, viewport, depth)
+                .acquire(context.device, context.viewport, depth)
                 .ok_or(PainterError::OpacityTargetBudgetExceeded)?;
-            self.opacity.clear(encoder, &target);
+            self.opacity.clear(context.encoder, &target);
             let nested = self.encode_stream(
-                device,
-                queue,
-                encoder,
+                context,
                 &target.view,
-                viewport,
                 &commands[index + 1..end],
-                draws,
                 command_offset + index + 1,
                 depth + 1,
             );
             if nested.is_ok() {
                 self.opacity
-                    .composite(queue, encoder, view, &target, opacity);
+                    .composite(context.queue, context.encoder, view, &target, opacity);
             }
             self.opacity.release(depth, target);
             nested?;
@@ -204,10 +193,10 @@ impl WgpuPainter {
         }
         if segment_start < commands.len() {
             self.encode_prepared(
-                encoder,
+                context.encoder,
                 view,
-                viewport,
-                draws,
+                context.viewport,
+                context.draws,
                 command_offset + segment_start,
                 command_offset + commands.len(),
             )?;
@@ -461,6 +450,14 @@ enum PreparedDraw {
         command_index: usize,
         run: usize,
     },
+}
+
+struct RenderContext<'a, 'encoder> {
+    device: &'a wgpu::Device,
+    queue: &'a wgpu::Queue,
+    encoder: &'encoder mut wgpu::CommandEncoder,
+    viewport: (u32, u32),
+    draws: &'a [PreparedDraw],
 }
 
 fn scissor_rect(clip: Option<Rect>, viewport: (u32, u32)) -> Option<[u32; 4]> {
