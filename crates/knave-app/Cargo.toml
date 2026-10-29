@@ -3,6 +3,7 @@ name = "knave-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "Standalone window host for Knave UI applications"
 

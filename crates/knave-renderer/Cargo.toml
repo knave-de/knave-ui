@@ -3,6 +3,7 @@ name = "knave-renderer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 description = "wgpu renderer boundary for the Knave shell"
 

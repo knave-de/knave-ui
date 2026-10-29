@@ -6,6 +6,7 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+license-file = "LICENSE"
 repository = "https://github.com/knave-de/knave-ui"
 
 [workspace.dependencies]
