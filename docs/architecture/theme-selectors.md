@@ -82,8 +82,8 @@ owner with a descendant selector, such as `slider slider-thumb` or
 - `menu-surface`, `menu-item`, `menu-separator`, `collection-item`,
   `table-header`, `table-cell`.
 
-Parts accept `background`/`background-color`, `color`, border widths/colors and
-corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
+Parts accept `background`/`background-color`, `color`, `opacity`, border
+widths/colors and corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
 `collection-item`, `table-header`, `table-cell`) also accept typography. Part
 geometry is fixed by the control: padding, margin, gap and outline are not
 supported on parts. Their text is clipped to the existing row/cell geometry.
@@ -105,8 +105,11 @@ dimensions, and live changes remeasure the scene. Height percentages resolve
 against the available parent height. The root fills the viewport unless CSS
 explicitly sets its dimensions.
 
-Retained elements support color, background, padding, margin, gap, fonts,
-text alignment/wrapping, borders, corner radii and outlines. `font-style`
+Retained elements support color, background, opacity, padding, margin, gap,
+fonts, text alignment/wrapping, borders, corner radii and outlines. `opacity`
+accepts a number (`0` to `1`) or percentage (`0%` to `100%`); values outside
+that range are clamped. It affects the element's shapes, text (including rich
+text spans), images and descendants. `font-style`
 supports `normal`, `italic` and `oblique`; `font-weight` supports `normal`,
 `bold`, and numeric weights from 1 to 1000. Lengths are logical
 pixels. Colors support `#RGB`, `#RRGGBB`, `#RRGGBBAA`, `transparent`, `white`,
@@ -118,9 +121,10 @@ can override it. Application-defined CSS may override the selected named theme.
 `opacity` accepts a finite number from `0` through `1`. It is paint-only and
 applies to the element and its retained descendants as one isolated group, so
 overlapping opaque children are composited before the group alpha is applied.
-It is not inherited as a computed style. Menus and tooltips are painted as
-scene-level overlays after the retained tree, so an ancestor's opacity does not
-dim those overlays. Group nesting is limited to the scene depth (48); the
+It is not inherited as a computed style. Menus are painted as scene-level
+overlays after the retained tree, but use their owner's cumulative opacity.
+Tooltips are painted without that group, so ancestor opacity does not dim them.
+Group nesting is limited to the scene depth (48); the
 renderer also bounds all cached and active opacity targets to 128 MiB and
 returns a typed frame error when a viewport/depth combination exceeds that
 budget. At 3840x2160, each RGBA8 target is about 31.6 MiB, so five simultaneously

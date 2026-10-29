@@ -398,10 +398,10 @@ impl Scene {
                             );
                             shape(&mut self.list, rect, clip, paint);
                         }
+                        mark_style = part.text_style();
                         if let Some(content) = part.computed.content {
                             mark = content;
                         }
-                        mark_style = part.computed.style.text;
                     }
                     text_cmd(&mut self.list, rect, clip, mark, mark_style);
                 }
@@ -740,6 +740,13 @@ impl Scene {
             return;
         };
         let owner = self.indices[&menu.owner];
+        let opacity = cumulative_opacity(self, owner);
+        let grouped = opacity < 1.0;
+        if grouped {
+            self.list
+                .commands
+                .push(DisplayCommand::BeginOpacity { opacity });
+        }
         let node = &self.nodes[owner];
         let menu_style = self
             .computed_style_for(node.element.id, InteractionState::default())
@@ -792,6 +799,9 @@ impl Scene {
         );
         shape(&mut self.list, b, clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
+            if grouped {
+                self.list.commands.push(DisplayCommand::EndOpacity);
+            }
             return;
         };
         let mut y = b.y - menu.scroll;
@@ -855,10 +865,10 @@ impl Scene {
                             part_background(self, owner, "menu-item", state, &base, default);
                         shape(&mut self.list, row, clip, paint);
                     }
-                    let mut text = part.map_or(base.text, |part| part.computed.style.text);
+                    let mut text = part.map_or(base.text, |part| part.text_style());
                     text.wrap = TextWrap::None;
                     if !enabled {
-                        text.color.alpha = 100;
+                        text.color.alpha = ((u16::from(text.color.alpha) * 100 + 127) / 255) as u8;
                     }
                     labels.push((
                         Rect::new(row.x + 10.0, row.y, row.width - 20.0, row.height),
@@ -871,6 +881,22 @@ impl Scene {
         for (bounds, label, style) in labels {
             text_cmd(&mut self.list, bounds, clip, label, style);
         }
+        if grouped {
+            self.list.commands.push(DisplayCommand::EndOpacity);
+        }
+    }
+}
+fn cumulative_opacity(scene: &Scene, mut node: usize) -> f32 {
+    let mut opacity = 1.0;
+    loop {
+        let current = &scene.nodes[node];
+        opacity *= scene
+            .computed_style(current.element.id)
+            .map_or(1.0, |style| style.style.opacity);
+        let Some(parent) = current.parent else {
+            return opacity;
+        };
+        node = parent;
     }
 }
 fn part_hover_state(
@@ -951,7 +977,7 @@ fn styled_part_paint(
     } else {
         default.clone()
     };
-    paint.opacity = default.opacity;
+    paint.opacity = default.opacity * part.computed.style.opacity;
     paint.radii = part.computed.style.radii.unwrap_or(default.radii);
     if has_borders(&part.computed) {
         paint.edge_borders = Some(part.computed.borders);

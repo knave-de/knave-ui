@@ -66,7 +66,7 @@ pub(super) fn paint_collection(
                     clip,
                 });
             }
-            let header_style = part.map_or_else(|| style.clone(), |part| part.computed.style.text);
+            let header_style = part.map_or_else(|| style.clone(), |part| part.text_style());
             list.commands.push(DisplayCommand::Text {
                 bounds,
                 text,
@@ -114,6 +114,9 @@ pub(super) fn paint_collection(
         let has_part_shape = part.as_ref().is_some_and(|part| {
             part.background_explicit || super::paint::has_borders(&part.computed)
         });
+        let part_opacity = part
+            .as_ref()
+            .map_or(1.0, |part| part.computed.style.opacity);
         if selected || has_part_shape {
             let default = if selected {
                 computed
@@ -139,9 +142,9 @@ pub(super) fn paint_collection(
                 clip: item_clip,
             });
         }
-        let mut style = part.map_or_else(|| style.clone(), |part| part.computed.style.text);
+        let mut style = part.map_or_else(|| style.clone(), |part| part.text_style());
         if state.disabled {
-            style.color.alpha = 105;
+            style.color.alpha = ((u16::from(style.color.alpha) * 105 + 127) / 255) as u8;
         }
         let mut label_bounds = bounds;
         if let CollectionKind::Table { headers } = &collection.kind {
@@ -181,7 +184,7 @@ pub(super) fn paint_collection(
                 list.commands.push(DisplayCommand::Text {
                     bounds: cell_bounds,
                     text: text.clone(),
-                    style: cell.map_or_else(|| style.clone(), |part| part.computed.style.text),
+                    style: cell.map_or_else(|| style.clone(), |part| part.text_style()),
                     transform: Transform2D::IDENTITY,
                     clip: cell_clip,
                 });
@@ -194,7 +197,10 @@ pub(super) fn paint_collection(
             list.commands.push(DisplayCommand::Image {
                 bounds: Rect::new(label_bounds.x, bounds.y + 6.0, 24.0, 24.0),
                 image: image.clone(),
-                style: ImageStyle::default(),
+                style: ImageStyle {
+                    opacity: part_opacity,
+                    ..ImageStyle::default()
+                },
                 transform: Transform2D::IDENTITY,
                 clip: item_clip,
             });

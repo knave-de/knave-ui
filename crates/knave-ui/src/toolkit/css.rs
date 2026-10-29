@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint};
+use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint, TextStyle};
 
 const DARK_STYLESHEET: &str = include_str!("../dark.css");
 const LIGHT_STYLESHEET: &str = include_str!("../light.css");
@@ -725,7 +725,7 @@ fn is_paint_part(name: &str) -> bool {
 fn part_supports_property(part: &str, property: &str) -> bool {
     property.starts_with("--")
         || (part == "checkbox-mark" && property == "content")
-        || matches!(property, "background-color" | "color")
+        || matches!(property, "background-color" | "color" | "opacity")
         || (property.starts_with("border-")
             && (property.ends_with("-width")
                 || property.ends_with("-color")
@@ -1362,6 +1362,14 @@ pub(super) struct PartStyle {
     pub color_explicit: bool,
     pub background_explicit: bool,
 }
+impl PartStyle {
+    pub(super) fn text_style(&self) -> TextStyle {
+        let mut style = self.computed.style.text.clone();
+        style.color.alpha =
+            (f32::from(style.color.alpha) * self.computed.style.opacity).round() as u8;
+        style
+    }
+}
 /// Compute a synthetic paint part using the owner as its CSS parent.
 pub(super) fn part_style(
     scene: &Scene,
@@ -1410,6 +1418,7 @@ pub(super) fn part_style(
     }
     let mut result = ComputedStyle::from(&scene.nodes[owner].element);
     result.style = base;
+    result.style.opacity = 1.0;
     result.borders = empty_borders();
     result.outline = None;
     for (name, (_, _, raw)) in declarations {
@@ -1573,6 +1582,20 @@ fn component_value(value: &str, index: usize, width: bool) -> Result<String, Sty
         Ok(value.to_owned())
     }
 }
+fn parse_opacity(value: &str) -> Result<f32, StylesheetError> {
+    let value = value.trim();
+    let (number, scale) = value
+        .strip_suffix('%')
+        .map_or((value, 1.0), |number| (number.trim(), 0.01));
+    let opacity = number
+        .parse::<f32>()
+        .map_err(|_| StylesheetError::InvalidValue)?
+        * scale;
+    if !opacity.is_finite() {
+        return Err(StylesheetError::InvalidValue);
+    }
+    Ok(opacity.clamp(0.0, 1.0))
+}
 fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), StylesheetError> {
     match name {
         "content" => {
@@ -1602,16 +1625,7 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
             }
         }
         "color" => c.style.text.color = parse_color(v)?,
-        "opacity" => {
-            let opacity = v
-                .trim()
-                .parse::<f32>()
-                .map_err(|_| StylesheetError::InvalidValue)?;
-            if !opacity.is_finite() || !(0.0..=1.0).contains(&opacity) {
-                return Err(StylesheetError::InvalidValue);
-            }
-            c.style.opacity = opacity;
-        }
+        "opacity" => c.style.opacity = parse_opacity(v)?,
         "background" | "background-color" => {
             let color = parse_color(v)?;
             if let Some(paint) = &mut c.style.background {
@@ -2303,13 +2317,29 @@ mod tests {
             scene.computed_style(ElementId(3)).unwrap().style.opacity,
             1.0
         );
+        scene
+            .set_stylesheet(".translucent { opacity: 110%; }")
+            .unwrap();
         assert_eq!(
-            scene.set_stylesheet(".translucent { opacity: 1.1; }"),
+            scene.computed_style(ElementId(2)).unwrap().style.opacity,
+            1.0
+        );
+        assert_eq!(
+            scene.set_stylesheet(".translucent { opacity: nope; }"),
             Err(StylesheetError::InvalidValue)
         );
         assert_eq!(
             scene.computed_style(ElementId(2)).unwrap().style.opacity,
-            0.35
+            1.0
         );
+    }
+
+    #[test]
+    fn opacity_accepts_percentages_clamps_finite_values_and_rejects_nan() {
+        assert_eq!(parse_opacity("0.2").unwrap(), 0.2);
+        assert!((parse_opacity("20%").unwrap() - 0.2).abs() < f32::EPSILON);
+        assert_eq!(parse_opacity("20").unwrap(), 1.0);
+        assert_eq!(parse_opacity("-1").unwrap(), 0.0);
+        assert!(parse_opacity("NaN").is_err());
     }
 }

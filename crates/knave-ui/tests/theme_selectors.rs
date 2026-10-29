@@ -56,6 +56,162 @@ fn selectable(id: u64) -> Element {
 }
 
 #[test]
+fn css_opacity_is_applied_to_elements_and_painted_parts() {
+    let button = Element::new(2, Widget::Button("20% opacity".into())).class("faded");
+    let checkbox = Element::new(
+        3,
+        Widget::Checkbox {
+            label: "Part opacity".into(),
+            checked: true,
+        },
+    );
+    let mut scene = Scene::new(
+        Element::new(1, Widget::Panel)
+            .class("dim")
+            .children(vec![button, checkbox]),
+    )
+    .unwrap();
+    scene
+        .set_stylesheet(
+            ".dim { opacity: 0.5; } .faded { background-color: #ff0000; opacity: 20%; }\
+             checkbox-indicator { opacity: 0.25; }",
+        )
+        .unwrap();
+    let list = scene.display_list([500.0, 300.0], &mut Metrics).clone();
+
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.5).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.2).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Shape { paint, .. } if (paint.opacity - 0.25).abs() < f32::EPSILON
+    )));
+    assert!(list.commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "20% opacity" && style.color.alpha == 255
+    )));
+}
+
+#[test]
+fn part_opacity_is_applied_once_to_color_fills_and_collection_icons() {
+    let toggle = Element::new(
+        1,
+        Widget::Toggle {
+            label: "Check".into(),
+            checked: true,
+        },
+    );
+    let image = knave_ui::UiImage::from_rgba(1, 1, vec![255, 255, 255, 255]).unwrap();
+    let item = CollectionItem {
+        icon: Some(image),
+        ..CollectionItem::new(3, "With icon")
+    };
+    let mut disabled_item = CollectionItem::new(4, "Disabled item");
+    disabled_item.enabled = false;
+    let collection = Collection::new(CollectionKind::List, vec![item, disabled_item]).unwrap();
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).children(vec![
+        toggle,
+        Element::new(2, Widget::Collection(collection)).layout(Layout {
+            height: Length::Px(100.0),
+            ..Default::default()
+        }),
+    ]))
+    .unwrap();
+    scene
+        .set_stylesheet(
+            "switch-thumb { color: #ff0000; opacity: 50%; } collection-item { opacity: 0; }",
+        )
+        .unwrap();
+    let commands = scene
+        .display_list([300.0, 200.0], &mut Metrics)
+        .commands
+        .clone();
+
+    assert!(
+        commands.iter().any(|command| matches!(
+            command,
+            DisplayCommand::Shape { paint, .. }
+                if paint.fill == Some(Color::rgba(255, 0, 0, 255))
+                    && (paint.opacity - 0.5).abs() < f32::EPSILON
+        )),
+        "{commands:#?}"
+    );
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Image { style, .. } if style.opacity == 0.0
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Disabled item" && style.color.alpha == 0
+    )));
+}
+
+#[test]
+fn open_menu_commands_apply_owner_and_ancestor_opacity() {
+    let menu = Element::new(
+        2,
+        Widget::Menu {
+            label: "Menu".into(),
+            items: vec![
+                MenuItem::option(1, "First"),
+                MenuItem::Option {
+                    id: 2,
+                    label: "Disabled".into(),
+                    enabled: false,
+                },
+            ],
+        },
+    )
+    .layout(Layout {
+        height: Length::Px(40.0),
+        ..Default::default()
+    });
+    let mut scene = Scene::new(
+        Element::new(0, Widget::Panel)
+            .class("dim")
+            .children(vec![menu.class("more-dim")]),
+    )
+    .unwrap();
+    scene
+        .set_stylesheet(
+            ".dim { opacity: 50%; } .more-dim { opacity: 50%; }\
+             menu-item:disabled { opacity: 0; }",
+        )
+        .unwrap();
+    scene.layout([300.0, 200.0], &mut Metrics);
+    let bounds = scene.bounds(ElementId(2)).unwrap();
+    let point = [bounds.x + 5.0, bounds.y + 5.0];
+    scene.event(Input::PointerDown(point));
+    scene.event(Input::PointerUp(point));
+
+    let commands = scene
+        .display_list([300.0, 200.0], &mut Metrics)
+        .commands
+        .clone();
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::BeginOpacity { opacity } if (*opacity - 0.25).abs() < f32::EPSILON
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "First" && style.color.alpha == 255
+    )));
+    assert!(commands.iter().any(|command| matches!(
+        command,
+        DisplayCommand::Text { text, style, .. }
+            if text == "Disabled" && style.color.alpha == 0
+    )));
+}
+
+#[test]
 fn monochrome_policy_keeps_ui_chrome_grayscale_in_both_schemes() {
     for scheme in [Theme::Dark, Theme::Light] {
         let button = Element::new(2, Widget::Button("Action".into()));
