@@ -1549,8 +1549,10 @@ fn opacity_wraps_element_and_descendants_in_balanced_display_list_groups() {
             .count(),
         1
     );
-    let mut invalid = Style::default();
-    invalid.opacity = 1.1;
+    let invalid = Style {
+        opacity: 1.1,
+        ..Style::default()
+    };
     assert_eq!(
         scene.set_style(ElementId(2), invalid),
         Err(UiError::InvalidLayout)
