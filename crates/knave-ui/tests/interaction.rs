@@ -270,6 +270,50 @@ fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
     );
 }
 #[test]
+fn centered_text_input_uses_field_width_for_measurement_and_painting() {
+    struct RecordingMetrics(Vec<f32>);
+    impl TextMeasurer for RecordingMetrics {
+        fn measure(&mut self, text: &str, style: &TextStyle, width: f32) -> TextLayout {
+            self.0.push(width);
+            Metrics.measure(text, style, width)
+        }
+
+        fn measure_spans(
+            &mut self,
+            spans: &[TextSpan],
+            style: &TextStyle,
+            width: f32,
+        ) -> TextLayout {
+            self.0.push(width);
+            Metrics.measure_spans(spans, style, width)
+        }
+    }
+
+    let mut scene = Scene::new(Element::new(
+        1,
+        Widget::TextInput(TextEdit::new("centered").unwrap()),
+    ))
+    .unwrap();
+    scene
+        .set_stylesheet("text-input { padding: 20px; text-align: center; }")
+        .unwrap();
+    let mut metrics = RecordingMetrics(Vec::new());
+    scene.layout([240.0, 120.0], &mut metrics);
+    let field_bounds = scene.bounds(ElementId(1)).unwrap();
+    let text_area_width = field_bounds.width - 40.0;
+    assert_eq!(metrics.0.last().copied(), Some(text_area_width));
+
+    metrics.0.clear();
+    let list = scene.display_list([240.0, 120.0], &mut metrics).clone();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        DisplayCommand::Text { text, bounds, style, .. }
+            if text == "centered"
+                && bounds.x == field_bounds.x + 20.0
+                && bounds.width == text_area_width
+                && style.align == knave_ui::TextAlign::Center
+    )));
+}
+#[test]
 fn focused_border_color_and_width_follow_css_cascade() {
     let field = Element::new(1, Widget::TextInput(TextEdit::new("value").unwrap())).class("field");
     let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![field])).unwrap();
