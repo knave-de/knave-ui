@@ -3,16 +3,16 @@ name = "knave-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Standalone window host for Knave UI applications"
 
 [dependencies]
 knave-ui.workspace = true
-knave-renderer = { path = "../knave-renderer" }
+knave-renderer.workspace = true
 wgpu.workspace = true
 pollster.workspace = true
 winit = "0.30.13"
 arboard = { version = "3.6", default-features = false }
-knave-config = { git = "https://github.com/knave-de/knave.git", rev = "c56a2b811e29d611e52965c1725629d1f28bb91e" }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 smithay-clipboard = "0.7"
