@@ -10,7 +10,7 @@ use crate::{
 };
 
 const MAX_DISPLAY_COMMANDS_PER_FRAME: usize = 8192;
-const MAX_OPACITY_DEPTH: usize = 8;
+const MAX_OPACITY_DEPTH: usize = knave_ui::toolkit::MAX_DEPTH;
 
 #[derive(Debug)]
 pub enum PainterError {
@@ -182,7 +182,7 @@ impl WgpuPainter {
                 .acquire(device, viewport, depth)
                 .ok_or(PainterError::OpacityTargetBudgetExceeded)?;
             self.opacity.clear(encoder, &target);
-            self.encode_stream(
+            let nested = self.encode_stream(
                 device,
                 queue,
                 encoder,
@@ -192,10 +192,13 @@ impl WgpuPainter {
                 draws,
                 command_offset + index + 1,
                 depth + 1,
-            )?;
-            self.opacity
-                .composite(queue, encoder, view, &target, opacity);
+            );
+            if nested.is_ok() {
+                self.opacity
+                    .composite(queue, encoder, view, &target, opacity);
+            }
             self.opacity.release(depth, target);
+            nested?;
             index = end + 1;
             segment_start = index;
         }
