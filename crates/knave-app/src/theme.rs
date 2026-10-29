@@ -1,12 +1,12 @@
 //! Optional, application-supplied theme selection and live file notifications.
 use knave_ui::toolkit::{Scene, ThemePolicy};
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::path::PathBuf;
+#[cfg(target_os = "linux")]
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
+#[cfg(target_os = "linux")]
 use winit::event_loop::EventLoopProxy;
 
 /// A resolved theme policy and the application stylesheet to apply to a scene.
@@ -73,5 +73,40 @@ impl Watcher {
             _watcher: watcher,
             pending,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use knave_ui::toolkit::{Chroma, Contrast, Element, Theme, Widget};
+
+    #[test]
+    fn provider_reload_changes_policy_without_changing_scheme() {
+        let mut scene = Scene::new(Element::new(0, Widget::Panel)).unwrap();
+        let selection = ThemeSelection {
+            policy: ThemePolicy::new(Theme::Dark, Contrast::High, Chroma::Monochrome),
+            stylesheet: "panel { padding: 12px; }".into(),
+        };
+        assert!(apply(&mut scene, &selection).unwrap());
+        assert_eq!(scene.theme_policy(), selection.policy);
+        assert!(!apply(&mut scene, &selection).unwrap());
+    }
+
+    #[test]
+    fn rejected_provider_stylesheet_preserves_previous_policy_and_css() {
+        let mut scene = Scene::new(Element::new(0, Widget::Panel)).unwrap();
+        let selection = ThemeSelection {
+            policy: ThemePolicy::new(Theme::Light, Contrast::High, Chroma::FullColor),
+            stylesheet: "panel { padding: 12px; }".into(),
+        };
+        apply(&mut scene, &selection).unwrap();
+        let invalid = ThemeSelection {
+            policy: ThemePolicy::default(),
+            stylesheet: "panel { unknown-property: 12px; }".into(),
+        };
+        assert!(apply(&mut scene, &invalid).is_err());
+        assert_eq!(scene.theme_policy(), selection.policy);
+        assert_eq!(scene.user_theme_stylesheet(), selection.stylesheet);
     }
 }

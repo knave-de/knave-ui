@@ -949,11 +949,9 @@ fn validate(e: &Element) -> Result<(), UiError> {
     {
         return Err(UiError::InvalidRange);
     }
-    if e.split_layout
-        .is_some_and(|s| {
-            !s.min_pane.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&s.min_pane)
-        })
-    {
+    if e.split_layout.is_some_and(|s| {
+        !s.min_pane.is_finite() || !(0.0..=MAX_LAYOUT_METRIC).contains(&s.min_pane)
+    }) {
         return Err(UiError::InvalidLayout);
     }
     if [&e.semantics.name, &e.semantics.description]
