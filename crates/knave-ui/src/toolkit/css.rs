@@ -2203,6 +2203,10 @@ mod tests {
             scene.set_stylesheet("panel { padding: 1000001px; }"),
             Err(StylesheetError::InvalidValue)
         );
+        assert_eq!(
+            scene.set_stylesheet("panel { width: 1000001%; }"),
+            Err(StylesheetError::InvalidValue)
+        );
         let style = scene.computed_style(ElementId(1)).unwrap();
         assert_eq!(style.padding, Insets::all(12.0));
         assert_eq!(style.margin, Insets::all(4.0));

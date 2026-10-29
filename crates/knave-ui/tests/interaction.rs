@@ -1396,6 +1396,32 @@ fn extreme_layout_metrics_are_rejected_before_scene_arithmetic() {
 }
 
 #[test]
+fn deeply_nested_percent_layouts_remain_finite_at_extreme_viewport_sizes() {
+    let mut root = Element::new(1, Widget::Panel);
+    root.layout.width = Length::Percent(MAX_LAYOUT_METRIC);
+    root.layout.height = Length::Px(MAX_LAYOUT_METRIC);
+    for id in 2..MAX_DEPTH as u64 {
+        let mut parent = Element::new(id, Widget::Panel).children(vec![root]);
+        parent.layout.width = Length::Percent(MAX_LAYOUT_METRIC);
+        parent.layout.height = Length::Px(MAX_LAYOUT_METRIC);
+        root = parent;
+    }
+    let mut scene = Scene::new(root).unwrap();
+    let mut metrics = Metrics;
+    scene.layout([MAX_LAYOUT_METRIC, MAX_LAYOUT_METRIC], &mut metrics);
+    for id in 1..MAX_DEPTH as u64 {
+        let bounds = scene.bounds(ElementId(id)).unwrap();
+        assert!(
+            [bounds.x, bounds.y, bounds.width, bounds.height]
+                .iter()
+                .all(|value| value.is_finite())
+        );
+        assert!(bounds.width <= MAX_LAYOUT_METRIC);
+        assert!(bounds.height <= MAX_LAYOUT_METRIC);
+    }
+}
+
+#[test]
 fn password_is_masked_in_paint_clipboard_semantics_and_ime() {
     let secret = "sëcret👩‍💻";
     let edit = TextEdit::new(secret)
