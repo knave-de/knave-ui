@@ -462,3 +462,11 @@ alert {
 .danger {
 	color: var(--danger);
 }
+
+/* Subtle elevation for interactive controls and raised panels. */
+button, panel, card, popup {
+	box-shadow: 0px 2px 4px #00000028;
+}
+button.ghost {
+	box-shadow: none;
+}
