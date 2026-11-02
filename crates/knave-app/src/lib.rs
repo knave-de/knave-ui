@@ -23,6 +23,10 @@ pub type AppResult<T = ()> = Result<T, Box<dyn Error>>;
 
 /// Application state and service integration stay outside the UI scene.
 pub trait Application {
+    /// Wayland application ID, normally matching the application's desktop file.
+    fn app_id(&self) -> Option<&str> {
+        None
+    }
     /// Called after the common text engine is available, before the first frame.
     fn ready(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
         Ok(())
@@ -576,13 +580,19 @@ impl<A: Application> ApplicationHandler for Host<A> {
             return;
         }
         let result = (|| {
-            let window = Arc::new(
-                event_loop.create_window(
-                    Window::default_attributes()
-                        .with_title(&self.title)
-                        .with_inner_size(LogicalSize::new(self.size[0], self.size[1])),
-                )?,
-            );
+            let attributes = Window::default_attributes()
+                .with_title(&self.title)
+                .with_inner_size(LogicalSize::new(self.size[0], self.size[1]));
+            #[cfg(target_os = "linux")]
+            let attributes = {
+                use winit::platform::wayland::WindowAttributesExtWayland;
+                if let Some(app_id) = self.app.app_id() {
+                    attributes.with_name(app_id, "")
+                } else {
+                    attributes
+                }
+            };
+            let window = Arc::new(event_loop.create_window(attributes)?);
             let mut gpu = Gpu::new(window)?;
             self.app.ready(&mut gpu.painter)?;
             gpu.window.request_redraw();
