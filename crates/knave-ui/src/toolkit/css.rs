@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Border, Color, CornerRadii, EdgeBorders, ShapePaint, TextStyle};
+use crate::{Border, BoxShadow, Color, CornerRadii, EdgeBorders, ShapePaint, TextStyle};
 
 const DARK_STYLESHEET: &str = include_str!("../dark.css");
 const LIGHT_STYLESHEET: &str = include_str!("../light.css");
@@ -177,6 +177,7 @@ impl Stylesheet {
                         | "opacity"
                         | "background"
                         | "background-color"
+                        | "box-shadow"
                         | "border-top-color"
                         | "border-right-color"
                         | "border-bottom-color"
@@ -566,6 +567,7 @@ fn expand_declaration(name: &str, value: &str) -> Result<Vec<(String, String)>, 
                     | "opacity"
                     | "background"
                     | "background-color"
+                    | "box-shadow"
                     | "font-size"
                     | "font-weight"
                     | "font-style"
@@ -1091,7 +1093,10 @@ pub(super) fn compute(
         }
         if node.element.style.background.is_some()
             && order < scene.stylesheet.base_rule_count
-            && matches!(name.as_str(), "background" | "background-color")
+            && matches!(
+                name.as_str(),
+                "background" | "background-color" | "box-shadow"
+            )
         {
             continue;
         }
@@ -1624,6 +1629,38 @@ fn apply_decl(c: &mut ComputedStyle, name: &str, v: &str) -> Result<(), Styleshe
                 c.content = Some(content);
             }
         }
+        "box-shadow" => {
+            let shadow = if v.trim() == "none" {
+                None
+            } else {
+                let parts: Vec<_> = v.split_whitespace().collect();
+                if !(4..=5).contains(&parts.len()) {
+                    return Err(StylesheetError::InvalidValue);
+                }
+                let offset = |value: &str| -> Result<f32, StylesheetError> {
+                    if let Some(value) = value.strip_prefix('-') {
+                        Ok(-px(value)?)
+                    } else {
+                        px(value)
+                    }
+                };
+                Some(BoxShadow {
+                    offset_x: offset(parts[0])?,
+                    offset_y: offset(parts[1])?,
+                    blur_radius: px(parts[2])?,
+                    spread: if parts.len() == 5 {
+                        offset(parts[3])?
+                    } else {
+                        0.0
+                    },
+                    color: parse_color(parts[parts.len() - 1])?,
+                })
+            };
+            c.style
+                .background
+                .get_or_insert_with(|| ShapePaint::fill(Color::rgba(0, 0, 0, 0)))
+                .shadow = shadow;
+        }
         "color" => c.style.text.color = parse_color(v)?,
         "opacity" => c.style.opacity = parse_opacity(v)?,
         "background" | "background-color" => {
@@ -1918,6 +1955,45 @@ mod tests {
         assert_eq!(
             scene.computed_style(ElementId(2)).unwrap().padding,
             Insets::all(4.0)
+        );
+    }
+
+    #[test]
+    fn box_shadow_is_computed_and_can_be_cleared() {
+        let child = Element::new(2, Widget::Button("Save".into()));
+        let mut scene = Scene::new(Element::new(1, Widget::Panel).children(vec![child])).unwrap();
+        scene
+            .set_stylesheet("button { box-shadow: -1px 2px 4px 1px #00000080; }")
+            .unwrap();
+        let shadow = scene
+            .computed_style(ElementId(2))
+            .unwrap()
+            .style
+            .background
+            .unwrap()
+            .shadow
+            .unwrap();
+        assert_eq!(
+            (
+                shadow.offset_x,
+                shadow.offset_y,
+                shadow.blur_radius,
+                shadow.spread
+            ),
+            (-1.0, 2.0, 4.0, 1.0)
+        );
+        scene
+            .set_stylesheet("button { box-shadow: none; }")
+            .unwrap();
+        assert!(
+            scene
+                .computed_style(ElementId(2))
+                .unwrap()
+                .style
+                .background
+                .unwrap()
+                .shadow
+                .is_none()
         );
     }
 

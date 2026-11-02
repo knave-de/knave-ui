@@ -106,7 +106,8 @@ against the available parent height. The root fills the viewport unless CSS
 explicitly sets its dimensions.
 
 Retained elements support color, background, opacity, padding, margin, gap,
-fonts, text alignment/wrapping, borders, corner radii and outlines. `opacity`
+fonts, text alignment/wrapping, borders, corner radii, outlines and box shadows.
+`box-shadow` accepts `none` or one shadow as `offset-x offset-y blur [spread] color`, with pixel lengths and a color supported by the theme parser. `opacity`
 accepts a number (`0` to `1`) or percentage (`0%` to `100%`); values outside
 that range are clamped. It affects the element's shapes, text (including rich
 text spans), images and descendants. `font-style`
