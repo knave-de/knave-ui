@@ -10,33 +10,40 @@
  * stylesheet. */
 :root {
 	--accent: accent;
-	--warning: #E8B864;
-	--danger: #F0767C;
-	--canvas: #131519;
-	--panel-surface: #131519;
-	--surface: #23272D;
-	--surface-hover: #30363E;
-	--surface-pressed: #1C2025;
-	--surface-selected: #5DADE22E;
-	--surface-menu: #23272D;
-	--surface-tooltip: #2C3138;
+	--warning: #EDBE6A;
+	--danger: #F27E84;
+	--canvas: #111317;
+	--panel-surface: #111317;
+	--surface: #272C34;
+	--surface-hover: #323842;
+	--surface-pressed: #1E2228;
+	--surface-selected: #5DADE238;
+	--surface-menu: #22262D;
+	--surface-tooltip: #2E333C;
 	--surface-overlay: #000000AA;
-	--text-disabled: #5F6873;
-	--control-muted: #2C3138;
+	--text-disabled: #B4BCC6;
+	--control-muted: #2A2F37;
+	--shadow-low: 0px 1px 2px #00000080;
+	--shadow-raised: 0px 2px 5px #00000073;
+	--shadow-floating: 0px 6px 12px #0000008C;
 
 	--text: #E8EBEF;
 	--text-tooltip: #F7F8FA;
-	--text-secondary: #9AA3AE;
+	--text-secondary: #A7B0BB;
 	--text-accent: #93CDEE;
-	--surface-raised: #1A1D22;
-	--surface-sunken: #0F1114;
-	--surface-tint: #5DADE21A;
-	--border: #2E333A;
-	--border-strong: #414852;
+	--surface-raised: #1A1D23;
+	--surface-sunken: #0C0E11;
+	--surface-tint: #5DADE229;
+	--border: #2E333B;
+	--border-strong: #5A6370;
 	--accent-hover: #7DBEE8;
 	--accent-pressed: #4294C8;
-	--on-accent: #0A1620;
-	--danger-surface: #3A1D21;
+	--on-accent: #08131C;
+	--danger-surface: #3D1F24;
+	--danger-hover: #F6979C;
+	--danger-pressed: #D9686E;
+	--on-danger: #1C0709;
+	--nav-surface: #20242B;
 }
 
 /* Structure and typography. */
@@ -64,6 +71,12 @@ empty-state {
 	border-radius: 8px;
 	padding: 12px;
 	gap: 8px;
+}
+
+/* Layout panels inside raised content take its surface instead of the page's. */
+card panel,
+empty-state panel {
+	background-color: transparent;
 }
 
 text,
@@ -192,11 +205,12 @@ button.primary:pressed {
 }
 
 button.secondary {
-	background-color: var(--control-muted);
+	color: var(--text-accent);
+	background-color: var(--surface-tint);
 }
 
 button.secondary:hover {
-	background-color: var(--surface-hover);
+	background-color: var(--surface-selected);
 }
 
 button.ghost {
@@ -208,21 +222,21 @@ button.ghost:hover {
 }
 
 button.destructive {
-	color: var(--danger);
-	background-color: var(--danger-surface);
+	color: var(--on-danger);
+	background-color: var(--danger);
 }
 
 button.destructive:hover {
-	color: var(--text);
-	background-color: var(--danger-surface);
+	background-color: var(--danger-hover);
 }
 
 button.destructive:pressed {
-	background-color: var(--surface-pressed);
+	background-color: var(--danger-pressed);
 }
 
+/* Busy buttons are disabled; full-strength text keeps the faded label legible. */
 button:busy {
-	color: var(--text-secondary);
+	color: var(--text);
 }
 
 :disabled {
@@ -237,23 +251,38 @@ text-input:disabled,
 combo-box:disabled,
 selectable:disabled,
 disclosure:disabled {
-	background-color: var(--surface-raised);
+	background-color: var(--surface);
 }
 
-/* Inputs sit below the page so they read as places to type. */
+/* Inputs sit below the page so they read as places to type. A resting
+ * outline marks the field edge without changing control geometry. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
+	outline-color: var(--border-strong);
+	outline-width: 1px;
 }
 
 text-input:hover,
 combo-box:hover {
 	background-color: var(--surface-sunken);
+	outline-color: var(--text-secondary);
+}
+
+text-input:disabled,
+combo-box:disabled {
+	outline-color: var(--border);
 }
 
 text-input:invalid,
 combo-box:invalid {
 	background-color: var(--danger-surface);
+	outline-color: var(--danger);
+}
+
+text-input:focus,
+combo-box:focus {
+	outline-color: var(--accent);
 }
 
 text-selection {
@@ -342,14 +371,19 @@ scroll {
 	background-color: transparent;
 }
 
-/* Navigation stays quiet until selected, then takes a soft accent tint. */
+/* Navigation items read as quiet controls; the selected item takes the
+ * accent tint and drops its elevation. Sidebar items stay flat. */
 tab,
-sidebar-item,
 radio,
 segment,
 chip {
 	color: var(--text-secondary);
-	background-color: var(--surface-raised);
+	background-color: var(--nav-surface);
+}
+
+sidebar-item {
+	color: var(--text-secondary);
+	background-color: transparent;
 }
 
 tab:hover,
@@ -358,7 +392,7 @@ radio:hover,
 segment:hover,
 chip:hover {
 	color: var(--text);
-	background-color: var(--surface);
+	background-color: var(--surface-hover);
 }
 
 tab:selected,
@@ -367,12 +401,12 @@ radio:selected,
 segment:selected,
 chip:selected {
 	color: var(--text-accent);
-	background-color: var(--surface-tint);
+	background-color: var(--surface-selected);
 }
 
 collection-item:hover,
 table-cell:hover {
-	background-color: var(--surface);
+	background-color: var(--surface-hover);
 }
 
 table-header {
@@ -446,10 +480,56 @@ alert {
 	color: var(--danger);
 }
 
-/* Subtle elevation for interactive controls and raised panels. */
-button, panel, card, popup {
-	box-shadow: 0px 2px 4px #00000050;
+/* Elevation: resting controls sit just above the page, hover lifts them,
+ * pressing lands them. Raised content and floating surfaces cast larger
+ * shadows. Flat, selected and disabled items cast none. */
+button,
+dropdown,
+menu,
+context-menu,
+pagination,
+tab,
+radio,
+segment,
+chip,
+slider-thumb,
+switch-thumb {
+	box-shadow: var(--shadow-low);
 }
-button.ghost {
+
+button:hover,
+dropdown:hover,
+menu:hover,
+context-menu:hover,
+pagination:hover {
+	box-shadow: var(--shadow-raised);
+}
+
+card,
+empty-state,
+tooltip {
+	box-shadow: var(--shadow-raised);
+}
+
+popup,
+dialog,
+command-palette,
+toast,
+menu-surface {
+	box-shadow: var(--shadow-floating);
+}
+
+button.ghost,
+button.ghost:hover,
+button:pressed,
+button:disabled,
+dropdown:disabled,
+menu:disabled,
+context-menu:disabled,
+pagination:disabled,
+tab:selected,
+radio:selected,
+segment:selected,
+chip:selected {
 	box-shadow: none;
 }

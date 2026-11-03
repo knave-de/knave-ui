@@ -147,6 +147,17 @@ Images and swatch values are content, and explicitly colored rich-text spans
 retain their own color. A `SceneSnapshot` is a frozen display list: recapture
 it to reflect a later theme change.
 
+Both bundled themes publish elevation tokens for application CSS:
+`--shadow-low` (resting controls and unselected navigation items),
+`--shadow-raised` (hovered controls, cards and tooltips) and `--shadow-floating`
+(menus, dialogs, command palette and toasts). Selected, pressed, ghost and
+disabled controls cast none. Other action tokens are `--on-danger`,
+`--danger-hover`, `--danger-pressed` for solid destructive buttons and
+`--nav-surface` for unselected tabs, radios, segments and chips. Secondary
+buttons use the accent tint and text inputs have a resting `--border-strong`
+outline, which does not change control geometry. Selected collection rows
+default to `--surface-selected`.
+
 Contrast and chroma are independent of the dark/light scheme. High contrast
 raises text, border and focus distinctions. Monochrome maps the UI chrome
 palette to grayscales; image, color-swatch and explicitly colored rich-text

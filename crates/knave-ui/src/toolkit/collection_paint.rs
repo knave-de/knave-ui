@@ -123,6 +123,8 @@ pub(super) fn paint_collection(
                     .background
                     .as_ref()
                     .and_then(|background| background.fill)
+                    // The theme owns selection so rows stay readable in light schemes.
+                    .or_else(|| scene.theme_color("--surface-selected"))
                     .unwrap_or(computed.selected)
             } else {
                 Color::rgba(0, 0, 0, 0)

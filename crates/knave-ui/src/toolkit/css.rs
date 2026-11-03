@@ -73,12 +73,12 @@ impl From<Theme> for ThemePolicy {
     }
 }
 
-const DARK_HIGH_CONTRAST: &str = ":root { --canvas: #000000; --panel-surface: #000000; --surface: #000000; --surface-hover: #292929; --surface-pressed: #101010; --surface-selected: #4A4A4A; --surface-menu: #000000; --surface-tooltip: #000000; --surface-overlay: #000000DD; --text-disabled: #C0C0C0; --control-muted: #222222; --text: #FFFFFF; --text-secondary: #FFFFFF; --text-tooltip: #FFFFFF; --text-accent: #FFFFFF; --surface-raised: #080808; --surface-sunken: #000000; --surface-tint: #444444; --border: #B0B0B0; --border-strong: #FFFFFF; --accent: #00FFFF; --accent-hover: #7FFFFF; --accent-pressed: #00B8B8; --on-accent: #000000; --warning: #FFFF00; --danger: #FF8080; --danger-surface: #360000; } *:focus { outline-width: 2px; }";
-const LIGHT_HIGH_CONTRAST: &str = ":root { --canvas: #FFFFFF; --panel-surface: #FFFFFF; --surface: #FFFFFF; --surface-hover: #E2E2E2; --surface-pressed: #CCCCCC; --surface-selected: #B0B0B0; --surface-menu: #FFFFFF; --surface-tooltip: #FFFFFF; --surface-overlay: #00000099; --text-disabled: #444444; --control-muted: #E0E0E0; --text: #000000; --text-secondary: #000000; --text-tooltip: #000000; --text-accent: #000000; --surface-raised: #FFFFFF; --surface-sunken: #FFFFFF; --surface-tint: #D0D0D0; --border: #666666; --border-strong: #000000; --accent: #005FCC; --accent-hover: #004599; --accent-pressed: #003366; --on-accent: #FFFFFF; --warning: #704000; --danger: #A00000; --danger-surface: #FFE0E0; } *:focus { outline-width: 2px; }";
-const DARK_MONOCHROME: &str = ":root { --accent: #D8D8D8; --warning: #D8D8D8; --danger: #D8D8D8; --canvas: #131313; --panel-surface: #131313; --surface: #242424; --surface-hover: #363636; --surface-pressed: #1C1C1C; --surface-selected: #D8D8D82E; --surface-menu: #242424; --surface-tooltip: #2C2C2C; --surface-overlay: #000000AA; --text-disabled: #777777; --control-muted: #303030; --text: #E8E8E8; --text-secondary: #A0A0A0; --text-tooltip: #F2F2F2; --text-accent: #D8D8D8; --surface-raised: #1A1A1A; --surface-sunken: #101010; --surface-tint: #D8D8D81A; --border: #383838; --border-strong: #505050; --accent-hover: #E8E8E8; --accent-pressed: #A0A0A0; --on-accent: #101010; --danger-surface: #3A3A3A; }";
-const LIGHT_MONOCHROME: &str = ":root { --accent: #202020; --warning: #202020; --danger: #202020; --canvas: #F5F5F5; --panel-surface: #F5F5F5; --surface: #DEDEDE; --surface-hover: #CCCCCC; --surface-pressed: #BFBFBF; --surface-selected: #2020203D; --surface-menu: #FFFFFF; --surface-tooltip: #E0E0E0; --surface-overlay: #18181880; --text-disabled: #666666; --control-muted: #D9D9D9; --text: #181818; --text-secondary: #3A3A3A; --text-tooltip: #181818; --text-accent: #202020; --surface-raised: #FFFFFF; --surface-sunken: #E8E8E8; --surface-tint: #2020203D; --border: #D4D4D4; --border-strong: #AFAFAF; --accent-hover: #101010; --accent-pressed: #505050; --on-accent: #FFFFFF; --danger-surface: #F2F2F2; }";
-const DARK_HIGH_MONOCHROME: &str = ":root { --canvas: #000000; --panel-surface: #000000; --surface: #000000; --surface-hover: #292929; --surface-pressed: #101010; --surface-selected: #555555; --surface-menu: #000000; --surface-tooltip: #000000; --surface-overlay: #000000DD; --text-disabled: #C0C0C0; --control-muted: #222222; --text: #FFFFFF; --text-secondary: #FFFFFF; --text-tooltip: #FFFFFF; --text-accent: #FFFFFF; --surface-raised: #080808; --surface-sunken: #000000; --surface-tint: #555555; --border: #B0B0B0; --border-strong: #FFFFFF; --accent: #FFFFFF; --accent-hover: #D0D0D0; --accent-pressed: #A0A0A0; --on-accent: #000000; --warning: #FFFFFF; --danger: #FFFFFF; --danger-surface: #303030; } *:focus { outline-width: 2px; }";
-const LIGHT_HIGH_MONOCHROME: &str = ":root { --canvas: #FFFFFF; --panel-surface: #FFFFFF; --surface: #FFFFFF; --surface-hover: #E2E2E2; --surface-pressed: #CCCCCC; --surface-selected: #999999; --surface-menu: #FFFFFF; --surface-tooltip: #FFFFFF; --surface-overlay: #00000099; --text-disabled: #444444; --control-muted: #E0E0E0; --text: #000000; --text-secondary: #000000; --text-tooltip: #000000; --text-accent: #000000; --surface-raised: #FFFFFF; --surface-sunken: #FFFFFF; --surface-tint: #B0B0B0; --border: #666666; --border-strong: #000000; --accent: #000000; --accent-hover: #303030; --accent-pressed: #505050; --on-accent: #FFFFFF; --warning: #000000; --danger: #000000; --danger-surface: #E0E0E0; } *:focus { outline-width: 2px; }";
+const DARK_HIGH_CONTRAST: &str = ":root { --nav-surface: #080808; --on-danger: #000000; --danger-hover: #FFA0A0; --danger-pressed: #E06060; --canvas: #000000; --panel-surface: #000000; --surface: #000000; --surface-hover: #292929; --surface-pressed: #101010; --surface-selected: #4A4A4A; --surface-menu: #000000; --surface-tooltip: #000000; --surface-overlay: #000000DD; --text-disabled: #C0C0C0; --control-muted: #222222; --text: #FFFFFF; --text-secondary: #FFFFFF; --text-tooltip: #FFFFFF; --text-accent: #FFFFFF; --surface-raised: #080808; --surface-sunken: #000000; --surface-tint: #444444; --border: #B0B0B0; --border-strong: #FFFFFF; --accent: #00FFFF; --accent-hover: #7FFFFF; --accent-pressed: #00B8B8; --on-accent: #000000; --warning: #FFFF00; --danger: #FF8080; --danger-surface: #360000; } *:focus { outline-width: 2px; }";
+const LIGHT_HIGH_CONTRAST: &str = ":root { --nav-surface: #FFFFFF; --on-danger: #FFFFFF; --danger-hover: #800000; --danger-pressed: #600000; --canvas: #FFFFFF; --panel-surface: #FFFFFF; --surface: #FFFFFF; --surface-hover: #E2E2E2; --surface-pressed: #CCCCCC; --surface-selected: #B0B0B0; --surface-menu: #FFFFFF; --surface-tooltip: #FFFFFF; --surface-overlay: #00000099; --text-disabled: #444444; --control-muted: #E0E0E0; --text: #000000; --text-secondary: #000000; --text-tooltip: #000000; --text-accent: #000000; --surface-raised: #FFFFFF; --surface-sunken: #FFFFFF; --surface-tint: #D0D0D0; --border: #666666; --border-strong: #000000; --accent: #005FCC; --accent-hover: #004599; --accent-pressed: #003366; --on-accent: #FFFFFF; --warning: #704000; --danger: #A00000; --danger-surface: #FFE0E0; } *:focus { outline-width: 2px; }";
+const DARK_MONOCHROME: &str = ":root { --nav-surface: #202020; --on-danger: #101010; --danger-hover: #E8E8E8; --danger-pressed: #A0A0A0; --accent: #D8D8D8; --warning: #D8D8D8; --danger: #D8D8D8; --canvas: #131313; --panel-surface: #131313; --surface: #242424; --surface-hover: #363636; --surface-pressed: #1C1C1C; --surface-selected: #D8D8D82E; --surface-menu: #242424; --surface-tooltip: #2C2C2C; --surface-overlay: #000000AA; --text-disabled: #777777; --control-muted: #303030; --text: #E8E8E8; --text-secondary: #A0A0A0; --text-tooltip: #F2F2F2; --text-accent: #D8D8D8; --surface-raised: #1A1A1A; --surface-sunken: #101010; --surface-tint: #D8D8D81A; --border: #383838; --border-strong: #505050; --accent-hover: #E8E8E8; --accent-pressed: #A0A0A0; --on-accent: #101010; --danger-surface: #3A3A3A; }";
+const LIGHT_MONOCHROME: &str = ":root { --nav-surface: #FFFFFF; --on-danger: #FFFFFF; --danger-hover: #101010; --danger-pressed: #505050; --accent: #202020; --warning: #202020; --danger: #202020; --canvas: #F5F5F5; --panel-surface: #F5F5F5; --surface: #DEDEDE; --surface-hover: #CCCCCC; --surface-pressed: #BFBFBF; --surface-selected: #2020203D; --surface-menu: #FFFFFF; --surface-tooltip: #E0E0E0; --surface-overlay: #18181880; --text-disabled: #666666; --control-muted: #D9D9D9; --text: #181818; --text-secondary: #3A3A3A; --text-tooltip: #181818; --text-accent: #202020; --surface-raised: #FFFFFF; --surface-sunken: #E8E8E8; --surface-tint: #2020203D; --border: #D4D4D4; --border-strong: #AFAFAF; --accent-hover: #101010; --accent-pressed: #505050; --on-accent: #FFFFFF; --danger-surface: #F2F2F2; }";
+const DARK_HIGH_MONOCHROME: &str = ":root { --nav-surface: #080808; --on-danger: #000000; --danger-hover: #D0D0D0; --danger-pressed: #A0A0A0; --canvas: #000000; --panel-surface: #000000; --surface: #000000; --surface-hover: #292929; --surface-pressed: #101010; --surface-selected: #555555; --surface-menu: #000000; --surface-tooltip: #000000; --surface-overlay: #000000DD; --text-disabled: #C0C0C0; --control-muted: #222222; --text: #FFFFFF; --text-secondary: #FFFFFF; --text-tooltip: #FFFFFF; --text-accent: #FFFFFF; --surface-raised: #080808; --surface-sunken: #000000; --surface-tint: #555555; --border: #B0B0B0; --border-strong: #FFFFFF; --accent: #FFFFFF; --accent-hover: #D0D0D0; --accent-pressed: #A0A0A0; --on-accent: #000000; --warning: #FFFFFF; --danger: #FFFFFF; --danger-surface: #303030; } *:focus { outline-width: 2px; }";
+const LIGHT_HIGH_MONOCHROME: &str = ":root { --nav-surface: #FFFFFF; --on-danger: #FFFFFF; --danger-hover: #303030; --danger-pressed: #505050; --canvas: #FFFFFF; --panel-surface: #FFFFFF; --surface: #FFFFFF; --surface-hover: #E2E2E2; --surface-pressed: #CCCCCC; --surface-selected: #999999; --surface-menu: #FFFFFF; --surface-tooltip: #FFFFFF; --surface-overlay: #00000099; --text-disabled: #444444; --control-muted: #E0E0E0; --text: #000000; --text-secondary: #000000; --text-tooltip: #000000; --text-accent: #000000; --surface-raised: #FFFFFF; --surface-sunken: #FFFFFF; --surface-tint: #B0B0B0; --border: #666666; --border-strong: #000000; --accent: #000000; --accent-hover: #303030; --accent-pressed: #505050; --on-accent: #FFFFFF; --warning: #000000; --danger: #000000; --danger-surface: #E0E0E0; } *:focus { outline-width: 2px; }";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ComputedStyle {
@@ -1939,6 +1939,40 @@ mod tests {
                     "{scheme:?}/{chroma:?} strong border/surface contrast is too low"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn standard_palettes_keep_readable_text_and_distinct_actions() {
+        let mut scene = Scene::new(Element::new(1, Widget::Panel)).unwrap();
+        for scheme in [Theme::Dark, Theme::Light] {
+            scene
+                .set_theme_policy_stylesheets(scheme.into(), "", "")
+                .unwrap();
+            let color = |name| {
+                scene
+                    .theme_color(name)
+                    .unwrap_or_else(|| panic!("missing {name}"))
+            };
+            for (text, surface, minimum) in [
+                ("--text", "--canvas", 7.0),
+                ("--text", "--surface", 7.0),
+                ("--text-secondary", "--surface-raised", 4.5),
+                ("--text-accent", "--canvas", 4.5),
+                ("--on-accent", "--accent", 4.5),
+                ("--on-danger", "--danger", 4.5),
+                ("--border-strong", "--surface-sunken", 3.0),
+            ] {
+                let ratio = contrast_ratio(color(text), color(surface));
+                assert!(
+                    ratio >= minimum,
+                    "{scheme:?} {text}/{surface} contrast {ratio:.2} is below {minimum}"
+                );
+            }
+            assert!(
+                contrast_ratio(color("--surface"), color("--canvas")) >= 1.1,
+                "{scheme:?} controls blend into the page"
+            );
         }
     }
 
