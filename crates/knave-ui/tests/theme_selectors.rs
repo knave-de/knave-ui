@@ -1063,3 +1063,80 @@ fn percentage_sizes_leave_the_correct_space_for_fill_siblings() {
     assert_eq!(s.bounds(ElementId(1)).unwrap().width, 250.0);
     assert_eq!(s.bounds(ElementId(2)).unwrap().width, 250.0);
 }
+
+#[test]
+fn box_shadows_escape_content_clips_but_not_scroll_views() {
+    let button = Element::new(3, Widget::Button("Save".into()));
+    let panel = Element::new(2, Widget::Panel)
+        .layout(Layout {
+            padding: 2.0,
+            ..Default::default()
+        })
+        .children(vec![button]);
+    let page = Element::new(1, Widget::Scroll)
+        .layout(Layout {
+            height: Length::Px(300.0),
+            ..Default::default()
+        })
+        .children(vec![panel]);
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![page])).unwrap();
+    s.set_stylesheet("button { background-color: #202020; box-shadow: 0px 4px 6px #00000080; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let button = s.bounds(ElementId(3)).unwrap();
+    let page = s.bounds(ElementId(1)).unwrap();
+    let shapes: Vec<_> = s
+        .display_list([400.0, 400.0], &mut Metrics)
+        .commands
+        .iter()
+        .filter_map(|command| match command {
+            DisplayCommand::Shape {
+                bounds,
+                paint,
+                clip,
+                ..
+            } if *bounds == button => Some((paint.clone(), *clip)),
+            _ => None,
+        })
+        .collect();
+    let [(caster, Some(caster_clip)), (fill, Some(fill_clip))] = shapes.as_slice() else {
+        panic!("expected a shadow caster followed by the fill: {shapes:?}");
+    };
+    assert!(caster.shadow.is_some() && caster.edge_borders.is_none());
+    assert_eq!(caster.fill, Some(Color::rgba(0, 0, 0, 0)));
+    assert!(fill.shadow.is_none());
+    assert_eq!(fill.fill, Some(Color::rgba(32, 32, 32, 255)));
+    assert_eq!(*fill_clip, button);
+    // The shadow leaves the button and its parent panel, but stays in the page.
+    assert!(caster_clip.y + caster_clip.height > button.y + button.height + 4.0);
+    assert!(caster_clip.x >= page.x && caster_clip.y >= page.y);
+    assert!(caster_clip.x + caster_clip.width <= page.x + page.width);
+}
+
+#[test]
+fn floating_parts_and_tooltips_accept_box_shadows() {
+    let mut s = scene(vec![Element::new(
+        1,
+        Widget::Slider(Slider::new(0.0, 1.0, 0.5, None).unwrap()),
+    )]);
+    s.set_stylesheet(
+        "menu-surface { box-shadow: 0px 6px 12px #00000080; }\
+         tooltip { background-color: #101010; box-shadow: 0px 2px 4px #00000080; }\
+         slider-thumb { box-shadow: 0px 1px 2px #00000080; }",
+    )
+    .unwrap();
+    let thumb_shadow = s
+        .display_list([500.0, 600.0], &mut Metrics)
+        .commands
+        .iter()
+        .any(|command| {
+            matches!(command, DisplayCommand::Shape { bounds, paint, .. }
+                if bounds.width == 18.0 && paint.shadow.is_some_and(|shadow| shadow.offset_y == 1.0))
+        });
+    assert!(thumb_shadow, "slider thumb did not carry its CSS shadow");
+    assert!(
+        s.set_stylesheet("checkbox-mark { box-shadow: 0px 1px 2px #000000; }")
+            .is_err(),
+        "box-shadow is limited to surfaces and thumbs"
+    );
+}

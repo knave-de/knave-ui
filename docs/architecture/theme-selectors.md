@@ -83,7 +83,8 @@ owner with a descendant selector, such as `slider slider-thumb` or
   `table-header`, `table-cell`.
 
 Parts accept `background`/`background-color`, `color`, `opacity`, border
-widths/colors and corner radii. Text-bearing parts (`checkbox-mark`, `menu-item`,
+widths/colors and corner radii. `menu-surface`, `slider-thumb` and
+`switch-thumb` also accept `box-shadow`. Text-bearing parts (`checkbox-mark`, `menu-item`,
 `collection-item`, `table-header`, `table-cell`) also accept typography. Part
 geometry is fixed by the control: padding, margin, gap and outline are not
 supported on parts. Their text is clipped to the existing row/cell geometry.
@@ -95,7 +96,8 @@ match retained elements, not the parts.
 
 `canvas`, `surface`, `modal-overlay` and `tooltip` are global auxiliary
 selectors, without classes, IDs, ancestors or state selectors. All support a
-background; tooltip also supports text properties, padding and corner radii.
+background; tooltip also supports text properties, padding, corner radii and
+`box-shadow`.
 
 ## Values and scope
 
@@ -107,7 +109,11 @@ explicitly sets its dimensions.
 
 Retained elements support color, background, opacity, padding, margin, gap,
 fonts, text alignment/wrapping, borders, corner radii, outlines and box shadows.
-`box-shadow` accepts `none` or one shadow as `offset-x offset-y blur [spread] color`, with pixel lengths and a color supported by the theme parser. `opacity`
+`box-shadow` accepts `none` or one shadow as `offset-x offset-y blur [spread] color`, with pixel lengths and a color supported by the theme parser.
+A shadow is painted outside its box and is not cut off by ordinary content
+clipping; the nearest scroll view or `ClipMode::Bounds` ancestor still clips it.
+Declare a background with the shadow, because a shadow alone gives the element a
+transparent fill. `opacity`
 accepts a number (`0` to `1`) or percentage (`0%` to `100%`); values outside
 that range are clamped. It affects the element's shapes, text (including rich
 text spans), images and descendants. `font-style`

@@ -690,6 +690,7 @@ fn auxiliary_supports_property(kind: &str, property: &str) -> bool {
             && (matches!(
                 property,
                 "color"
+                    | "box-shadow"
                     | "padding"
                     | "font-size"
                     | "font-weight"
@@ -728,6 +729,8 @@ fn part_supports_property(part: &str, property: &str) -> bool {
     property.starts_with("--")
         || (part == "checkbox-mark" && property == "content")
         || matches!(property, "background-color" | "color" | "opacity")
+        || (property == "box-shadow"
+            && matches!(part, "menu-surface" | "slider-thumb" | "switch-thumb"))
         || (property.starts_with("border-")
             && (property.ends_with("-width")
                 || property.ends_with("-color")
@@ -1366,6 +1369,7 @@ pub(super) struct PartStyle {
     pub computed: ComputedStyle,
     pub color_explicit: bool,
     pub background_explicit: bool,
+    pub shadow_explicit: bool,
 }
 impl PartStyle {
     pub(super) fn text_style(&self) -> TextStyle {
@@ -1412,6 +1416,7 @@ pub(super) fn part_style(
     }
     let color_explicit = declarations.contains_key("color");
     let background_explicit = declarations.contains_key("background-color");
+    let shadow_explicit = declarations.contains_key("box-shadow");
     let owner_state = scene
         .interaction(scene.nodes[owner].element.id)
         .unwrap_or_default();
@@ -1435,6 +1440,7 @@ pub(super) fn part_style(
         computed: result,
         color_explicit,
         background_explicit,
+        shadow_explicit,
     })
 }
 
