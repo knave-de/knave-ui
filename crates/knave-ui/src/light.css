@@ -32,10 +32,11 @@
 	--text-secondary: #4A5560;
 	--text-accent: #005A78;
 	--surface-raised: #FFFFFF;
-	--surface-sunken: #FFFFFF;
+	--surface-sunken: #E8ECF0;
+	--surface-input-hover: #E2E7EC;
 	--surface-tint: #0A7DAA2E;
 	--border: #D6DDE3;
-	--border-strong: #8794A0;
+	--border-strong: #76838F;
 	--accent-hover: #096A90;
 	--accent-pressed: #075775;
 	--on-accent: #FFFFFF;
@@ -75,12 +76,6 @@ empty-state {
 	border-radius: 8px;
 	padding: 12px;
 	gap: 8px;
-}
-
-/* Layout panels inside raised content take its surface instead of the page's. */
-card panel,
-empty-state panel {
-	background-color: transparent;
 }
 
 text,
@@ -258,35 +253,21 @@ disclosure:disabled {
 	background-color: var(--surface);
 }
 
-/* Inputs sit below the page so they read as places to type. A resting
- * outline marks the field edge without changing control geometry. */
+/* Inputs sit below the page so they read as places to type. They have no
+ * resting outline; the fill alone marks the field. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
-	outline-color: var(--border-strong);
-	outline-width: 1px;
 }
 
 text-input:hover,
 combo-box:hover {
-	background-color: var(--surface-sunken);
-	outline-color: var(--text-secondary);
-}
-
-text-input:disabled,
-combo-box:disabled {
-	outline-color: var(--border);
+	background-color: var(--surface-input-hover);
 }
 
 text-input:invalid,
 combo-box:invalid {
 	background-color: var(--danger-surface);
-	outline-color: var(--danger);
-}
-
-text-input:focus,
-combo-box:focus {
-	outline-color: var(--accent);
 }
 
 text-selection {
@@ -539,6 +520,7 @@ menu-surface {
 button.ghost,
 button.ghost:hover,
 button:pressed,
+button:selected,
 button:disabled,
 dropdown:disabled,
 menu:disabled,

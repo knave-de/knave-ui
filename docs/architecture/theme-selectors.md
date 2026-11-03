@@ -154,8 +154,8 @@ Both bundled themes publish elevation tokens for application CSS:
 disabled controls cast none. Other action tokens are `--on-danger`,
 `--danger-hover`, `--danger-pressed` for solid destructive buttons and
 `--nav-surface` for unselected tabs, radios, segments and chips. Secondary
-buttons use the accent tint and text inputs have a resting `--border-strong`
-outline, which does not change control geometry. Selected collection rows
+buttons use the accent tint; text inputs have no resting outline and are
+marked by their `--surface-sunken` fill. Selected collection rows
 default to `--surface-selected`.
 
 Contrast and chroma are independent of the dark/light scheme. High contrast
