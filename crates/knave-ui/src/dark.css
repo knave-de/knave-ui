@@ -249,11 +249,12 @@ disclosure:disabled {
 	background-color: var(--surface);
 }
 
-/* Inputs sit below the page so they read as places to type. They have no
- * resting outline; the fill alone marks the field. */
+/* The outline marks field boundaries without changing control geometry. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
+	outline-color: var(--border-strong);
+	outline-width: 1px;
 }
 
 text-input:hover,

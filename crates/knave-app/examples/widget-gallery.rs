@@ -22,6 +22,8 @@ const GALLERY_CSS: &str = "
 .page-section { background-color: var(--surface-raised); border-radius: 10px; padding: 16px; gap: 10px; box-shadow: var(--shadow-low); }
 .page-section panel { background-color: transparent; }
 .page-section card { background-color: var(--surface-raised); }
+.page-section .opacity-demo-back { background-color: #BE4048; }
+.page-section .opacity-demo-front { background-color: #3470BE; }
 .page-section .elevation-tile { background-color: var(--surface-raised); border-radius: 8px; padding: 14px; gap: 4px; }
 .page-section .elevation-flat { background-color: var(--canvas); box-shadow: none; }
 .page-section .elevation-low { box-shadow: var(--shadow-low); }
@@ -116,6 +118,7 @@ fn core() -> Result<Vec<Element>, UiError> {
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
     let supporting_text = text(103, "Supporting text · toolkit defaults");
     let mut opacity_back = Element::new(770_011, Widget::Panel)
+        .class("opacity-demo-back")
         .layout(Layout {
             width: Length::Px(220.0),
             height: Length::Px(72.0),
@@ -124,6 +127,7 @@ fn core() -> Result<Vec<Element>, UiError> {
         .children(vec![text(770_013, "Opaque red sibling")]);
     opacity_back.style.background = Some(ShapePaint::fill(knave_ui::Color::rgba(190, 64, 72, 255)));
     let mut opacity_front = Element::new(770_012, Widget::Panel)
+        .class("opacity-demo-front")
         .layout(Layout {
             width: Length::Px(220.0),
             height: Length::Px(72.0),
@@ -1405,6 +1409,7 @@ mod tests {
         let Some(dir) = std::env::var_os("KNAVE_GALLERY_CAPTURE_DIR") else {
             return;
         };
+        std::fs::create_dir_all(&dir).unwrap();
         let instance = wgpu::Instance::default();
         let adapter =
             pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
