@@ -128,8 +128,7 @@ impl Scene {
         if let Some(id) = target
             && !self.indices.get(&id).is_some_and(|i| {
                 self.eligible(*i)
-                    && (self.nodes[*i].element.widget.focusable()
-                        || self.nodes[*i].element.drag_source.is_some())
+                    && self.focusable(*i)
                     && self.modal_root().is_none_or(|root| self.within(*i, root))
             })
         {
@@ -318,7 +317,7 @@ impl Scene {
                 return None;
             }
             let node = &self.nodes[i];
-            if node.element.widget.focusable() || node.element.drag_source.is_some() {
+            if self.focusable(i) {
                 return Some(node.element.id);
             }
             i = node.parent?;
@@ -972,7 +971,15 @@ impl Scene {
     }
     fn interaction_styles_may_change(&self, input: &Input) -> bool {
         match input {
-            Input::PointerMove(position) => self.hit_test(*position) != self.hover,
+            Input::PointerMove(position) => {
+                self.hit_test(*position) != self.hover
+                    || self.drag.is_some()
+                    || self.capture.is_some_and(|capture| {
+                        self.indices
+                            .get(&capture.id)
+                            .is_some_and(|i| self.nodes[*i].element.drag_source.is_some())
+                    })
+            }
             Input::PointerDown(_) | Input::ContextMenu(_) => true,
             Input::PointerUp(_) => self.capture.is_some() || self.key_pressed.is_some(),
             Input::PointerLeave => self.hover.is_some(),

@@ -825,6 +825,49 @@ fn escape_cancels_an_active_element_drag() {
     assert_eq!(s.cursor(), CursorShape::Grab);
 }
 
+#[test]
+fn drag_state_relayouts_when_state_css_affects_metrics() {
+    let source = Element::new(1, Widget::Text("Drag".into()))
+        .drag_source(7, "Drag")
+        .layout(Layout {
+            width: Length::Px(100.0),
+            ..Default::default()
+        });
+    let sibling = Element::new(2, Widget::Text("Sibling".into())).layout(Layout {
+        width: Length::Px(100.0),
+        height: Length::Px(20.0),
+        ..Default::default()
+    });
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![source, sibling])).unwrap();
+    s.set_stylesheet("text:dragging { padding: 20px; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source_before = s.bounds(ElementId(1)).unwrap();
+    let sibling_before = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([10.0, 5.0]));
+    assert_eq!(
+        s.event(Input::PointerMove([15.0, 5.0])).action,
+        Some(Action::DragBegan {
+            source: ElementId(1),
+            payload: 7
+        })
+    );
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert!(s.bounds(ElementId(1)).unwrap().height > source_before.height);
+    assert!(s.bounds(ElementId(2)).unwrap().y > sibling_before.y);
+}
+
+#[test]
+fn replace_preserves_focus_for_drag_sources() {
+    let drag_source = || Element::new(1, Widget::Text("Drag".into())).drag_source(7, "Drag");
+    let mut s = scene(vec![drag_source()]);
+    s.set_focus(Some(ElementId(1))).unwrap();
+    assert_eq!(s.focus(), Some(ElementId(1)));
+    s.replace(Element::new(0, Widget::Panel).children(vec![drag_source()]))
+        .unwrap();
+    assert_eq!(s.focus(), Some(ElementId(1)));
+}
+
 fn drag_drop_scene(accept: Option<Vec<u64>>) -> Scene {
     let source = Element::new(1, Widget::Text("Source".into()))
         .layout(Layout {

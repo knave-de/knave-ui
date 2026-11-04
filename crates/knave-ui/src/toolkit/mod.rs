@@ -637,7 +637,7 @@ impl Scene {
         if self.focus.is_some_and(|id| {
             self.indices
                 .get(&id)
-                .is_none_or(|i| !self.eligible(*i) || !self.nodes[*i].element.widget.focusable())
+                .is_none_or(|i| !self.eligible(*i) || !self.focusable(*i))
         }) {
             self.focus = None;
         }
@@ -871,13 +871,17 @@ impl Scene {
             matches!(self.nodes[i].element.widget, Widget::Popup { modal: true }).then_some(i)
         })
     }
+    fn focusable(&self, i: usize) -> bool {
+        let element = &self.nodes[i].element;
+        element.widget.focusable() || element.drag_source.is_some()
+    }
     fn focus_candidates(&self, root: Option<usize>) -> Vec<ElementId> {
         let root = root.or_else(|| self.modal_root());
         self.nodes
             .iter()
             .enumerate()
-            .filter(|(i, n)| {
-                (n.element.widget.focusable() || n.element.drag_source.is_some())
+            .filter(|(i, _)| {
+                self.focusable(*i)
                     && self.group_tab_stop(*i)
                     && self.eligible(*i)
                     && root.is_none_or(|r| self.within(*i, r))
