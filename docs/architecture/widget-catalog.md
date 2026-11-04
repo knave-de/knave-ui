@@ -101,7 +101,7 @@ Enter navigate/select them while clipboard and caret editing remain available.
 | Long text/narrow layouts | Shared wrapping/clipping and constrained-width samples |
 | Scaling | Logical coordinates; host scales input/paint together; fractional output scaling remains an external runtime check |
 | Keyboard only | Roving groups, retained page state, disabled/hidden exclusion and modal traversal |
-| Light/high contrast | Light and dark palettes are available; high contrast remains deferred |
+| Light/high contrast | Light and dark palettes, high-contrast and monochrome policies and elevation tokens are available |
 
 `SceneSnapshot::capture` freezes a real scene display list using the common text
 measurer. The public snapshot widget renders it through the common painter;

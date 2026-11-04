@@ -383,16 +383,16 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == button_bounds
-                && paint.fill == Some(knave_ui::Color::rgba(0x30, 0x36, 0x3e, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x32, 0x38, 0x42, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x2c, 0x31, 0x38, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x2e, 0x33, 0x3c, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == s.bounds(ElementId(3)).unwrap()
-                && paint.fill == Some(knave_ui::Color::rgba(0x23, 0x27, 0x2d, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x27, 0x2c, 0x34, 255))
     )));
 
     let menu_bounds = s.bounds(ElementId(2)).unwrap();
@@ -403,7 +403,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x23, 0x27, 0x2d, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x22, 0x26, 0x2d, 255))
     )));
 
     let popup = Element::new(10, Widget::Popup { modal: true }).layout(Layout {

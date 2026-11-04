@@ -123,6 +123,14 @@ pub(super) fn paint_collection(
                     .background
                     .as_ref()
                     .and_then(|background| background.fill)
+                    // The theme owns the default selection while explicit styles win.
+                    .or_else(|| {
+                        if computed.selected == Style::default().selected {
+                            scene.theme_color("--surface-selected")
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(computed.selected)
             } else {
                 Color::rgba(0, 0, 0, 0)

@@ -16,6 +16,21 @@ const PAGES: [(u64, &str); 6] = [
     (6000, "Coverage"),
 ];
 const NAV: u64 = 9000;
+/// Gallery presentation only; widget appearance comes from the theme.
+const GALLERY_CSS: &str = "
+.gallery { padding: 20px; gap: 12px; }
+.page-section { background-color: var(--surface-raised); border-radius: 10px; padding: 16px; gap: 10px; box-shadow: var(--shadow-low); }
+.page-section panel { background-color: transparent; }
+.page-section card { background-color: var(--surface-raised); }
+.page-section .opacity-demo-back { background-color: #BE4048; }
+.page-section .opacity-demo-front { background-color: #3470BE; }
+.page-section .elevation-tile { background-color: var(--surface-raised); border-radius: 8px; padding: 14px; gap: 4px; }
+.page-section .elevation-flat { background-color: var(--canvas); box-shadow: none; }
+.page-section .elevation-low { box-shadow: var(--shadow-low); }
+.page-section .elevation-raised { box-shadow: var(--shadow-raised); }
+.page-section .elevation-floating { background-color: var(--surface-menu); box-shadow: var(--shadow-floating); }
+.opacity-demo { opacity: 0.55; }
+";
 
 fn text(id: u64, value: &str) -> Element {
     Element::new(id, Widget::Text(value.into()))
@@ -39,6 +54,52 @@ fn section(id: u64, title: &str, children: Vec<Element>) -> Element {
         .component(ComponentKind::Section)
         .children(items)
 }
+fn elevation() -> Element {
+    let tile = |id: u64, class: &str, title: &str, detail: &str| {
+        Element::new(id, Widget::Panel)
+            .class("elevation-tile")
+            .class(class)
+            .children(vec![
+                Element::heading(id + 1, title, HeadingLevel::H3),
+                text(id + 2, detail),
+            ])
+    };
+    section(
+        780_000,
+        "Elevation and shadows · theme tokens",
+        vec![
+            text(
+                780_002,
+                "Themes define --shadow-low, --shadow-raised and --shadow-floating. Controls rest low and lift on hover; cards are raised; menus, dialogs and toasts float.",
+            ),
+            grid(
+                780_003,
+                4,
+                vec![
+                    tile(780_010, "elevation-flat", "Flat", "Page and ghost actions"),
+                    tile(780_020, "elevation-low", "Low", "Resting controls"),
+                    tile(
+                        780_030,
+                        "elevation-raised",
+                        "Raised",
+                        "Cards, hover, tooltips",
+                    ),
+                    tile(
+                        780_040,
+                        "elevation-floating",
+                        "Floating",
+                        "Menus and dialogs",
+                    ),
+                ],
+            )
+            .layout(Layout {
+                flow: Flow::Grid { columns: 4 },
+                gap: 16.0,
+                ..Default::default()
+            }),
+        ],
+    )
+}
 fn choices() -> Vec<MenuItem> {
     vec![
         MenuItem::option(1, "First option"),
@@ -57,6 +118,7 @@ fn core() -> Result<Vec<Element>, UiError> {
         Some("Tooltips stay within the viewport. Keyboard focus is a separate state.".into());
     let supporting_text = text(103, "Supporting text · toolkit defaults");
     let mut opacity_back = Element::new(770_011, Widget::Panel)
+        .class("opacity-demo-back")
         .layout(Layout {
             width: Length::Px(220.0),
             height: Length::Px(72.0),
@@ -65,6 +127,7 @@ fn core() -> Result<Vec<Element>, UiError> {
         .children(vec![text(770_013, "Opaque red sibling")]);
     opacity_back.style.background = Some(ShapePaint::fill(knave_ui::Color::rgba(190, 64, 72, 255)));
     let mut opacity_front = Element::new(770_012, Widget::Panel)
+        .class("opacity-demo-front")
         .layout(Layout {
             width: Length::Px(220.0),
             height: Length::Px(72.0),
@@ -266,6 +329,7 @@ fn core() -> Result<Vec<Element>, UiError> {
                 ),
             ],
         ),
+        elevation(),
         section(
             120,
             "Inputs · primitives",
@@ -785,7 +849,7 @@ fn coverage() -> Vec<Element> {
                 ),
                 text(
                     6103,
-                    "The window titlebar is winit's platform decoration fallback, not a Knave UI widget or a custom Knave design. The host requests compositor decorations when available; otherwise it retains usable client decorations.",
+                    "The host requests compositor decorations when available; otherwise it retains usable client decorations. The gallery identifies itself as org.knave.WidgetGallery on Wayland.",
                 ),
                 text(
                     6104,
@@ -828,7 +892,12 @@ fn gallery() -> Result<Scene, UiError> {
                     height: Length::Fill,
                     ..Default::default()
                 })
-                .children(children);
+                .children(
+                    children
+                        .into_iter()
+                        .map(|section| section.class("page-section"))
+                        .collect(),
+                );
             page.visible = index == 0;
             page
         })
@@ -864,7 +933,7 @@ fn gallery() -> Result<Scene, UiError> {
             element
         })
         .collect();
-    let mut scene = Scene::new(Element::new(0, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() })
+    let mut scene = Scene::new(Element::new(0, Widget::Panel).class("gallery").layout(Layout { height: Length::Fill, ..Default::default() })
         .children(vec![Element::heading(1, "Knave UI · Component catalog", HeadingLevel::H1),
             Element::subtitle(STATUS.0, "Core · existing controls. Tab/Shift+Tab navigates; the status line reports actions."),
             Element::new(40, Widget::Text("Appearance preview · applies to UI chrome; sample images retain their colors.".into())),
@@ -877,8 +946,8 @@ fn gallery() -> Result<Scene, UiError> {
             Element::new(3, Widget::Panel).layout(Layout { height: Length::Fill, ..Default::default() }).children(pages),
             popup, command_palette()?.element("Commands")?]))?;
     scene
-        .set_stylesheet(".opacity-demo { opacity: 0.55; }")
-        .expect("opacity demo stylesheet is valid");
+        .set_stylesheet(GALLERY_CSS)
+        .expect("gallery stylesheet is valid");
     Ok(scene)
 }
 struct Gallery {
@@ -913,6 +982,7 @@ impl Gallery {
         Ok(())
     }
 
+    /// Show one gallery page and remember when the deferred fixture page is requested.
     fn select_page(&mut self, index: usize) -> Result<(), UiError> {
         if index == 4 {
             self.fixtures_requested = true;
@@ -938,6 +1008,11 @@ impl Gallery {
     }
 }
 impl Application for Gallery {
+    fn app_id(&self) -> Option<&str> {
+        Some("org.knave.WidgetGallery")
+    }
+
+    /// Build the expensive state fixtures on the first action after their page is selected.
     fn after_action(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
         if !self.fixtures_requested {
             return Ok(());
@@ -1100,6 +1175,7 @@ impl Application for Gallery {
         Ok(())
     }
 
+    /// Remove previews built under the old policy and save the new gallery policy.
     fn theme_policy_changed(&mut self, policy: ThemePolicy) -> AppResult {
         if self.fixtures_ready {
             self.scene.remove(ElementId(5599))?;
@@ -1109,6 +1185,7 @@ impl Application for Gallery {
         Ok(())
     }
 
+    /// Rebuild requested fixture previews after a theme stylesheet refresh.
     fn refresh_theme(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
         if self.fixtures_requested {
             self.fixtures_ready = false;
@@ -1277,12 +1354,14 @@ mod tests {
         assert_eq!(app.scene.focus(), Some(ElementId(NAV)));
     }
     #[test]
+    /// Confirms startup omits the expensive fixture container and its first preview.
     fn state_fixtures_are_absent_until_the_page_is_requested() {
         let app = app();
         assert!(app.scene.bounds(ElementId(5599)).is_none());
         assert!(app.scene.bounds(ElementId(50_002)).is_none());
     }
     #[test]
+    /// Confirms hidden pages stay out of keyboard traversal before fixture creation.
     fn keyboard_traversal_excludes_hidden_pages_and_disabled_controls() {
         let mut app = app();
         app.scene.set_focus(Some(ElementId(NAV + 5))).unwrap();
@@ -1309,6 +1388,7 @@ mod tests {
         assert_eq!(app.scene.focus(), Some(ElementId(27)));
     }
     #[test]
+    /// Confirms deferred fixtures can be captured and become traversable on demand.
     fn frozen_references_are_built_by_real_scenes_and_the_common_text_engine() {
         let instance = wgpu::Instance::default();
         let Ok(adapter) =
@@ -1360,6 +1440,123 @@ mod tests {
             assert!(
                 matches!(app.scene.widget(STATUS), Some(Widget::Text(label)) if label == "Password field updated")
             );
+        }
+    }
+
+    #[test]
+    fn capture_pages_for_review() {
+        let Some(dir) = std::env::var_os("KNAVE_GALLERY_CAPTURE_DIR") else {
+            return;
+        };
+        std::fs::create_dir_all(&dir).unwrap();
+        let instance = wgpu::Instance::default();
+        let adapter =
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default()))
+                .unwrap();
+        let (device, queue) =
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let mut painter = knave_renderer::WgpuPainter::new(&device, &queue, format).unwrap();
+        let size = (960u32, 2600u32);
+        for scheme in [Theme::Dark, Theme::Light] {
+            let mut app = app();
+            app.theme_policy.scheme = scheme;
+            app.apply_policy_preview().unwrap();
+            app.ready(&mut painter).unwrap();
+            for page in 0..PAGES.len() {
+                app.select_page(page).unwrap();
+                app.scene.set_focus(None).unwrap();
+                let list = app
+                    .scene
+                    .display_list([size.0 as f32, size.1 as f32], &mut painter)
+                    .clone();
+                let target = device.create_texture(&wgpu::TextureDescriptor {
+                    label: None,
+                    size: wgpu::Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                    view_formats: &[],
+                });
+                let view = target.create_view(&Default::default());
+                let mut encoder = device.create_command_encoder(&Default::default());
+                {
+                    let c = list.clear_color.to_linear_rgba();
+                    let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: c[0] as f64,
+                                    g: c[1] as f64,
+                                    b: c[2] as f64,
+                                    a: c[3] as f64,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                            depth_slice: None,
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                }
+                painter
+                    .encode(&device, &queue, &mut encoder, &view, size, &list)
+                    .unwrap();
+                let pitch = (size.0 * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+                    * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: None,
+                    size: u64::from(pitch) * u64::from(size.1),
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                });
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &target,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &buffer,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(pitch),
+                            rows_per_image: Some(size.1),
+                        },
+                    },
+                    wgpu::Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                queue.submit(Some(encoder.finish()));
+                let slice = buffer.slice(..);
+                slice.map_async(wgpu::MapMode::Read, |r| r.unwrap());
+                device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+                let mapped = slice.get_mapped_range().unwrap();
+                let mut out = format!("P6\n{} {}\n255\n", size.0, size.1).into_bytes();
+                for y in 0..size.1 {
+                    for x in 0..size.0 {
+                        let o = (y * pitch + x * 4) as usize;
+                        out.extend_from_slice(&mapped[o..o + 3]);
+                    }
+                }
+                let name = format!("{:?}-{}-{}.ppm", scheme, page, PAGES[page].1).to_lowercase();
+                std::fs::write(std::path::Path::new(&dir).join(name), out).unwrap();
+            }
         }
     }
 }

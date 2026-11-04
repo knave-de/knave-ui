@@ -96,6 +96,11 @@ impl Scene {
                     .style
                     .radii
                     .unwrap_or(CornerRadii::uniform(tooltip.style.radius));
+                tip_paint.shadow = tooltip
+                    .style
+                    .background
+                    .as_ref()
+                    .and_then(|background| background.shadow);
                 shape(&mut self.list, b, Some(self.viewport), tip_paint);
                 text_cmd(
                     &mut self.list,
@@ -109,6 +114,32 @@ impl Scene {
         self.paint_dirty = false;
         self.stats.paints += 1;
         &self.list
+    }
+    /// Shadows are decoration outside the box, so ordinary content clipping
+    /// does not cut them off; scroll views and explicit bounds clips still do.
+    /// The reach stays anchored to the visible part of the caster.
+    fn shadow_clip(&self, index: usize, shadow: crate::BoxShadow) -> Option<Rect> {
+        let visible = self.nodes[index].clip?;
+        let mut child = index;
+        let boundary = loop {
+            let Some(parent) = self.nodes[child].parent else {
+                break self.nodes[child].parent_clip;
+            };
+            if matches!(self.nodes[parent].element.widget, Widget::Scroll)
+                || self.effective_layout(parent).clip == ClipMode::Bounds
+            {
+                break self.nodes[child].parent_clip;
+            }
+            child = parent;
+        }?;
+        let reach = shadow.blur_radius.max(0.75) * 4.0 + shadow.spread.max(0.0) + 2.0;
+        let reach = Rect::new(
+            visible.x + shadow.offset_x.min(0.0) - reach,
+            visible.y + shadow.offset_y.min(0.0) - reach,
+            visible.width + shadow.offset_x.abs() + 2.0 * reach,
+            visible.height + shadow.offset_y.abs() + 2.0 * reach,
+        );
+        boundary.intersection(reach)
     }
     fn opacity(&self, index: usize) -> f32 {
         self.computed_style(self.nodes[index].element.id)
@@ -190,6 +221,17 @@ impl Scene {
             {
                 paint.edge_borders = Some(computed.borders);
                 paint.border = None;
+            }
+            if let Some(shadow) = paint.shadow.take() {
+                let caster = ShapePaint {
+                    fill: Some(Color::rgba(0, 0, 0, 0)),
+                    border: None,
+                    edge_borders: None,
+                    shadow: Some(shadow),
+                    ..paint.clone()
+                };
+                let shadow_clip = self.shadow_clip(i, shadow);
+                shape(&mut self.list, b, shadow_clip, caster);
             }
             shape(&mut self.list, b, clip, paint.clone());
         }
@@ -797,7 +839,13 @@ impl Scene {
             &menu_style,
             menu_paint,
         );
-        shape(&mut self.list, b, clip, menu_paint);
+        // The surface's own shadow extends past the menu; its rows stay clipped.
+        let surface_clip = if menu_paint.shadow.is_some() {
+            Some(self.viewport)
+        } else {
+            clip
+        };
+        shape(&mut self.list, b, surface_clip, menu_paint);
         let Some(items) = node.element.widget.menu() else {
             if grouped {
                 self.list.commands.push(DisplayCommand::EndOpacity);
@@ -979,6 +1027,14 @@ fn styled_part_paint(
     };
     paint.opacity = default.opacity * part.computed.style.opacity;
     paint.radii = part.computed.style.radii.unwrap_or(default.radii);
+    if part.shadow_explicit {
+        paint.shadow = part
+            .computed
+            .style
+            .background
+            .as_ref()
+            .and_then(|background| background.shadow);
+    }
     if has_borders(&part.computed) {
         paint.edge_borders = Some(part.computed.borders);
         paint.border = None;

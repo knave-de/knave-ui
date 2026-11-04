@@ -321,6 +321,7 @@ impl Scene {
         }
         spans
     }
+    /// Resolve layout metrics from a matching interaction-state cache entry or CSS.
     pub(super) fn effective_layout(&self, index: usize) -> Layout {
         let mut layout = self.nodes[index].element.layout;
         let id = self.nodes[index].element.id;
@@ -929,6 +930,7 @@ impl Scene {
         order
     }
 }
+/// Copy the layout-affecting fields of a computed CSS style onto an element layout.
 fn apply_layout_style(layout: &mut Layout, style: &ComputedStyle) {
     if style.padding_explicit {
         layout.padding_edges = Some(style.padding);
