@@ -40,6 +40,10 @@ pub trait Application {
     fn refresh_theme(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
         Ok(())
     }
+    /// Called after input actions with the common text engine available.
+    fn after_action(&mut self, _text: &mut dyn TextMeasurer) -> AppResult {
+        Ok(())
+    }
     fn scene(&mut self) -> &mut Scene;
     /// Clipboard effects are handled before delivery; cut also reports the edited value.
     fn action(&mut self, action: Action) -> AppResult;
@@ -369,6 +373,8 @@ impl<A: Application> Host<A> {
                 Err(error) => self.app.clipboard_error(error.as_ref()),
             }
             self.app.action(action)?;
+            self.app
+                .after_action(&mut self.gpu.as_mut().expect("active window").painter)?;
         }
         self.sync(true);
         Ok(())
@@ -405,6 +411,9 @@ impl<A: Application> Host<A> {
     fn event(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) -> AppResult {
         for action in self.app.scene().advance(self.epoch.elapsed()) {
             self.app.action(action)?;
+            if let Some(gpu) = &mut self.gpu {
+                self.app.after_action(&mut gpu.painter)?;
+            }
         }
         match event {
             WindowEvent::CloseRequested | WindowEvent::Destroyed => event_loop.exit(),
@@ -556,6 +565,12 @@ impl<A: Application> ApplicationHandler for Host<A> {
         let actions = self.app.scene().advance(self.epoch.elapsed());
         for action in actions {
             if let Err(error) = self.app.action(action) {
+                self.fail(event_loop, error);
+                return;
+            }
+            if let Some(gpu) = &mut self.gpu
+                && let Err(error) = self.app.after_action(&mut gpu.painter)
+            {
                 self.fail(event_loop, error);
                 return;
             }

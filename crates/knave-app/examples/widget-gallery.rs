@@ -884,6 +884,7 @@ fn gallery() -> Result<Scene, UiError> {
 struct Gallery {
     palette: CommandPalette,
     fixtures_ready: bool,
+    fixtures_requested: bool,
     theme_policy: ThemePolicy,
     scene: Scene,
     clicks: u32,
@@ -913,6 +914,9 @@ impl Gallery {
     }
 
     fn select_page(&mut self, index: usize) -> Result<(), UiError> {
+        if index == 4 {
+            self.fixtures_requested = true;
+        }
         for (i, (page, label)) in PAGES.iter().enumerate() {
             self.scene.set_visible(ElementId(*page), i == index)?;
             self.scene.set_widget(
@@ -934,12 +938,16 @@ impl Gallery {
     }
 }
 impl Application for Gallery {
-    fn ready(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
+    fn after_action(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
+        if !self.fixtures_requested {
+            return Ok(());
+        }
         if self.fixtures_ready {
             return Ok(());
         }
         let desktop_css = self.scene.desktop_stylesheet().to_owned();
         let named_css = self.scene.user_theme_stylesheet().to_owned();
+        let mut groups = Vec::new();
         for (kind, title) in [
             "Button",
             "Checkbox",
@@ -1074,14 +1082,15 @@ impl Application for Gallery {
                 );
             }
             let id = 5600 + kind as u64 * 20;
-            self.scene.insert(
-                ElementId(5502),
-                Element::new(id, Widget::Panel).children(vec![
-                    Element::heading(id + 1, *title, HeadingLevel::H3),
-                    grid(id + 2, 3, cells),
-                ]),
-            )?;
+            groups.push(Element::new(id, Widget::Panel).children(vec![
+                Element::heading(id + 1, *title, HeadingLevel::H3),
+                grid(id + 2, 3, cells),
+            ]));
         }
+        self.scene.insert(
+            ElementId(5502),
+            Element::new(5599, Widget::Panel).children(groups),
+        )?;
         // `Scene::insert` rebuilds the retained tree; restore the startup
         // preference after the gallery's one-time fixture population.
         let named_css = self.scene.user_theme_stylesheet().to_owned();
@@ -1093,9 +1102,7 @@ impl Application for Gallery {
 
     fn theme_policy_changed(&mut self, policy: ThemePolicy) -> AppResult {
         if self.fixtures_ready {
-            for kind in 0..20 {
-                self.scene.remove(ElementId(5600 + kind * 20))?;
-            }
+            self.scene.remove(ElementId(5599))?;
             self.fixtures_ready = false;
         }
         self.theme_policy = policy;
@@ -1103,7 +1110,11 @@ impl Application for Gallery {
     }
 
     fn refresh_theme(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
-        self.ready(text)
+        if self.fixtures_requested {
+            self.fixtures_ready = false;
+            self.after_action(text)?;
+        }
+        Ok(())
     }
 
     fn scene(&mut self) -> &mut Scene {
@@ -1214,6 +1225,7 @@ fn main() -> AppResult {
         Gallery {
             palette: command_palette()?,
             fixtures_ready: false,
+            fixtures_requested: false,
             theme_policy,
             scene,
             clicks: 0,
@@ -1229,6 +1241,7 @@ mod tests {
         Gallery {
             palette: command_palette().unwrap(),
             fixtures_ready: false,
+            fixtures_requested: false,
             theme_policy: ThemePolicy::default(),
             scene: gallery().unwrap(),
             clicks: 0,
@@ -1264,16 +1277,21 @@ mod tests {
         assert_eq!(app.scene.focus(), Some(ElementId(NAV)));
     }
     #[test]
+    fn state_fixtures_are_absent_until_the_page_is_requested() {
+        let app = app();
+        assert!(app.scene.bounds(ElementId(5599)).is_none());
+        assert!(app.scene.bounds(ElementId(50_002)).is_none());
+    }
+    #[test]
     fn keyboard_traversal_excludes_hidden_pages_and_disabled_controls() {
         let mut app = app();
         app.scene.set_focus(Some(ElementId(NAV + 5))).unwrap();
         tab(&mut app.scene);
         assert_eq!(app.scene.focus(), Some(ElementId(130)));
         app.select_page(4).unwrap();
-        tab(&mut app.scene);
-        assert_eq!(app.scene.focus(), Some(ElementId(5110)));
-        tab(&mut app.scene);
-        assert_eq!(app.scene.focus(), Some(ElementId(5210)));
+        assert_eq!(app.scene.focus(), Some(ElementId(NAV + 4)));
+        assert!(app.scene.widget(ElementId(5599)).is_none());
+        assert!(app.scene.widget(ElementId(50_002)).is_none());
         assert!(app.scene.set_focus(Some(ElementId(5311))).is_err());
     }
     #[test]
@@ -1305,8 +1323,18 @@ mod tests {
             knave_renderer::WgpuPainter::new(&device, &queue, wgpu::TextureFormat::Rgba8UnormSrgb)
                 .unwrap();
         let mut app = app();
-        app.ready(&mut painter).unwrap();
         app.select_page(4).unwrap();
+        app.after_action(&mut painter).unwrap();
+        app.select_page(0).unwrap();
+        app.scene.set_focus(Some(ElementId(NAV + 5))).unwrap();
+        tab(&mut app.scene);
+        assert_eq!(app.scene.focus(), Some(ElementId(130)));
+        app.select_page(4).unwrap();
+        tab(&mut app.scene);
+        assert_eq!(app.scene.focus(), Some(ElementId(5110)));
+        tab(&mut app.scene);
+        assert_eq!(app.scene.focus(), Some(ElementId(5210)));
+        assert!(app.scene.set_focus(Some(ElementId(5311))).is_err());
         assert_eq!(
             app.scene
                 .accessibility()
