@@ -1141,6 +1141,45 @@ fn set_drop_target_relayouts_the_new_hovered_target() {
 }
 
 #[test]
+fn drop_styling_does_not_oscillate_target_after_layout() {
+    let source = Element::new(1, Widget::Text("Source".into()))
+        .drag_source(7, "Drag")
+        .layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        });
+    let target = Element::new(2, Widget::Panel)
+        .drop_target_accepting([7])
+        .layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(80.0),
+            offset: [0.0, 120.0],
+            ..Default::default()
+        });
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            ..Default::default()
+        })
+        .children(vec![source, target]);
+    let mut s = Scene::new(root).unwrap();
+    s.set_stylesheet("panel:drop { margin: 0 0 0 150px; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([target.x + 20.0, target.y + 20.0]));
+    assert_eq!(s.drag_target(), Some(ElementId(2)));
+    s.layout([400.0, 400.0], &mut Metrics);
+    let layouts = s.stats().layouts;
+    assert_eq!(s.drag_target(), Some(ElementId(2)));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(s.stats().layouts, layouts);
+}
+
+#[test]
 fn replace_preserves_focus_for_drag_sources() {
     let drag_source = || Element::new(1, Widget::Text("Drag".into())).drag_source(7, "Drag");
     let mut s = scene(vec![drag_source()]);

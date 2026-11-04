@@ -166,6 +166,49 @@ impl Scene {
             return;
         };
         let target = self.resolve_drop_target(drag.source, drag.payload, self.pointer);
+        self.apply_drag_target(target);
+    }
+
+    pub(super) fn refresh_drag_target_after_layout(&mut self) {
+        let Some(drag) = &self.drag else {
+            return;
+        };
+        let (source, payload, current) = (drag.source, drag.payload, drag.target);
+        let target = if self.stylesheet.interaction_affects_layout() {
+            match current {
+                Some(target) if self.drag_target_is_valid(target, source, payload) => Some(target),
+                _ => self.resolve_drop_target(source, payload, self.pointer),
+            }
+        } else {
+            self.resolve_drop_target(source, payload, self.pointer)
+        };
+        self.apply_drag_target(target);
+    }
+
+    fn drag_target_is_valid(&self, target: ElementId, source: ElementId, payload: u64) -> bool {
+        let Some(target_index) = self.indices.get(&target).copied() else {
+            return false;
+        };
+        let Some(source_index) = self.indices.get(&source).copied() else {
+            return false;
+        };
+        self.visible(target_index)
+            && self.eligible(target_index)
+            && !self.within(target_index, source_index)
+            && self
+                .modal_root()
+                .is_none_or(|root| self.within(target_index, root))
+            && self.nodes[target_index]
+                .element
+                .drop_target
+                .as_ref()
+                .is_some_and(|target| target.accepts(payload))
+    }
+
+    fn apply_drag_target(&mut self, target: Option<ElementId>) {
+        let Some(drag) = &self.drag else {
+            return;
+        };
         if target == drag.target {
             return;
         }
