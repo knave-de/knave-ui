@@ -9,34 +9,42 @@
  * and applications override these names. The second block is private to this
  * stylesheet. */
 :root {
-	--accent: #08A9D8;
-	--warning: #92600C;
-	--danger: #B43A43;
-	--canvas: #F5F6F8;
-	--panel-surface: #F5F6F8;
-	--surface: #DDE5EA;
-	--surface-hover: #C9D7DF;
-	--surface-pressed: #BFCFD7;
-	--surface-selected: #08A9D83D;
+	--accent: #0A7DAA;
+	--warning: #8A5A00;
+	--danger: #B3303B;
+	--canvas: #F2F4F7;
+	--panel-surface: #F2F4F7;
+	--surface: #E2E7EC;
+	--surface-hover: #D4DCE3;
+	--surface-pressed: #C8D1D9;
+	--surface-selected: #0A7DAA42;
 	--surface-menu: #FFFFFF;
-	--surface-tooltip: #DDE4E9;
+	--surface-tooltip: #FFFFFF;
 	--surface-overlay: #18222D80;
-	--text-disabled: #66727B;
-	--control-muted: #D9DFE4;
+	--text-disabled: #2E363D;
+	--control-muted: #E3E8ED;
+	--shadow-low: 0px 1px 2px #1B2A3A33;
+	--shadow-raised: 0px 2px 5px #1B2A3A2E;
+	--shadow-floating: 0px 6px 12px #1B2A3A38;
 
 	--text: #17181C;
 	--text-tooltip: #17181C;
-	--text-secondary: #35414A;
-	--text-accent: #00516B;
+	--text-secondary: #4A5560;
+	--text-accent: #005A78;
 	--surface-raised: #FFFFFF;
-	--surface-sunken: #E8EDF0;
-	--surface-tint: #08A9D83D;
-	--border: #D4DBE0;
-	--border-strong: #AFBBC4;
-	--accent-hover: #0788AE;
-	--accent-pressed: #087394;
-	--on-accent: #17181C;
-	--danger-surface: #FBE8E9;
+	--surface-sunken: #E8ECF0;
+	--surface-input-hover: #E2E7EC;
+	--surface-tint: #0A7DAA2E;
+	--border: #D6DDE3;
+	--border-strong: #76838F;
+	--accent-hover: #096A90;
+	--accent-pressed: #075775;
+	--on-accent: #FFFFFF;
+	--danger-surface: #FCE8EA;
+	--danger-hover: #9C2832;
+	--danger-pressed: #84212A;
+	--on-danger: #FFFFFF;
+	--nav-surface: #FFFFFF;
 }
 
 /* Structure and typography. */
@@ -183,7 +191,7 @@ context-menu {
 }
 
 button.primary {
-	color: var(--surface-raised);
+	color: var(--on-accent);
 	background-color: var(--accent);
 }
 
@@ -196,11 +204,12 @@ button.primary:pressed {
 }
 
 button.secondary {
-	background-color: var(--control-muted);
+	color: var(--text-accent);
+	background-color: var(--surface-tint);
 }
 
 button.secondary:hover {
-	background-color: var(--surface-hover);
+	background-color: var(--surface-selected);
 }
 
 button.ghost {
@@ -212,21 +221,21 @@ button.ghost:hover {
 }
 
 button.destructive {
-	color: var(--danger);
-	background-color: var(--danger-surface);
+	color: var(--on-danger);
+	background-color: var(--danger);
 }
 
 button.destructive:hover {
-	color: var(--danger);
-	background-color: var(--danger-surface);
+	background-color: var(--danger-hover);
 }
 
 button.destructive:pressed {
-	background-color: var(--surface-pressed);
+	background-color: var(--danger-pressed);
 }
 
+/* Busy buttons are disabled; full-strength text keeps the faded label legible. */
 button:busy {
-	color: var(--text-secondary);
+	color: var(--text);
 }
 
 :disabled {
@@ -241,18 +250,20 @@ text-input:disabled,
 combo-box:disabled,
 selectable:disabled,
 disclosure:disabled {
-	background-color: var(--surface-raised);
+	background-color: var(--surface);
 }
 
-/* Inputs sit below the page so they read as places to type. */
+/* The outline marks field boundaries without changing control geometry. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
+	outline-color: var(--border-strong);
+	outline-width: 1px;
 }
 
 text-input:hover,
 combo-box:hover {
-	background-color: var(--surface-hover);
+	background-color: var(--surface-input-hover);
 }
 
 text-input:invalid,
@@ -309,7 +320,7 @@ toggle:checked switch-track {
 }
 
 toggle:checked switch-thumb {
-	background-color: var(--surface);
+	background-color: var(--surface-raised);
 }
 
 slider,
@@ -350,14 +361,19 @@ scroll {
 	background-color: transparent;
 }
 
-/* Navigation stays quiet until selected, then takes a soft accent tint. */
+/* Navigation items read as quiet controls; the selected item takes the
+ * accent tint and drops its elevation. Sidebar items stay flat. */
 tab,
-sidebar-item,
 radio,
 segment,
 chip {
-	color: var(--text);
-	background-color: var(--surface-raised);
+	color: var(--text-secondary);
+	background-color: var(--nav-surface);
+}
+
+sidebar-item {
+	color: var(--text-secondary);
+	background-color: transparent;
 }
 
 tab:hover,
@@ -366,7 +382,7 @@ radio:hover,
 segment:hover,
 chip:hover {
 	color: var(--text);
-	background-color: var(--surface);
+	background-color: var(--surface-hover);
 }
 
 tab:selected,
@@ -375,12 +391,12 @@ radio:selected,
 segment:selected,
 chip:selected {
 	color: var(--text-accent);
-	background-color: var(--surface-tint);
+	background-color: var(--surface-selected);
 }
 
 collection-item:hover,
 table-cell:hover {
-	background-color: var(--surface);
+	background-color: var(--surface-hover);
 }
 
 table-header {
@@ -463,10 +479,57 @@ alert {
 	color: var(--danger);
 }
 
-/* Subtle elevation for interactive controls and raised panels. */
-button, panel, card, popup {
-	box-shadow: 0px 2px 4px #00000028;
+/* Elevation: resting controls sit just above the page, hover lifts them,
+ * pressing lands them. Raised content and floating surfaces cast larger
+ * shadows. Flat, selected and disabled items cast none. */
+button,
+dropdown,
+menu,
+context-menu,
+pagination,
+tab,
+radio,
+segment,
+chip,
+slider-thumb,
+switch-thumb {
+	box-shadow: var(--shadow-low);
 }
-button.ghost {
+
+button:hover,
+dropdown:hover,
+menu:hover,
+context-menu:hover,
+pagination:hover {
+	box-shadow: var(--shadow-raised);
+}
+
+card,
+empty-state,
+tooltip {
+	box-shadow: var(--shadow-raised);
+}
+
+popup,
+dialog,
+command-palette,
+toast,
+menu-surface {
+	box-shadow: var(--shadow-floating);
+}
+
+button.ghost,
+button.ghost:hover,
+button:pressed,
+button:selected,
+button:disabled,
+dropdown:disabled,
+menu:disabled,
+context-menu:disabled,
+pagination:disabled,
+tab:selected,
+radio:selected,
+segment:selected,
+chip:selected {
 	box-shadow: none;
 }

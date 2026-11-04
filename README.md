@@ -26,7 +26,11 @@ It distinguishes existing primitives, application compositions and missing featu
 with side-by-side selection/disabled states and live focus/pressed/expanded states.
 Tab/Shift+Tab moves focus; page switching preserves values and per-page scrolling.
 See the [coverage matrix](docs/architecture/widget-catalog.md) for remaining gaps.
-It runs independently of Knave Shell.
+It runs independently of Knave Shell. The Core page includes an elevation section
+showing the theme shadow tokens. To review every page in both schemes without a
+window, set `KNAVE_GALLERY_CAPTURE_DIR` and run
+`cargo test -p knave-app --example widget-gallery --locked capture_pages`; it
+writes one PPM frame per page and scheme to that directory.
 
 Try the CSS opacity comparison in a standalone window:
 
