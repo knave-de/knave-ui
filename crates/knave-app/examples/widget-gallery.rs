@@ -375,7 +375,61 @@ fn layout() -> Vec<Element> {
                 Element::expander(2504, 2505, "Second section", text(2506, "Collapsed content is excluded from focus and semantics"), false),
             ]),
         ]),
+        drag_drop_demo(),
     ]
+}
+fn drag_drop_demo() -> Element {
+    let chip = |id: u64, label: &str, payload: u64| {
+        Element::new(id, Widget::Button(label.into()))
+            .drag_source(payload, label)
+            .layout(Layout {
+                width: Length::Px(150.0),
+                ..Default::default()
+            })
+    };
+    let zone = |id: u64, title: &str, hint: &str| {
+        Element::new(id, Widget::Panel)
+            .class("drop-zone")
+            .drop_target_accepting([1, 2, 3])
+            .layout(Layout {
+                width: Length::Px(260.0),
+                height: Length::Px(96.0),
+                ..Default::default()
+            })
+            .children(vec![
+                Element::heading(id + 1, title, HeadingLevel::H3),
+                text(id + 2, hint),
+            ])
+    };
+    section(
+        7900,
+        "Drag and drop · element sources and targets",
+        vec![
+            text(
+                7902,
+                "Drag a chip onto either panel. The nearest compatible target highlights; Escape cancels and releasing elsewhere reports no target.",
+            ),
+            Element::new(7903, Widget::Panel)
+                .layout(Layout {
+                    flow: Flow::Row,
+                    ..Default::default()
+                })
+                .children(vec![
+                    chip(7904, "Chip 1", 1),
+                    chip(7905, "Chip 2", 2),
+                    chip(7906, "Chip 3", 3),
+                ]),
+            Element::new(7907, Widget::Panel)
+                .layout(Layout {
+                    flow: Flow::Row,
+                    ..Default::default()
+                })
+                .children(vec![
+                    zone(7910, "Inbox", "Drop a chip here"),
+                    zone(7920, "Done", "Drop a chip here"),
+                ]),
+        ],
+    )
 }
 fn sample_icon() -> Icon {
     Icon {
@@ -1197,6 +1251,55 @@ impl Application for Gallery {
                     Widget::Text(format!("Button pressed {} times", self.clicks)),
                 )?;
             }
+            Action::DragBegan { payload, .. } => {
+                self.scene.set_widget(
+                    STATUS,
+                    Widget::Text(format!("Dragging chip {payload} · release on a panel")),
+                )?;
+            }
+            Action::DragOver { target, .. } => {
+                let label = match target {
+                    Some(ElementId(7910)) => "Inbox",
+                    Some(ElementId(7920)) => "Done",
+                    Some(_) => "another target",
+                    None => "no compatible target",
+                };
+                self.scene
+                    .set_widget(STATUS, Widget::Text(format!("Drag target · {label}")))?;
+            }
+            Action::Drop {
+                source,
+                payload,
+                target,
+                ..
+            } => {
+                let Some(target) = target else {
+                    self.scene.set_widget(
+                        STATUS,
+                        Widget::Text("Released outside a drop target".into()),
+                    )?;
+                    return Ok(());
+                };
+                let (label, detail) = match target {
+                    ElementId(7910) => ("Inbox", ElementId(7912)),
+                    ElementId(7920) => ("Done", ElementId(7922)),
+                    _ => {
+                        self.scene.set_widget(
+                            STATUS,
+                            Widget::Text(format!("Dropped payload {payload} on {target:?}")),
+                        )?;
+                        return Ok(());
+                    }
+                };
+                self.scene.set_widget(
+                    detail,
+                    Widget::Text(format!("Chip {payload} from {source:?}")),
+                )?;
+                self.scene.set_widget(
+                    STATUS,
+                    Widget::Text(format!("Dropped chip {payload} in {label}")),
+                )?;
+            }
             Action::Copy(_) | Action::RequestPaste(_) => {}
             other => self
                 .scene
@@ -1321,6 +1424,38 @@ mod tests {
             Some(Widget::SceneSnapshot(_))
         ));
     }
+    #[test]
+    fn drag_and_drop_updates_the_demo_target() {
+        let mut app = app();
+        app.select_page(1).unwrap();
+        app.action(Action::Drop {
+            source: ElementId(7904),
+            payload: 1,
+            target: Some(ElementId(7910)),
+            position: [0.0, 0.0],
+        })
+        .unwrap();
+        assert!(matches!(
+            app.scene.widget(ElementId(7912)),
+            Some(Widget::Text(label)) if label.contains("Chip 1")
+        ));
+        assert!(matches!(
+            app.scene.widget(STATUS),
+            Some(Widget::Text(label)) if label.contains("Inbox")
+        ));
+        app.action(Action::Drop {
+            source: ElementId(7905),
+            payload: 2,
+            target: None,
+            position: [0.0, 0.0],
+        })
+        .unwrap();
+        assert!(matches!(
+            app.scene.widget(STATUS),
+            Some(Widget::Text(label)) if label.contains("outside")
+        ));
+    }
+
     #[test]
     fn password_values_never_reach_gallery_status_text() {
         let mut app = app();

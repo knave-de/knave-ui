@@ -712,6 +712,151 @@ fn drag_has_threshold_and_cancel_restores_origin() {
 }
 
 #[test]
+fn drag_source_drops_payload_on_compatible_target() {
+    let mut s = drag_drop_scene(Some(vec![7]));
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    let start = [source.x + 20.0, source.y + 20.0];
+    let over = [target.x + 40.0, target.y + 40.0];
+    s.event(Input::PointerDown(start));
+    assert_eq!(
+        s.event(Input::PointerMove([start[0] + 1.0, start[1] + 1.0]))
+            .action,
+        None
+    );
+    assert_eq!(
+        s.event(Input::PointerMove([start[0] + 10.0, start[1] + 10.0]))
+            .action,
+        Some(Action::DragBegan {
+            source: ElementId(1),
+            payload: 7
+        })
+    );
+    assert_eq!(s.dragging(), Some(ElementId(1)));
+    assert_eq!(
+        s.event(Input::PointerMove(over)).action,
+        Some(Action::DragOver {
+            source: ElementId(1),
+            target: Some(ElementId(2))
+        })
+    );
+    assert!(s.interaction(ElementId(1)).unwrap().dragging);
+    assert!(s.interaction(ElementId(2)).unwrap().drop_hovered);
+    let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
+    assert!(list.commands.iter().any(
+        |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Drag payload")
+    ));
+    assert_eq!(s.cursor(), CursorShape::Grabbing);
+    assert_eq!(
+        s.event(Input::PointerUp(over)).action,
+        Some(Action::Drop {
+            source: ElementId(1),
+            payload: 7,
+            target: Some(ElementId(2)),
+            position: over,
+        })
+    );
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.drag_target(), None);
+    assert!(!s.interaction(ElementId(2)).unwrap().drop_hovered);
+    assert_eq!(s.capture(), None);
+}
+
+#[test]
+fn drag_rejects_incompatible_targets_and_self_drops() {
+    let mut s = drag_drop_scene(Some(vec![8]));
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    let start = [source.x + 20.0, source.y + 20.0];
+    s.event(Input::PointerDown(start));
+    s.event(Input::PointerMove([start[0] + 10.0, start[1] + 10.0]));
+    let over = [target.x + 40.0, target.y + 40.0];
+    assert_eq!(s.event(Input::PointerMove(over)).action, None);
+    assert!(!s.interaction(ElementId(2)).unwrap().drop_hovered);
+    assert_eq!(
+        s.event(Input::PointerUp(over)).action,
+        Some(Action::Drop {
+            source: ElementId(1),
+            payload: 7,
+            target: None,
+            position: over,
+        })
+    );
+}
+
+#[test]
+fn dragging_to_other_elements_uses_nearest_compatible_ancestor() {
+    let mut s = drag_drop_scene(None);
+    let target = s.bounds(ElementId(2)).unwrap();
+    let child = s.bounds(ElementId(3)).unwrap();
+    let source = s.bounds(ElementId(1)).unwrap();
+    assert!(child.height > 0.0);
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([source.x + 30.0, source.y + 30.0]));
+    let over = [target.x + 40.0, target.y + child.y - target.y + 2.0];
+    assert_eq!(
+        s.event(Input::PointerMove(over)).action,
+        Some(Action::DragOver {
+            source: ElementId(1),
+            target: Some(ElementId(2))
+        })
+    );
+}
+
+#[test]
+fn escape_cancels_an_active_element_drag() {
+    let mut s = drag_drop_scene(Some(vec![7]));
+    let source = s.bounds(ElementId(1)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([source.x + 30.0, source.y + 30.0]));
+    assert!(s.dragging().is_some());
+    assert_eq!(
+        s.event(Input::Key {
+            key: Key::Escape,
+            pressed: true,
+            repeat: false,
+            modifiers: KeyModifiers::default(),
+        })
+        .action,
+        Some(Action::Cancelled(ElementId(1)))
+    );
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.capture(), None);
+    assert_eq!(s.cursor(), CursorShape::Grab);
+}
+
+fn drag_drop_scene(accept: Option<Vec<u64>>) -> Scene {
+    let source = Element::new(1, Widget::Text("Source".into()))
+        .layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        })
+        .drag_source(7, "Drag payload");
+    let mut target = Element::new(2, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(200.0),
+            height: Length::Px(120.0),
+            offset: [0.0, 120.0],
+            ..Default::default()
+        })
+        .children(vec![Element::new(3, Widget::Text("Drop here".into()))]);
+    target.drop_target = Some(match accept {
+        Some(payloads) => DropTarget::accepting(payloads),
+        None => DropTarget::any(),
+    });
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            ..Default::default()
+        })
+        .children(vec![source, target]);
+    let mut scene = Scene::new(root).unwrap();
+    scene.layout([400.0, 400.0], &mut Metrics);
+    scene
+}
+
+#[test]
 fn losing_focus_rejects_late_text_and_paste_and_restores_visual_focus() {
     let mut s = scene(vec![leaf(
         1,

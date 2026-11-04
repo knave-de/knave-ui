@@ -16,6 +16,7 @@ pub use collection::*;
 pub use color_picker::*;
 pub use navigation::*;
 mod disclosure;
+mod drag_drop;
 mod feedback;
 pub use components::*;
 pub use disclosure::*;
@@ -97,6 +98,7 @@ pub struct Scene {
     focus_visible: bool,
     hover: Option<ElementId>,
     capture: Option<Capture>,
+    drag: Option<drag_drop::DragState>,
     key_pressed: Option<ElementId>,
     pointer: [f32; 2],
     pointer_inside: bool,
@@ -360,6 +362,7 @@ impl Scene {
             focus_visible: false,
             hover: None,
             capture: None,
+            drag: None,
             key_pressed: None,
             pointer: [0.0; 2],
             pointer_inside: false,
@@ -703,6 +706,21 @@ impl Scene {
         next.focus_visible = self.focus_visible;
         next.hover = self.hover;
         next.capture = self.capture;
+        let had_drag = self.drag.is_some();
+        next.drag = self.drag.take().filter(|drag| {
+            next.capture
+                .is_some_and(|capture| capture.id == drag.source)
+                && next.indices.contains_key(&drag.source)
+                && drag
+                    .target
+                    .is_none_or(|target| next.indices.contains_key(&target))
+        });
+        if had_drag && next.drag.is_none() {
+            // Removing the source or target subtree cancels the gesture rather
+            // than allowing a later release to activate the source.
+            next.capture = None;
+            next.hover = None;
+        }
         next.key_pressed = self.key_pressed;
         next.pointer = self.pointer;
         next.pointer_inside = self.pointer_inside;
@@ -758,6 +776,12 @@ impl Scene {
             disabled: !self.eligible(i),
             selected,
             expanded: self.menu.as_ref().is_some_and(|m| m.owner == id),
+            dragging: self.drag.as_ref().is_some_and(|drag| drag.source == id),
+            drop_hovered: self
+                .drag
+                .as_ref()
+                .and_then(|drag| drag.target)
+                .is_some_and(|target| target == id),
         })
     }
     pub(super) fn interaction_style_snapshot(&self) -> Vec<(usize, Option<ComputedStyle>)> {
@@ -853,7 +877,7 @@ impl Scene {
             .iter()
             .enumerate()
             .filter(|(i, n)| {
-                n.element.widget.focusable()
+                (n.element.widget.focusable() || n.element.drag_source.is_some())
                     && self.group_tab_stop(*i)
                     && self.eligible(*i)
                     && root.is_none_or(|r| self.within(*i, r))
@@ -931,6 +955,7 @@ impl Scene {
 }
 fn validate(e: &Element) -> Result<(), UiError> {
     let l = e.layout;
+    drag_drop::validate_element_drag_data(e)?;
     if matches!(e.widget, Widget::Pagination { page, pages } if pages == 0 || page >= pages || pages > MAX_COLLECTION_ITEMS)
     {
         return Err(UiError::InvalidRange);

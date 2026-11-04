@@ -4,6 +4,9 @@ impl Scene {
     /// Resolve from current geometry, including stationary pointers after a layout change.
     /// Capture keeps text selection, slider and drag cursors stable outside their bounds.
     pub fn cursor(&self) -> CursorShape {
+        if self.drag.is_some() {
+            return CursorShape::Grabbing;
+        }
         if let Some(capture) = self.capture {
             return self.node_cursor(self.indices[&capture.id], true);
         }
@@ -64,6 +67,13 @@ impl Scene {
             let node = &self.nodes[i];
             if let Some(cursor) = node.element.cursor {
                 return cursor;
+            }
+            if node.element.drag_source.is_some() {
+                return if captured {
+                    CursorShape::Grabbing
+                } else {
+                    CursorShape::Grab
+                };
             }
             match &node.element.widget {
                 Widget::TextInput(_) | Widget::ComboBox { .. } => return CursorShape::Text,

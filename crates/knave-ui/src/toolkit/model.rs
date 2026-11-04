@@ -4,6 +4,8 @@ pub const MAX_ELEMENTS: usize = 2048;
 pub const MAX_DEPTH: usize = 48;
 pub const MAX_TEXT_BYTES: usize = 16 * 1024;
 pub const MAX_MENU_ITEMS: usize = 1024;
+/// Upper bound for payload IDs accepted by one drop target.
+pub const MAX_DROP_PAYLOADS: usize = 1024;
 /// Upper bound for caller supplied layout dimensions, in logical pixels.
 /// This keeps layout arithmetic finite and bounds renderer inputs.
 pub const MAX_LAYOUT_METRIC: f32 = 1_000_000.0;
@@ -477,6 +479,50 @@ impl Widget {
     }
 }
 
+/// Application-defined payload moved by pointer drag and drop.
+///
+/// The scene never interprets the identifier. Applications attach a source to
+/// an element, accept the same identifier on one or more targets, and apply
+/// their own state change when `Action::Drop` names a target.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DragSource {
+    pub payload: u64,
+    /// Short label painted beside the pointer while dragging.
+    pub label: String,
+}
+impl DragSource {
+    pub fn new(payload: u64, label: impl Into<String>) -> Self {
+        Self {
+            payload,
+            label: label.into(),
+        }
+    }
+}
+
+/// A region that accepts drag payloads. `accept: None` accepts every payload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DropTarget {
+    pub accept: Option<Vec<u64>>,
+}
+impl DropTarget {
+    pub fn any() -> Self {
+        Self { accept: None }
+    }
+    pub fn accepting(payloads: impl IntoIterator<Item = u64>) -> Self {
+        let mut accept: Vec<u64> = payloads.into_iter().collect();
+        accept.sort_unstable();
+        accept.dedup();
+        Self {
+            accept: Some(accept),
+        }
+    }
+    pub fn accepts(&self, payload: u64) -> bool {
+        self.accept
+            .as_ref()
+            .is_none_or(|accept| accept.contains(&payload))
+    }
+}
+
 /// Semantic pointer appearance; the platform host supplies the cursor image.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CursorShape {
@@ -526,6 +572,10 @@ pub struct Element {
     pub tooltip: Option<String>,
     /// None selects the widget default; explicit shapes also apply to its passive children.
     pub cursor: Option<CursorShape>,
+    /// Pointer drags from this element start an application drag-and-drop gesture.
+    pub drag_source: Option<DragSource>,
+    /// The nearest visible, enabled ancestor with a target accepts compatible drops.
+    pub drop_target: Option<DropTarget>,
 }
 impl Element {
     pub fn new(id: u64, widget: Widget) -> Self {
@@ -561,6 +611,8 @@ impl Element {
             children: Vec::new(),
             tooltip: None,
             cursor: None,
+            drag_source: None,
+            drop_target: None,
         }
     }
     /// Create text with the shared H1, H2 or H3 typography and automatic height.
@@ -609,6 +661,22 @@ impl Element {
         self.paint_surface = false;
         self
     }
+    /// Begin an application drag-and-drop gesture from this element after the
+    /// shared four-logical-pixel threshold. `label` is painted beside the pointer.
+    pub fn drag_source(mut self, payload: u64, label: impl Into<String>) -> Self {
+        self.drag_source = Some(DragSource::new(payload, label));
+        self
+    }
+    /// Accept every application payload in this element and its passive descendants.
+    pub fn drop_target(mut self) -> Self {
+        self.drop_target = Some(DropTarget::any());
+        self
+    }
+    /// Accept only these payload IDs in this element and its passive descendants.
+    pub fn drop_target_accepting(mut self, payloads: impl IntoIterator<Item = u64>) -> Self {
+        self.drop_target = Some(DropTarget::accepting(payloads));
+        self
+    }
     pub fn class(mut self, name: impl Into<String>) -> Self {
         self.classes.push(name.into());
         self
@@ -636,6 +704,7 @@ pub enum UiError {
     InvalidRange,
     TextTooLong,
     TooManyMenuItems,
+    TooManyPayloads,
     MissingElement(ElementId),
 }
 impl std::fmt::Display for UiError {
@@ -654,6 +723,10 @@ pub struct InteractionState {
     pub disabled: bool,
     pub selected: bool,
     pub expanded: bool,
+    /// This element is the source of the active pointer drag.
+    pub dragging: bool,
+    /// This element is the compatible drop target under the active pointer drag.
+    pub drop_hovered: bool,
 }
 
 /// Glyph-derived caret positions in logical coordinates. Byte offsets are UTF-8 boundaries.

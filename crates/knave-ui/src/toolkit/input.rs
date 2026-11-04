@@ -86,6 +86,23 @@ pub enum Action {
     DragStarted(ElementId),
     DragMoved(ElementId, [f32; 2]),
     DragFinished(ElementId, [f32; 2]),
+    /// A configured element drag source crossed its activation threshold.
+    DragBegan {
+        source: ElementId,
+        payload: u64,
+    },
+    /// The compatible drop target under an active drag changed.
+    DragOver {
+        source: ElementId,
+        target: Option<ElementId>,
+    },
+    /// Release completed a drag. `target` is `None` outside compatible regions.
+    Drop {
+        source: ElementId,
+        payload: u64,
+        target: Option<ElementId>,
+        position: [f32; 2],
+    },
     Cancelled(ElementId),
     TextChanged(ElementId, String),
     Submitted(ElementId, String),
@@ -111,7 +128,8 @@ impl Scene {
         if let Some(id) = target
             && !self.indices.get(&id).is_some_and(|i| {
                 self.eligible(*i)
-                    && self.nodes[*i].element.widget.focusable()
+                    && (self.nodes[*i].element.widget.focusable()
+                        || self.nodes[*i].element.drag_source.is_some())
                     && self.modal_root().is_none_or(|root| self.within(*i, root))
             })
         {
@@ -300,7 +318,7 @@ impl Scene {
                 return None;
             }
             let node = &self.nodes[i];
-            if node.element.widget.focusable() {
+            if node.element.widget.focusable() || node.element.drag_source.is_some() {
                 return Some(node.element.id);
             }
             i = node.parent?;
@@ -386,6 +404,9 @@ impl Scene {
         self.update_hover(p);
         let mut capture = self.capture?;
         let i = self.indices[&capture.id];
+        if self.nodes[i].element.drag_source.is_some() {
+            return self.drag_motion(p, &mut capture);
+        }
         match &self.nodes[i].element.widget {
             Widget::Slider(_) | Widget::Splitter(_) => {
                 self.move_slider(capture.id, p, capture.offset[0])
@@ -537,6 +558,9 @@ impl Scene {
         let capture = self.capture?;
         let update = self.motion(p);
         self.capture = None;
+        if let Some(drop) = self.drag_release(p) {
+            return Some(drop);
+        }
         self.paint_dirty = true;
         let i = self.indices[&capture.id];
         match &self.nodes[i].element.widget {
@@ -703,6 +727,7 @@ impl Scene {
     }
 
     pub(super) fn cancel_capture(&mut self) -> Option<ElementId> {
+        self.drag = None;
         let c = self.capture.take()?;
         let i = *self.indices.get(&c.id)?;
         match &mut self.nodes[i].element.widget {

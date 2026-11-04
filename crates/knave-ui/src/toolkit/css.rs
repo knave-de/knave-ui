@@ -642,6 +642,9 @@ fn parse_selector(source: &str) -> Result<Selector, StylesheetError> {
                             | "enabled"
                             | "disabled"
                             | "focus"
+                            | "dragging"
+                            | "drop"
+                            | "drop-target"
                             | "root"
                     ) {
                         return Err(StylesheetError::UnsupportedSelector);
@@ -1250,6 +1253,8 @@ fn state_matches(element: &Element, state: InteractionState, name: &str, is_root
         "enabled" => !state.disabled,
         "disabled" => state.disabled,
         "focus" => state.focused,
+        "dragging" => state.dragging,
+        "drop" | "drop-target" => state.drop_hovered,
         _ => false,
     }
 }
