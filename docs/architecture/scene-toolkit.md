@@ -38,7 +38,8 @@ scroll, capture and popup state by ID.
   and `Element::drop_target`. A source carries an opaque `u64` payload and a
   short ghost label; a target can accept every payload or a bounded allowlist.
   On release, the nearest visible, enabled compatible target is reported by
-  `Action::Drop`; the source subtree never targets itself. `Action::DragBegan`
+  `Action::Drop`; the source subtree never targets itself and resolution stays
+  inside the active modal scope. `Action::DragBegan`
   and `Action::DragOver` expose gesture and target changes, Escape or focus
   loss cancels, and releasing on empty space reports `target: None`. Targets
   match `:drop` (also `:drop-target`), sources match `:dragging`, and painting

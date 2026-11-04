@@ -858,6 +858,36 @@ fn drag_state_relayouts_when_state_css_affects_metrics() {
 }
 
 #[test]
+fn modal_drag_does_not_target_background_ancestors() {
+    let source = Element::new(11, Widget::Text("Drag".into()))
+        .drag_source(7, "Drag")
+        .layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        });
+    let mut popup = Element::new(10, Widget::Popup { modal: true })
+        .layout(Layout {
+            width: Length::Px(180.0),
+            height: Length::Px(100.0),
+            ..Default::default()
+        })
+        .children(vec![source]);
+    popup.visible = false;
+    let root = Element::new(0, Widget::Panel)
+        .drop_target()
+        .children(vec![popup]);
+    let mut s = Scene::new(root).unwrap();
+    s.open_popup(ElementId(10)).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let popup = s.bounds(ElementId(10)).unwrap();
+    s.event(Input::PointerDown([popup.x + 20.0, popup.y + 20.0]));
+    s.event(Input::PointerMove([popup.x + 30.0, popup.y + 30.0]));
+    assert_eq!(s.dragging(), Some(ElementId(11)));
+    assert_eq!(s.drag_target(), None);
+}
+
+#[test]
 fn replace_preserves_focus_for_drag_sources() {
     let drag_source = || Element::new(1, Widget::Text("Drag".into())).drag_source(7, "Drag");
     let mut s = scene(vec![drag_source()]);

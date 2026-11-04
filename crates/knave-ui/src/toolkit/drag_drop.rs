@@ -128,8 +128,12 @@ impl Scene {
         position: [f32; 2],
     ) -> Option<ElementId> {
         let source_index = *self.indices.get(&source)?;
+        let scope = self.modal_root();
         let mut current = self.top_node(position)?;
         loop {
+            if scope.is_some_and(|root| !self.within(current, root)) {
+                return None;
+            }
             let node = &self.nodes[current];
             if !self.within(current, source_index)
                 && self.eligible(current)
