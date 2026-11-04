@@ -585,9 +585,15 @@ impl<A: Application> ApplicationHandler for Host<A> {
                 .with_inner_size(LogicalSize::new(self.size[0], self.size[1]));
             #[cfg(target_os = "linux")]
             let attributes = {
-                use winit::platform::wayland::WindowAttributesExtWayland;
-                if let Some(app_id) = self.app.app_id() {
-                    attributes.with_name(app_id, "")
+                use winit::platform::wayland::{
+                    ActiveEventLoopExtWayland, WindowAttributesExtWayland,
+                };
+                if event_loop.is_wayland() {
+                    if let Some(app_id) = self.app.app_id() {
+                        attributes.with_name(app_id, "")
+                    } else {
+                        attributes
+                    }
                 } else {
                     attributes
                 }
