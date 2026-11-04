@@ -321,22 +321,23 @@ impl Scene {
         }
         spans
     }
+    /// Resolve layout metrics from a matching interaction-state cache entry or CSS.
     pub(super) fn effective_layout(&self, index: usize) -> Layout {
         let mut layout = self.nodes[index].element.layout;
-        if let Some(style) = self.computed_style(self.nodes[index].element.id) {
-            if style.padding_explicit {
-                layout.padding_edges = Some(style.padding);
-            }
-            layout.border_edges = Insets {
-                top: style.borders.top.width,
-                right: style.borders.right.width,
-                bottom: style.borders.bottom.width,
-                left: style.borders.left.width,
-            };
-            layout.margin = style.margin;
-            layout.gap = style.gap;
-            layout.width = style.width;
-            layout.height = style.height;
+        let id = self.nodes[index].element.id;
+        let state = self.interaction(id).unwrap();
+        let cached = {
+            let cache = self.style_cache.lock().unwrap_or_else(|e| e.into_inner());
+            cache
+                .get(index)
+                .and_then(Option::as_ref)
+                .filter(|(cached_state, _)| *cached_state == state)
+                .map(|(_, style)| apply_layout_style(&mut layout, style))
+        };
+        if cached.is_none()
+            && let Some(style) = self.computed_style_for(id, state)
+        {
+            apply_layout_style(&mut layout, &style);
         }
         layout
     }
@@ -928,6 +929,22 @@ impl Scene {
         }
         order
     }
+}
+/// Copy the layout-affecting fields of a computed CSS style onto an element layout.
+fn apply_layout_style(layout: &mut Layout, style: &ComputedStyle) {
+    if style.padding_explicit {
+        layout.padding_edges = Some(style.padding);
+    }
+    layout.border_edges = Insets {
+        top: style.borders.top.width,
+        right: style.borders.right.width,
+        bottom: style.borders.bottom.width,
+        left: style.borders.left.width,
+    };
+    layout.margin = style.margin;
+    layout.gap = style.gap;
+    layout.width = style.width;
+    layout.height = style.height;
 }
 fn validate(e: &Element) -> Result<(), UiError> {
     let l = e.layout;
