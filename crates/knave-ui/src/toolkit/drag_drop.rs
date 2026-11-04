@@ -28,8 +28,8 @@ impl Scene {
         self.drag.as_ref().and_then(|drag| drag.target)
     }
 
-    /// Replace or clear an element's drag source payload. Clearing an active
-    /// source cancels its gesture.
+    /// Replace or clear an element's drag source payload. Clearing or changing
+    /// the payload of an active source cancels its gesture.
     pub fn set_drag_source(
         &mut self,
         id: ElementId,
@@ -39,11 +39,23 @@ impl Scene {
         if let Some(source) = &source {
             validate_drag_source(source)?;
         }
-        if source.is_none() && self.drag.as_ref().is_some_and(|drag| drag.source == id) {
+        let active = self.drag.as_ref().is_some_and(|drag| drag.source == id);
+        let payload_changes = active
+            && source.as_ref().map(|source| source.payload)
+                != self.drag.as_ref().map(|drag| drag.payload);
+        let previous_styles =
+            (active && payload_changes && self.stylesheet.interaction_affects_layout())
+                .then(|| self.interaction_style_snapshot());
+        if active && payload_changes {
             self.cancel_capture();
         }
         self.nodes[i].element.drag_source = source;
-        self.paint_dirty = true;
+        if let Some(previous_styles) = previous_styles {
+            self.clear_style_cache();
+            self.finish_interaction_style_change(previous_styles);
+        } else {
+            self.paint_dirty = true;
+        }
         Ok(())
     }
 
@@ -149,13 +161,26 @@ impl Scene {
         }
     }
 
-    fn refresh_drag_target(&mut self) {
+    pub(super) fn refresh_drag_target(&mut self) {
         let Some(drag) = &self.drag else {
             return;
         };
         let target = self.resolve_drop_target(drag.source, drag.payload, self.pointer);
+        if target == drag.target {
+            return;
+        }
+        let previous_styles = self
+            .stylesheet
+            .interaction_affects_layout()
+            .then(|| self.interaction_style_snapshot());
         if let Some(drag) = &mut self.drag {
             drag.target = target;
+        }
+        if let Some(previous_styles) = previous_styles {
+            self.clear_style_cache();
+            self.finish_interaction_style_change(previous_styles);
+        } else {
+            self.paint_dirty = true;
         }
     }
 

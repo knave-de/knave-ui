@@ -872,6 +872,17 @@ fn escape_cancels_a_drag_from_a_nonempty_search_input() {
     assert_eq!(s.capture(), None);
     assert_eq!(s.text_input_state().unwrap().text, "query");
     assert_eq!(
+        s.event(Input::Key {
+            key: Key::Escape,
+            pressed: true,
+            repeat: true,
+            modifiers: KeyModifiers::default(),
+        })
+        .action,
+        None
+    );
+    assert_eq!(s.text_input_state().unwrap().text, "query");
+    assert_eq!(
         s.event(escape()).action,
         Some(Action::TextChanged(ElementId(1), String::new()))
     );
@@ -1001,6 +1012,132 @@ fn replace_without_drag_source_cancels_retained_drag() {
             .action,
         None
     );
+}
+
+#[test]
+fn changing_active_drag_payload_cancels_the_gesture() {
+    let mut s = drag_drop_scene(Some(vec![7]));
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    let start = [source.x + 20.0, source.y + 20.0];
+    s.event(Input::PointerDown(start));
+    s.event(Input::PointerMove([start[0] + 10.0, start[1] + 10.0]));
+    let over = [target.x + 40.0, target.y + 40.0];
+    s.event(Input::PointerMove(over));
+    assert_eq!(s.drag_target(), Some(ElementId(2)));
+    s.set_drag_source(ElementId(1), Some(DragSource::new(8, "Other payload")))
+        .unwrap();
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.drag_target(), None);
+    assert_eq!(s.capture(), None);
+    assert_eq!(s.event(Input::PointerUp(over)).action, None);
+}
+
+#[test]
+fn replace_recomputes_drag_target_after_layout() {
+    let root = |enabled: bool| {
+        let source = Element::new(1, Widget::Text("Source".into()))
+            .drag_source(7, "Drag payload")
+            .layout(Layout {
+                width: Length::Px(100.0),
+                height: Length::Px(40.0),
+                ..Default::default()
+            });
+        let mut target = Element::new(2, Widget::Panel)
+            .drop_target_accepting([7])
+            .layout(Layout {
+                width: Length::Px(200.0),
+                height: Length::Px(120.0),
+                offset: [0.0, 120.0],
+                ..Default::default()
+            });
+        target.enabled = enabled;
+        Element::new(0, Widget::Panel)
+            .layout(Layout {
+                flow: Flow::Overlay,
+                ..Default::default()
+            })
+            .children(vec![source, target])
+    };
+    let mut s = Scene::new(root(true)).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([target.x + 40.0, target.y + 40.0]));
+    assert_eq!(s.drag_target(), Some(ElementId(2)));
+    s.replace(root(false)).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(s.drag_target(), None);
+    assert!(!s.interaction(ElementId(2)).unwrap().drop_hovered);
+}
+
+#[test]
+fn clearing_active_drag_source_relayouts() {
+    let source = Element::new(1, Widget::Text("Drag".into()))
+        .drag_source(7, "Drag")
+        .layout(Layout {
+            width: Length::Px(100.0),
+            ..Default::default()
+        });
+    let sibling = Element::new(2, Widget::Text("Sibling".into())).layout(Layout {
+        width: Length::Px(100.0),
+        height: Length::Px(20.0),
+        ..Default::default()
+    });
+    let mut s = Scene::new(Element::new(0, Widget::Panel).children(vec![source, sibling])).unwrap();
+    s.set_stylesheet("text:dragging { padding: 20px; }")
+        .unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source_before = s.bounds(ElementId(1)).unwrap();
+    let sibling_before = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([10.0, 5.0]));
+    s.event(Input::PointerMove([15.0, 5.0]));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert!(s.bounds(ElementId(1)).unwrap().height > source_before.height);
+    s.set_drag_source(ElementId(1), None).unwrap();
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.capture(), None);
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert_eq!(s.bounds(ElementId(1)).unwrap().height, source_before.height);
+    assert_eq!(s.bounds(ElementId(2)).unwrap().y, sibling_before.y);
+}
+
+#[test]
+fn set_drop_target_relayouts_the_new_hovered_target() {
+    let source = Element::new(1, Widget::Text("Source".into()))
+        .drag_source(7, "Drag")
+        .layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        });
+    let target = Element::new(2, Widget::Text("Drop".into())).layout(Layout {
+        width: Length::Px(100.0),
+        offset: [0.0, 120.0],
+        ..Default::default()
+    });
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            ..Default::default()
+        })
+        .children(vec![source, target]);
+    let mut s = Scene::new(root).unwrap();
+    s.set_stylesheet("text:drop { padding: 20px; }").unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target_before = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([source.x + 30.0, source.y + 30.0]));
+    let over = [target_before.x + 20.0, target_before.y + 10.0];
+    s.event(Input::PointerMove(over));
+    assert_eq!(s.drag_target(), None);
+    s.set_drop_target(ElementId(2), Some(DropTarget::any()))
+        .unwrap();
+    assert_eq!(s.drag_target(), Some(ElementId(2)));
+    s.layout([400.0, 400.0], &mut Metrics);
+    assert!(s.bounds(ElementId(2)).unwrap().height > target_before.height);
 }
 
 #[test]

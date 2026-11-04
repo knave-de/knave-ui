@@ -785,6 +785,9 @@ impl Scene {
             return None;
         }
         if key == Key::Escape {
+            if repeat {
+                return None;
+            }
             let drag_capture = self.drag.is_some()
                 || self.capture.is_some_and(|capture| {
                     self.indices

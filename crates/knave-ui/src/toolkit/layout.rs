@@ -66,6 +66,7 @@ impl Scene {
         self.layout_dirty = false;
         self.paint_dirty = true;
         self.stats.layouts += 1;
+        self.refresh_drag_target();
         self.update_menu_bounds();
     }
     fn measure_node(&mut self, i: usize, width: f32, text: &mut dyn TextMeasurer) -> [f32; 2] {
