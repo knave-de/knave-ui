@@ -785,7 +785,7 @@ fn coverage() -> Vec<Element> {
                 ),
                 text(
                     6103,
-                    "The window titlebar is winit's platform decoration fallback, not a Knave UI widget or a custom Knave design. The host requests compositor decorations when available; otherwise it retains usable client decorations.",
+                    "The host requests compositor decorations when available; otherwise it retains usable client decorations. The gallery identifies itself as org.knave.WidgetGallery on Wayland.",
                 ),
                 text(
                     6104,
@@ -934,6 +934,10 @@ impl Gallery {
     }
 }
 impl Application for Gallery {
+    fn app_id(&self) -> Option<&str> {
+        Some("org.knave.WidgetGallery")
+    }
+
     fn ready(&mut self, text: &mut dyn TextMeasurer) -> AppResult {
         if self.fixtures_ready {
             return Ok(());
