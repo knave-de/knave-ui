@@ -52,12 +52,14 @@ when constructing one.
 | Layout | Row, column, grid, overlay, panel, scroll, spacing/clipping; pointer/keyboard split resizing with minimum pane sizes and cancellation; disclosures and exclusive accordions |
 | Navigation | Tabs, sidebar groups, breadcrumbs, pagination, right-click/Menu/Shift+F10 context triggers, modal searchable command palette |
 | Collections | Single-selection lists/icon grids, expandable trees, tables with column sorting and stable row identity; bounded data with visible-row painting |
+| Drag and drop | Element sources with opaque payload IDs, optional ghost labels, compatible ancestor targets with allowlists, pointer-threshold activation, cancellation and `:dragging`/`:drop` states |
 | Feedback/overlays | Determinate/indeterminate progress, spinner, semantic alert/status, expiring/dismissible toasts, menus, popup/dialog/modal focus scopes and empty-state composition |
 
 These are application-toolkit contracts, not file-manager business logic. Tables
 sort supplied text columns and trees consume supplied parent relationships. They
-do not fetch filesystem data or provide spreadsheet editing or drag-and-drop
-filesystem operations.
+do not fetch filesystem data or provide spreadsheet editing. Element drag and
+drop transfers application payload IDs between compatible scene targets; it
+does not read, write or move filesystem entries.
 
 ## Keyboard, selection and accessibility
 
@@ -122,10 +124,14 @@ command/text payloads.
 
 This is an unreleased Rust source API change: `Widget`/`Action` gain variants,
 `Element` gains component/semantic metadata and `TextInputState` gains purpose.
-Update exhaustive matches and literal construction together. Shell and standalone
-hosts adopt password hints and context-menu input. No Knave desktop payload,
-configuration schema or persisted-data migration is introduced. Publish the UI
-revision before pinning Shell; roll back the coordinated revisions together.
+Drag and drop additionally adds `Element` source/target metadata, `DragSource`
+and `DropTarget` values, `Action::{DragBegan, DragOver, Drop}`,
+`InteractionState` fields and accessibility labels. Update exhaustive matches
+and literal construction together; prefer `..Default::default()` for
+`InteractionState`. Shell and standalone hosts adopt password hints and
+context-menu input. No Knave desktop payload, configuration schema or persisted
+data migration is introduced. Publish the UI revision before pinning Shell; roll
+back the coordinated revisions together.
 
 Tests cover typed effects, disabled/hidden exclusion, group traversal, password
 privacy, multiline caret metrics, validation, split cancellation, accordion focus,

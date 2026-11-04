@@ -86,6 +86,23 @@ pub enum Action {
     DragStarted(ElementId),
     DragMoved(ElementId, [f32; 2]),
     DragFinished(ElementId, [f32; 2]),
+    /// A configured element drag source crossed its activation threshold.
+    DragBegan {
+        source: ElementId,
+        payload: u64,
+    },
+    /// The compatible drop target under an active drag changed.
+    DragOver {
+        source: ElementId,
+        target: Option<ElementId>,
+    },
+    /// Release completed a drag. `target` is `None` outside compatible regions.
+    Drop {
+        source: ElementId,
+        payload: u64,
+        target: Option<ElementId>,
+        position: [f32; 2],
+    },
     Cancelled(ElementId),
     TextChanged(ElementId, String),
     Submitted(ElementId, String),
@@ -111,7 +128,7 @@ impl Scene {
         if let Some(id) = target
             && !self.indices.get(&id).is_some_and(|i| {
                 self.eligible(*i)
-                    && self.nodes[*i].element.widget.focusable()
+                    && self.focusable(*i)
                     && self.modal_root().is_none_or(|root| self.within(*i, root))
             })
         {
@@ -300,7 +317,7 @@ impl Scene {
                 return None;
             }
             let node = &self.nodes[i];
-            if node.element.widget.focusable() {
+            if self.focusable(i) {
                 return Some(node.element.id);
             }
             i = node.parent?;
@@ -386,6 +403,9 @@ impl Scene {
         self.update_hover(p);
         let mut capture = self.capture?;
         let i = self.indices[&capture.id];
+        if self.nodes[i].element.drag_source.is_some() {
+            return self.drag_motion(p, &mut capture);
+        }
         match &self.nodes[i].element.widget {
             Widget::Slider(_) | Widget::Splitter(_) => {
                 self.move_slider(capture.id, p, capture.offset[0])
@@ -535,8 +555,21 @@ impl Scene {
             return None;
         }
         let capture = self.capture?;
-        let update = self.motion(p);
+        let source_has_drag = self
+            .indices
+            .get(&capture.id)
+            .is_some_and(|i| self.nodes[*i].element.drag_source.is_some());
+        let update = if source_has_drag && self.drag.is_none() {
+            // A release without an intervening move is a click, not a drag.
+            // Do not start a gesture and discard its DragBegan action.
+            None
+        } else {
+            self.motion(p)
+        };
         self.capture = None;
+        if let Some(drop) = self.drag_release(p) {
+            return Some(drop);
+        }
         self.paint_dirty = true;
         let i = self.indices[&capture.id];
         match &self.nodes[i].element.widget {
@@ -703,6 +736,7 @@ impl Scene {
     }
 
     pub(super) fn cancel_capture(&mut self) -> Option<ElementId> {
+        self.drag = None;
         let c = self.capture.take()?;
         let i = *self.indices.get(&c.id)?;
         match &mut self.nodes[i].element.widget {
@@ -751,6 +785,18 @@ impl Scene {
             return None;
         }
         if key == Key::Escape {
+            if repeat {
+                return None;
+            }
+            let drag_capture = self.drag.is_some()
+                || self.capture.is_some_and(|capture| {
+                    self.indices
+                        .get(&capture.id)
+                        .is_some_and(|i| self.nodes[*i].element.drag_source.is_some())
+                });
+            if drag_capture && let Some(id) = self.cancel_capture() {
+                return Some(Action::Cancelled(id));
+            }
             if let Some(id) = self.focus
                 && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
                     &mut self.nodes[self.indices[&id]].element.widget
@@ -947,7 +993,15 @@ impl Scene {
     }
     fn interaction_styles_may_change(&self, input: &Input) -> bool {
         match input {
-            Input::PointerMove(position) => self.hit_test(*position) != self.hover,
+            Input::PointerMove(position) => {
+                self.hit_test(*position) != self.hover
+                    || self.drag.is_some()
+                    || self.capture.is_some_and(|capture| {
+                        self.indices
+                            .get(&capture.id)
+                            .is_some_and(|i| self.nodes[*i].element.drag_source.is_some())
+                    })
+            }
             Input::PointerDown(_) | Input::ContextMenu(_) => true,
             Input::PointerUp(_) => self.capture.is_some() || self.key_pressed.is_some(),
             Input::PointerLeave => self.hover.is_some(),

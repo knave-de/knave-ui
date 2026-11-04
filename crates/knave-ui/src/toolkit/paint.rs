@@ -57,6 +57,7 @@ impl Scene {
             self.list.commands.push(DisplayCommand::EndOpacity);
         }
         self.paint_menu();
+        Self::paint_drag_ghost(self, text);
         if self.menu.is_none()
             && self.capture.is_none()
             && let Some(id) = self.hover
@@ -238,12 +239,21 @@ impl Scene {
         let outline = e
             .paint_surface
             .then(|| {
-                computed.as_ref().and_then(|c| c.outline).or_else(|| {
-                    (state.focused && self.focus_visible && !state.disabled).then_some(Border {
-                        color: style.focus,
-                        width: 1.0,
+                computed
+                    .as_ref()
+                    .and_then(|c| c.outline)
+                    .or_else(|| {
+                        state.drop_hovered.then_some(Border {
+                            color: self.theme_color("--accent").unwrap_or(style.focus),
+                            width: 2.0,
+                        })
                     })
-                })
+                    .or_else(|| {
+                        (state.focused && self.focus_visible && !state.disabled).then_some(Border {
+                            color: style.focus,
+                            width: 1.0,
+                        })
+                    })
             })
             .flatten();
         if let Some(outline) = outline.filter(|o| o.width > 0.0) {

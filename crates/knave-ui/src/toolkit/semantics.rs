@@ -68,6 +68,8 @@ pub struct AccessibleNode {
     pub current: bool,
     pub invalid: bool,
     pub busy: bool,
+    pub draggable: bool,
+    pub drop_target: bool,
     pub value: Option<f64>,
     pub items: Vec<AccessibleItem>,
 }
@@ -147,6 +149,8 @@ impl Scene {
                     current: e.semantics.current,
                     invalid: e.semantics.invalid || matches!(&e.widget, Widget::TextInput(edit) if edit.validation_message().is_some()),
                     busy: e.semantics.busy || matches!(e.widget, Widget::Spinner | Widget::Progress { value: None }),
+                    draggable: e.drag_source.is_some(),
+                    drop_target: e.drop_target.is_some(),
                     items: match &e.widget { Widget::Collection(c) => c.accessibility(layout.insets().apply(node.bounds), node.scroll), _ => self.menu_accessibility(e.id) },
                     value: match e.widget {
                         Widget::Progress { value } => value,

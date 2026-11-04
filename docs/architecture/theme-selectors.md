@@ -6,8 +6,9 @@ loaded from `$XDG_DATA_HOME/knave/themes/<theme-name>/light.css` or `dark.css`
 CSS block comments (`/* ... */`) are supported. Selectors can use a type, `.class`, `#style-id`, descendant spaces, commas and
 these states: `:hover`, `:focus`, `:pressed` (also `:active`), `:selected`,
 `:checked`, `:indeterminate`, `:expanded`, `:invalid`, `:busy`, `:enabled`,
-`:disabled` and `:root`. `*` matches retained elements. Custom properties and
-`var(--name)` are inherited; `var(--name, fallback)` is supported.
+`:disabled`, `:dragging`, `:drop` (also `:drop-target`) and `:root`. `*` matches
+retained elements. Custom properties and `var(--name)` are inherited;
+`var(--name, fallback)` is supported.
 Stylesheets cascade in five ordered layers: scheme defaults, shell/component
 styles, the selected named theme, the high-contrast or monochrome policy, then
 application overrides. A later layer always takes precedence over an earlier
