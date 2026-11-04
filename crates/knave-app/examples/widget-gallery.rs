@@ -1465,6 +1465,7 @@ mod tests {
             app.ready(&mut painter).unwrap();
             for page in 0..PAGES.len() {
                 app.select_page(page).unwrap();
+                app.after_action(&mut painter).unwrap();
                 app.scene.set_focus(None).unwrap();
                 let list = app
                     .scene
