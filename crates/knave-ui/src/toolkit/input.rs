@@ -785,6 +785,15 @@ impl Scene {
             return None;
         }
         if key == Key::Escape {
+            let drag_capture = self.drag.is_some()
+                || self.capture.is_some_and(|capture| {
+                    self.indices
+                        .get(&capture.id)
+                        .is_some_and(|i| self.nodes[*i].element.drag_source.is_some())
+                });
+            if drag_capture && let Some(id) = self.cancel_capture() {
+                return Some(Action::Cancelled(id));
+            }
             if let Some(id) = self.focus
                 && let Widget::TextInput(edit) | Widget::ComboBox { edit, .. } =
                     &mut self.nodes[self.indices[&id]].element.widget

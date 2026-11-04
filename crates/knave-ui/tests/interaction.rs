@@ -826,6 +826,58 @@ fn escape_cancels_an_active_element_drag() {
 }
 
 #[test]
+fn escape_cancels_a_drag_from_a_nonempty_search_input() {
+    let edit = TextEdit::new("query")
+        .unwrap()
+        .with_mode(InputMode::Search)
+        .unwrap();
+    let source = Element::new(1, Widget::TextInput(edit))
+        .drag_source(7, "Search")
+        .layout(Layout {
+            width: Length::Px(200.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        });
+    let target = Element::new(2, Widget::Panel)
+        .layout(Layout {
+            width: Length::Px(200.0),
+            height: Length::Px(120.0),
+            offset: [0.0, 120.0],
+            ..Default::default()
+        })
+        .drop_target_accepting([7]);
+    let root = Element::new(0, Widget::Panel)
+        .layout(Layout {
+            flow: Flow::Overlay,
+            ..Default::default()
+        })
+        .children(vec![source, target]);
+    let mut s = Scene::new(root).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let source = s.bounds(ElementId(1)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    s.event(Input::PointerMove([source.x + 30.0, source.y + 30.0]));
+    assert!(s.dragging().is_some());
+    let escape = || Input::Key {
+        key: Key::Escape,
+        pressed: true,
+        repeat: false,
+        modifiers: KeyModifiers::default(),
+    };
+    assert_eq!(
+        s.event(escape()).action,
+        Some(Action::Cancelled(ElementId(1)))
+    );
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.capture(), None);
+    assert_eq!(s.text_input_state().unwrap().text, "query");
+    assert_eq!(
+        s.event(escape()).action,
+        Some(Action::TextChanged(ElementId(1), String::new()))
+    );
+}
+
+#[test]
 fn drag_state_relayouts_when_state_css_affects_metrics() {
     let source = Element::new(1, Widget::Text("Drag".into()))
         .drag_source(7, "Drag")
