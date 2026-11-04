@@ -710,7 +710,14 @@ impl Scene {
         next.drag = self.drag.take().filter(|drag| {
             next.capture
                 .is_some_and(|capture| capture.id == drag.source)
-                && next.indices.contains_key(&drag.source)
+                && next.indices.get(&drag.source).is_some_and(|i| {
+                    next.eligible(*i)
+                        && next.nodes[*i]
+                            .element
+                            .drag_source
+                            .as_ref()
+                            .is_some_and(|source| source.payload == drag.payload)
+                })
                 && drag
                     .target
                     .is_none_or(|target| next.indices.contains_key(&target))

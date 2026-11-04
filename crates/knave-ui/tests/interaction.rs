@@ -888,6 +888,70 @@ fn modal_drag_does_not_target_background_ancestors() {
 }
 
 #[test]
+fn pointer_up_without_prior_move_does_not_start_a_drag() {
+    let mut s = drag_drop_scene(Some(vec![7]));
+    let source = s.bounds(ElementId(1)).unwrap();
+    let target = s.bounds(ElementId(2)).unwrap();
+    s.event(Input::PointerDown([source.x + 20.0, source.y + 20.0]));
+    assert_eq!(
+        s.event(Input::PointerUp([target.x + 40.0, target.y + 40.0]))
+            .action,
+        None
+    );
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.capture(), None);
+}
+
+#[test]
+fn replace_without_drag_source_cancels_retained_drag() {
+    let source = |draggable: bool| {
+        let element = Element::new(1, Widget::Text("Source".into())).layout(Layout {
+            width: Length::Px(100.0),
+            height: Length::Px(40.0),
+            ..Default::default()
+        });
+        if draggable {
+            element.drag_source(7, "Drag payload")
+        } else {
+            element
+        }
+    };
+    let target = || {
+        Element::new(2, Widget::Panel)
+            .layout(Layout {
+                width: Length::Px(200.0),
+                height: Length::Px(120.0),
+                offset: [0.0, 120.0],
+                ..Default::default()
+            })
+            .drop_target_accepting([7])
+    };
+    let root = |source| {
+        Element::new(0, Widget::Panel)
+            .layout(Layout {
+                flow: Flow::Overlay,
+                ..Default::default()
+            })
+            .children(vec![source, target()])
+    };
+    let mut s = Scene::new(root(source(true))).unwrap();
+    s.layout([400.0, 400.0], &mut Metrics);
+    let start = s.bounds(ElementId(1)).unwrap();
+    s.event(Input::PointerDown([start.x + 20.0, start.y + 20.0]));
+    s.event(Input::PointerMove([start.x + 30.0, start.y + 30.0]));
+    assert_eq!(s.dragging(), Some(ElementId(1)));
+    s.replace(root(source(false))).unwrap();
+    assert_eq!(s.dragging(), None);
+    assert_eq!(s.capture(), None);
+    let target = s.bounds(ElementId(2)).unwrap();
+    assert_eq!(
+        s.event(Input::PointerUp([target.x + 40.0, target.y + 40.0]))
+            .action,
+        None
+    );
+}
+
+#[test]
 fn replace_preserves_focus_for_drag_sources() {
     let drag_source = || Element::new(1, Widget::Text("Drag".into())).drag_source(7, "Drag");
     let mut s = scene(vec![drag_source()]);

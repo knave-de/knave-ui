@@ -555,7 +555,17 @@ impl Scene {
             return None;
         }
         let capture = self.capture?;
-        let update = self.motion(p);
+        let source_has_drag = self
+            .indices
+            .get(&capture.id)
+            .is_some_and(|i| self.nodes[*i].element.drag_source.is_some());
+        let update = if source_has_drag && self.drag.is_none() {
+            // A release without an intervening move is a click, not a drag.
+            // Do not start a gesture and discard its DragBegan action.
+            None
+        } else {
+            self.motion(p)
+        };
         self.capture = None;
         if let Some(drop) = self.drag_release(p) {
             return Some(drop);
