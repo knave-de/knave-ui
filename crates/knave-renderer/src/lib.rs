@@ -23,7 +23,7 @@ impl fmt::Display for AdapterSelectionError {
 
 impl Error for AdapterSelectionError {}
 
-/// Select a GPU adapter deterministically.
+/// Select a rendering adapter deterministically, including CPU software adapters.
 ///
 /// On hybrid laptops (integrated plus discrete GPU) an unconstrained
 /// [`wgpu::Instance::request_adapter`] can pick the discrete GPU even though the
@@ -32,7 +32,9 @@ impl Error for AdapterSelectionError {}
 ///
 /// - honors `WGPU_ADAPTER_NAME`, `WGPU_BACKEND`, and `WGPU_POWER_PREF`; and
 /// - defaults to [`wgpu::PowerPreference::LowPower`], preferring the
-///   integrated GPU when one is present.
+///   integrated GPU when one is present; and
+/// - uses a compatible CPU software adapter (such as Mesa llvmpipe or lavapipe)
+///   when no hardware adapter is available.
 ///
 /// Ties keep enumeration order. The returned adapter reports its choice through
 /// [`wgpu::Adapter::get_info`]; callers should log it.
@@ -46,8 +48,19 @@ pub async fn select_adapter(
         .ok()
         .map(|name| name.to_lowercase());
 
-    let mut best: Option<(i32, wgpu::Adapter)> = None;
-    for adapter in instance.enumerate_adapters(backends).await {
+    // Try the user's requested/normal backends first. If they have no
+    // compatible adapter, retry all compiled backends so Mesa software GL or
+    // Vulkan drivers can provide CPU rendering even with a restrictive
+    // WGPU_BACKEND setting.
+    let mut candidates = instance.enumerate_adapters(backends).await;
+    let requested_has_compatible = candidates.iter().any(|adapter| {
+        compatible_surface.is_none_or(|surface| adapter.is_surface_supported(surface))
+    });
+    if !requested_has_compatible {
+        candidates = instance.enumerate_adapters(wgpu::Backends::all()).await;
+    }
+    let mut best: Option<(i32, usize)> = None;
+    for (index, adapter) in candidates.iter().enumerate() {
         if let Some(surface) = compatible_surface
             && !adapter.is_surface_supported(surface)
         {
@@ -59,27 +72,51 @@ pub async fn select_adapter(
         {
             continue;
         }
+        // Without an explicit adapter name, preserve the normal hardware
+        // preference and consider CPU adapters only after hardware is absent.
+        // A name match is an explicit request and may intentionally select CPU.
+        if info.device_type == wgpu::DeviceType::Cpu && name.is_none() {
+            continue;
+        }
         let score = adapter_score(&info, power);
         if best
             .as_ref()
             .is_none_or(|(best_score, _)| score > *best_score)
         {
-            best = Some((score, adapter));
+            best = Some((score, index));
         }
     }
-    best.map(|(_, adapter)| adapter)
-        .ok_or(AdapterSelectionError(
-            "no suitable GPU adapter found".into(),
-        ))
+    if let Some((_, index)) = best {
+        return Ok(candidates.swap_remove(index));
+    }
+
+    // Prefer any CPU adapter found on the same instance as the surface.
+    if let Some((_, index)) = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, adapter)| {
+            adapter.get_info().device_type == wgpu::DeviceType::Cpu
+                && compatible_surface.is_none_or(|surface| adapter.is_surface_supported(surface))
+        })
+        .find(|(_, adapter)| {
+            name.as_ref()
+                .is_none_or(|name| adapter.get_info().name.to_lowercase().contains(name))
+        })
+        .map(|(index, adapter)| (adapter_score(&adapter.get_info(), power), index))
+    {
+        return Ok(candidates.swap_remove(index));
+    }
+    Err(AdapterSelectionError(format!(
+        "no compatible adapter found for {backends:?}, including a forced software fallback; install a Mesa software driver such as llvmpipe or lavapipe"
+    )))
 }
 
 fn adapter_score(info: &wgpu::AdapterInfo, preference: wgpu::PowerPreference) -> i32 {
     match (preference, info.device_type) {
-        (
-            wgpu::PowerPreference::LowPower,
-            wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu,
-        ) => 1,
+        (wgpu::PowerPreference::LowPower, wgpu::DeviceType::IntegratedGpu) => 1,
         (wgpu::PowerPreference::HighPerformance, wgpu::DeviceType::DiscreteGpu) => 1,
+        (wgpu::PowerPreference::LowPower, wgpu::DeviceType::Cpu) => 0,
+        (wgpu::PowerPreference::HighPerformance, wgpu::DeviceType::Cpu) => -1,
         _ => 0,
     }
 }
@@ -158,6 +195,24 @@ mod tests {
             adapter_score(
                 &info(wgpu::DeviceType::IntegratedGpu),
                 wgpu::PowerPreference::HighPerformance
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn low_power_prefers_integrated_but_accepts_cpu_fallback() {
+        assert_eq!(
+            adapter_score(
+                &info(wgpu::DeviceType::IntegratedGpu),
+                wgpu::PowerPreference::LowPower
+            ),
+            1
+        );
+        assert_eq!(
+            adapter_score(
+                &info(wgpu::DeviceType::Cpu),
+                wgpu::PowerPreference::LowPower
             ),
             0
         );
