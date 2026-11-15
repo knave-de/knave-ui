@@ -54,7 +54,21 @@ Nested software rendering does not establish direct-TTY or hardware-GPU behavior
 
 ## Theme providers
 
-`run` does not read desktop configuration or change the scene's existing theme.
+On Linux, `run` reads the desktop Settings portal's color-scheme preference
+before the first frame and subscribes to `SettingChanged` for live updates.
+It retains application CSS, contrast, and chroma. No preference leaves the
+current scheme in place. If the portal is unavailable, startup retains the
+application's existing theme. `run_unthemed` opts out of desktop updates.
+The host does not parse Knave configuration; Knave publishes its preference
+through the portal, as do other desktops.
+
+`Application::theme_policy_changed` runs on the event-loop thread after the
+scene changes, including at startup. Its default calls `theme_changed` for
+scheme-only consumers. Use it to update code-owned labels, custom-themed
+components, and invalidate cached content. `refresh_theme` then runs with the
+text engine on live updates to rebuild cached drawings before redraw. Custom
+application CSS remains in effect, and custom components can independently
+respond to the callback even if their colors override the desktop palette.
 An application that owns theme settings can pass a `ThemeProvider` to
 `run_with_theme_provider`. The provider resolves its configuration into a
 `ThemeSelection` containing a toolkit `ThemePolicy` and user stylesheet, and
