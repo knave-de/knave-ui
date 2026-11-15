@@ -53,10 +53,15 @@ pub async fn select_adapter(
     // Vulkan drivers can provide CPU rendering even with a restrictive
     // WGPU_BACKEND setting.
     let mut candidates = instance.enumerate_adapters(backends).await;
-    let requested_has_compatible = candidates.iter().any(|adapter| {
-        compatible_surface.is_none_or(|surface| adapter.is_surface_supported(surface))
+    let requested_has_eligible = candidates.iter().any(|adapter| {
+        let surface_matches =
+            compatible_surface.is_none_or(|surface| adapter.is_surface_supported(surface));
+        let name_matches = name
+            .as_ref()
+            .is_none_or(|name| adapter.get_info().name.to_lowercase().contains(name));
+        surface_matches && name_matches
     });
-    if !requested_has_compatible {
+    if !requested_has_eligible {
         candidates = instance.enumerate_adapters(wgpu::Backends::all()).await;
     }
     let mut best: Option<(i32, usize)> = None;
