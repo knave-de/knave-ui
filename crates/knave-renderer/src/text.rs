@@ -100,7 +100,7 @@ impl TextPass {
         let atlas = TextAtlas::new(device, queue, &cache, format);
         let viewport = Viewport::new(device, &cache);
         Self {
-            font_system: FontSystem::new(),
+            font_system: system_fonts(),
             swash_cache: SwashCache::new(),
             atlas,
             viewport,
@@ -471,6 +471,46 @@ fn prepared_area(
     }))
 }
 
+// Cosmic Text's built-in generic aliases name fonts that may not be installed.
+// Resolve the desktop's fontconfig aliases so ordinary text has a real primary
+// face before script/emoji fallback is considered.
+fn system_fonts() -> FontSystem {
+    let mut fonts = FontSystem::new();
+    for generic in ["sans-serif", "serif", "monospace", "cursive", "fantasy"] {
+        let Ok(output) = std::process::Command::new("fc-match")
+            .args(["-f", "%{family[0]}", generic])
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let Ok(family) = String::from_utf8(output.stdout) else {
+            continue;
+        };
+        let family = family.trim();
+        if family.is_empty()
+            || !fonts
+                .db()
+                .faces()
+                .any(|face| face.families.iter().any(|(name, _)| name == family))
+        {
+            continue;
+        }
+        let db = fonts.db_mut();
+        match generic {
+            "sans-serif" => db.set_sans_serif_family(family),
+            "serif" => db.set_serif_family(family),
+            "monospace" => db.set_monospace_family(family),
+            "cursive" => db.set_cursive_family(family),
+            "fantasy" => db.set_fantasy_family(family),
+            _ => unreachable!(),
+        }
+    }
+    fonts
+}
+
 fn create_buffer(font_system: &mut FontSystem, item: &TextItem<'_>) -> Buffer {
     let font_size = sane_font_metric(item.style.font_size);
     let line_height = sane_font_metric(item.style.line_height);
@@ -649,6 +689,42 @@ fn measured_layout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_primary_font_keeps_ascii_and_spaces_together() {
+        let mut fonts = system_fonts();
+        let style = TextStyle {
+            weight: 600,
+            ..TextStyle::default()
+        };
+        let item = TextItem {
+            bounds: Rect::new(0.0, 0.0, 400.0, 40.0),
+            text: "hello 1 world",
+            spans: None,
+            style: &style,
+            transform: Transform2D::IDENTITY,
+            clip: None,
+        };
+        let buffer = create_buffer(&mut fonts, &item);
+        let glyphs: Vec<_> = buffer
+            .layout_runs()
+            .flat_map(|run| run.glyphs.iter())
+            .collect();
+        let primary = glyphs[0].font_id;
+        for glyph in glyphs {
+            let face = fonts.db().face(glyph.font_id).unwrap();
+            eprintln!(
+                "{} {:?} advance={}",
+                &item.text[glyph.start..glyph.end],
+                face.families,
+                glyph.w
+            );
+            assert_eq!(
+                glyph.font_id, primary,
+                "ASCII text must stay in the primary face"
+            );
+        }
+    }
 
     #[test]
     fn rich_text_inherits_theme_color_unless_a_span_sets_one() {
