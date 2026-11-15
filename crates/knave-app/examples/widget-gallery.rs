@@ -1236,7 +1236,7 @@ impl Application for Gallery {
             self.fixtures_ready = false;
         }
         self.theme_policy = policy;
-        Ok(())
+        self.apply_policy_preview()
     }
 
     /// Rebuild requested fixture previews after a theme stylesheet refresh.
@@ -1435,6 +1435,23 @@ mod tests {
             repeat: false,
             modifiers: KeyModifiers::default(),
         });
+    }
+    #[test]
+    fn desktop_theme_callback_updates_code_owned_labels() {
+        let mut app = app();
+        let policy = ThemePolicy::new(Theme::Light, Contrast::High, Chroma::Monochrome);
+        app.scene
+            .set_theme_policy_stylesheets(policy, "", "")
+            .unwrap();
+        app.theme_policy_changed(policy).unwrap();
+        assert_eq!(app.theme_policy, policy);
+        for (id, label) in [
+            (SCHEME_BUTTON, "Scheme: Light"),
+            (CONTRAST_BUTTON, "Contrast: High"),
+            (CHROMA_BUTTON, "Palette: Monochrome"),
+        ] {
+            assert!(matches!(app.scene.widget(id), Some(Widget::Button(text)) if text == label));
+        }
     }
     #[test]
     fn page_switching_retains_edits_and_restores_navigation_focus() {
