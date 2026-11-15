@@ -17,6 +17,15 @@ pub use paint::{
     ImageStyle, ShapePaint, TextAlign, TextSpan, TextStyle, TextWrap,
 };
 
+/// Fonts shipped with Knave UI and loaded by `knave-renderer` by default.
+/// Applications can still request another family through `TextStyle` or CSS.
+pub mod fonts {
+    pub const POPPINS_REGULAR: &[u8] = include_bytes!("../assets/fonts/Poppins-Regular.ttf");
+    pub const POPPINS_BOLD: &[u8] = include_bytes!("../assets/fonts/Poppins-Bold.ttf");
+    pub const NOTO_SERIF: &[u8] = include_bytes!("../assets/fonts/NotoSerif.ttf");
+    pub const JETBRAINS_MONO: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono.ttf");
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UiImage {
     width: u32,
