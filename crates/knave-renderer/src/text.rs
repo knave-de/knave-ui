@@ -471,12 +471,24 @@ fn prepared_area(
     }))
 }
 
-// Cosmic Text's built-in generic aliases name fonts that may not be installed.
-// Resolve the desktop's fontconfig aliases so ordinary text has a real primary
-// face before script/emoji fallback is considered.
+// Load Knave UI's bundled defaults before allowing desktop cursive/fantasy
+// aliases and script/emoji fallback to participate.
 fn system_fonts() -> FontSystem {
     let mut fonts = FontSystem::new();
-    for generic in ["sans-serif", "serif", "monospace", "cursive", "fantasy"] {
+    // Knave UI owns these assets; loading them here makes generic CSS families
+    // deterministic for every app using the shared renderer.
+    for data in [
+        knave_ui::fonts::POPPINS_REGULAR,
+        knave_ui::fonts::POPPINS_BOLD,
+        knave_ui::fonts::NOTO_SERIF,
+        knave_ui::fonts::JETBRAINS_MONO,
+    ] {
+        fonts.db_mut().load_font_data(data.to_vec());
+    }
+    fonts.db_mut().set_sans_serif_family("Poppins");
+    fonts.db_mut().set_serif_family("Noto Serif");
+    fonts.db_mut().set_monospace_family("JetBrains Mono");
+    for generic in ["cursive", "fantasy"] {
         let Ok(output) = std::process::Command::new("fc-match")
             .args(["-f", "%{family[0]}", generic])
             .output()
@@ -500,9 +512,6 @@ fn system_fonts() -> FontSystem {
         }
         let db = fonts.db_mut();
         match generic {
-            "sans-serif" => db.set_sans_serif_family(family),
-            "serif" => db.set_serif_family(family),
-            "monospace" => db.set_monospace_family(family),
             "cursive" => db.set_cursive_family(family),
             "fantasy" => db.set_fantasy_family(family),
             _ => unreachable!(),
@@ -691,37 +700,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn desktop_primary_font_keeps_ascii_and_spaces_together() {
+    fn generic_families_resolve_to_knave_ui_bundled_fonts() {
         let mut fonts = system_fonts();
-        let style = TextStyle {
-            weight: 600,
-            ..TextStyle::default()
-        };
-        let item = TextItem {
-            bounds: Rect::new(0.0, 0.0, 400.0, 40.0),
-            text: "hello 1 world",
-            spans: None,
-            style: &style,
-            transform: Transform2D::IDENTITY,
-            clip: None,
-        };
-        let buffer = create_buffer(&mut fonts, &item);
-        let glyphs: Vec<_> = buffer
-            .layout_runs()
-            .flat_map(|run| run.glyphs.iter())
-            .collect();
-        let primary = glyphs[0].font_id;
-        for glyph in glyphs {
+        for (family, expected) in [
+            ("sans-serif", "Poppins"),
+            ("serif", "Noto Serif"),
+            ("monospace", "JetBrains Mono"),
+        ] {
+            let style = TextStyle {
+                font_family: family.into(),
+                ..TextStyle::default()
+            };
+            let item = TextItem {
+                bounds: Rect::new(0.0, 0.0, 400.0, 40.0),
+                text: "Knave 123",
+                spans: None,
+                style: &style,
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            };
+            let buffer = create_buffer(&mut fonts, &item);
+            let glyph = buffer
+                .layout_runs()
+                .flat_map(|run| run.glyphs.iter())
+                .next()
+                .unwrap();
             let face = fonts.db().face(glyph.font_id).unwrap();
-            eprintln!(
-                "{} {:?} advance={}",
-                &item.text[glyph.start..glyph.end],
-                face.families,
-                glyph.w
-            );
-            assert_eq!(
-                glyph.font_id, primary,
-                "ASCII text must stay in the primary face"
+            assert!(
+                face.families.iter().any(|(name, _)| name == expected),
+                "{family} resolved to {:?}",
+                face.families
             );
         }
     }
