@@ -166,3 +166,18 @@ content keeps its own colors. The policy overrides palette tokens supplied by
 a named theme. Explicit per-widget color declarations in named or application
 CSS can still override policy tokens; app-specific CSS must follow the selected
 accessibility preferences when it sets colors directly.
+
+## Built-in desktop appearance profiles
+
+`ThemePolicy::new(scheme, contrast, chroma)` independently selects color scheme,
+standard or high contrast, and full color or monochrome. All eight combinations
+are bundled with the toolkit and remain available when no user theme file is
+selected. Policy changes replace only the policy layer; application CSS remains
+last in the cascade.
+
+The bundled profiles expose `--window-border-color` and
+`--shadow-active-window` to desktop chrome. `Scene::theme_color` resolves color
+tokens and `Scene::theme_value` resolves other CSS custom properties such as
+shadow declarations. High contrast profiles use visible borders and no shadows;
+their primary text colors meet a 7:1 contrast ratio against the application
+canvas. The toolkit does not define desktop wallpaper or wallpaper patterns.

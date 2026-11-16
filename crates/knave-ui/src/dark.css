@@ -8,43 +8,46 @@
  * The first block is the public palette shared with light.css; desktop themes
  * and applications override these names. The second block is private to this
  * stylesheet. */
-:root {
-	--accent: accent;
+:root { --edge-control:#2B3B43; --edge-panel:#34464E; --shadow-panel:-10px 0 28px #00000050;
+	--accent: #60CBED;
+	--secondary: #79D8C2;
+	--tertiary: #ACB8F4;
+	--success: #83D6A5;
 	--warning: #EDBE6A;
 	--danger: #F27E84;
-	--canvas: #111317;
-	--panel-surface: #111317;
-	--surface: #272C34;
-	--surface-hover: #323842;
-	--surface-pressed: #1E2228;
-	--surface-selected: #5DADE238;
-	--surface-menu: #22262D;
-	--surface-tooltip: #2E333C;
+	--canvas: #0F1D24;
+	--panel-surface: #0F1D24;
+	--surface: #213038;
+	--surface-hover: #2D3B42;
+	--surface-pressed: #18262D;
+	--surface-selected: #60CBED29;
+	--surface-menu: #17252C;
+	--surface-tooltip: #17252C;
 	--surface-overlay: #000000AA;
 	--text-disabled: #B4BCC6;
 	--control-muted: #2A2F37;
-	--shadow-low: 0px 1px 2px #00000080;
-	--shadow-raised: 0px 2px 5px #00000073;
-	--shadow-floating: 0px 6px 12px #0000008C;
+	--shadow-low: none;
+	--shadow-raised: none;
+	--shadow-floating: none;
 
-	--text: #E8EBEF;
-	--text-tooltip: #F7F8FA;
-	--text-secondary: #A7B0BB;
-	--text-accent: #93CDEE;
-	--surface-raised: #1A1D23;
-	--surface-sunken: #090A0D;
-	--surface-input-hover: #0F1115;
-	--surface-tint: #5DADE229;
-	--border: #2E333B;
-	--border-strong: #5A6370;
-	--accent-hover: #7DBEE8;
-	--accent-pressed: #4294C8;
-	--on-accent: #0A1620;
-	--danger-surface: #3D1F24;
+	--text: #E3ECEF;
+	--text-tooltip: #E3ECEF;
+	--text-secondary: #A5B8C1;
+	--text-accent: #60CBED;
+	--surface-raised: #17252C;
+	--surface-sunken: #0B161B;
+	--surface-input-hover: #213038;
+	--surface-tint: #60CBED19;
+	--border: #2B3B43;
+	--border-strong: #647C86;
+	--accent-hover: #79D8C2;
+	--accent-pressed: #49AACD;
+	--on-accent: #0F1D24;
+	--danger-surface: #3A2428;
 	--danger-hover: #F6979C;
 	--danger-pressed: #D9686E;
-	--on-danger: #1C0709;
-	--nav-surface: #20242B;
+	--on-danger: #0F1D24;
+	--nav-surface: #17252C;
 }
 
 /* Structure and typography. */
@@ -136,7 +139,7 @@ disclosure,
 pagination {
 	color: var(--text);
 	background-color: var(--surface);
-	border-radius: 6px;
+	border-radius: 3px;
 	text-align: center;
 }
 
@@ -178,7 +181,7 @@ dropdown:focus,
 checkbox:focus,
 toggle:focus {
 	outline-color: var(--accent);
-	outline-width: 1px;
+	outline-width: 2px;
 }
 
 menu,
@@ -254,7 +257,7 @@ text-input,
 combo-box {
 	background-color: var(--surface-sunken);
 	outline-color: var(--border-strong);
-	outline-width: 1px;
+	outline-width: 2px;
 }
 
 text-input:hover,
@@ -430,7 +433,7 @@ dialog,
 command-palette {
 	background-color: var(--surface-menu);
 	border: 1px solid var(--border-strong);
-	border-radius: 10px;
+	border-radius: 8px;
 }
 
 tooltip {
@@ -476,7 +479,7 @@ segment,
 chip,
 slider-thumb,
 switch-thumb {
-	box-shadow: var(--shadow-low);
+	box-shadow: none;
 }
 
 button:hover,
@@ -484,13 +487,13 @@ dropdown:hover,
 menu:hover,
 context-menu:hover,
 pagination:hover {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 card,
 empty-state,
 tooltip {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 popup,

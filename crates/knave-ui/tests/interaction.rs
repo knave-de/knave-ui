@@ -383,16 +383,16 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == button_bounds
-                && paint.fill == Some(knave_ui::Color::rgba(0x32, 0x38, 0x42, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x2d, 0x3b, 0x42, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x2e, 0x33, 0x3c, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x17, 0x25, 0x2c, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == s.bounds(ElementId(3)).unwrap()
-                && paint.fill == Some(knave_ui::Color::rgba(0x27, 0x2c, 0x34, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x21, 0x30, 0x38, 255))
     )));
 
     let menu_bounds = s.bounds(ElementId(2)).unwrap();
@@ -403,7 +403,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x22, 0x26, 0x2d, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x17, 0x25, 0x2c, 255))
     )));
 
     let popup = Element::new(10, Widget::Popup { modal: true }).layout(Layout {
@@ -1735,7 +1735,7 @@ fn tooltip_uses_readable_text_and_stays_inside_the_viewport() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(tooltip.0, knave_ui::Color::rgba(247, 248, 250, 255));
+    assert_eq!(tooltip.0, knave_ui::Color::rgba(227, 236, 239, 255));
     assert!(tooltip.1.x >= 0.0 && tooltip.1.y >= 0.0);
     assert!(tooltip.1.x + tooltip.1.width <= 400.0);
     assert!(tooltip.1.y + tooltip.1.height <= 400.0);
@@ -1747,7 +1747,7 @@ fn focus_outline_is_for_keyboard_and_disappears_when_control_is_disabled() {
     let outlined = |s: &mut Scene| {
         s.display_list([400.0, 400.0], &mut Metrics).commands.iter().any(|c| matches!(c,
             knave_ui::DisplayCommand::Shape { paint, .. }
-                if paint.border.is_some_and(|b| b.color == knave_ui::Color::ACCENT && b.width == 1.0)))
+                if paint.border.is_some_and(|b| b.color == knave_ui::Color::rgba(96, 203, 237, 255) && b.width == 2.0)))
     };
     click(&mut s, [20.0, 20.0]);
     assert!(s.interaction(ElementId(1)).unwrap().focused);

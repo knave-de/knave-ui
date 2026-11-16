@@ -8,37 +8,40 @@
  * The first block is the public palette shared with dark.css; desktop themes
  * and applications override these names. The second block is private to this
  * stylesheet. */
-:root {
-	--accent: #0A7DAA;
+:root { --edge-control:#BECFD5; --edge-panel:#C7D6DC; --shadow-panel:-10px 0 28px #1D293D26;
+	--accent: #007A9C;
+	--secondary: #087865;
+	--tertiary: #515DA0;
+	--success: #246A42;
 	--warning: #8A5A00;
 	--danger: #B3303B;
-	--canvas: #F2F4F7;
-	--panel-surface: #F2F4F7;
-	--surface: #E2E7EC;
-	--surface-hover: #D4DCE3;
-	--surface-pressed: #C8D1D9;
-	--surface-selected: #0A7DAA42;
+	--canvas: #F3F7F8;
+	--panel-surface: #F3F7F8;
+	--surface: #DFE9ED;
+	--surface-hover: #D1DFE4;
+	--surface-pressed: #C5D8DE;
+	--surface-selected: #007A9C24;
 	--surface-menu: #FFFFFF;
 	--surface-tooltip: #FFFFFF;
 	--surface-overlay: #18222D80;
 	--text-disabled: #2E363D;
 	--control-muted: #E3E8ED;
-	--shadow-low: 0px 1px 2px #1B2A3A33;
-	--shadow-raised: 0px 2px 5px #1B2A3A2E;
-	--shadow-floating: 0px 6px 12px #1B2A3A38;
+	--shadow-low: none;
+	--shadow-raised: none;
+	--shadow-floating: none;
 
-	--text: #17181C;
-	--text-tooltip: #17181C;
-	--text-secondary: #4A5560;
-	--text-accent: #005A78;
+	--text: #152B34;
+	--text-tooltip: #152B34;
+	--text-secondary: #435E69;
+	--text-accent: #007A9C;
 	--surface-raised: #FFFFFF;
-	--surface-sunken: #E8ECF0;
-	--surface-input-hover: #E2E7EC;
-	--surface-tint: #0A7DAA2E;
-	--border: #D6DDE3;
-	--border-strong: #76838F;
-	--accent-hover: #096A90;
-	--accent-pressed: #075775;
+	--surface-sunken: #E9F0F2;
+	--surface-input-hover: #DFE9ED;
+	--surface-tint: #007A9C16;
+	--border: #C3D2D8;
+	--border-strong: #71858D;
+	--accent-hover: #006382;
+	--accent-pressed: #00516B;
 	--on-accent: #FFFFFF;
 	--danger-surface: #FCE8EA;
 	--danger-hover: #9C2832;
@@ -140,7 +143,7 @@ disclosure,
 pagination {
 	color: var(--text);
 	background-color: var(--surface);
-	border-radius: 6px;
+	border-radius: 3px;
 	text-align: center;
 }
 
@@ -182,7 +185,7 @@ dropdown:focus,
 checkbox:focus,
 toggle:focus {
 	outline-color: var(--accent);
-	outline-width: 1px;
+	outline-width: 2px;
 }
 
 menu,
@@ -258,7 +261,7 @@ text-input,
 combo-box {
 	background-color: var(--surface-sunken);
 	outline-color: var(--border-strong);
-	outline-width: 1px;
+	outline-width: 2px;
 }
 
 text-input:hover,
@@ -447,7 +450,7 @@ dialog,
 command-palette {
 	background-color: var(--surface-menu);
 	border: 1px solid var(--border-strong);
-	border-radius: 10px;
+	border-radius: 8px;
 }
 
 tooltip {
@@ -493,7 +496,7 @@ segment,
 chip,
 slider-thumb,
 switch-thumb {
-	box-shadow: var(--shadow-low);
+	box-shadow: none;
 }
 
 button:hover,
@@ -501,13 +504,13 @@ dropdown:hover,
 menu:hover,
 context-menu:hover,
 pagination:hover {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 card,
 empty-state,
 tooltip {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 popup,
