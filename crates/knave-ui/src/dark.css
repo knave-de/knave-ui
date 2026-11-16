@@ -8,47 +8,78 @@
  * The first block is the public palette shared with light.css; desktop themes
  * and applications override these names. The second block is private to this
  * stylesheet. */
-:root { --edge-control:#2B3B43; --edge-panel:#34464E; --shadow-panel:-10px 0 28px #00000050;
-	--accent: #60CBED;
+:root {
+	--accent: var(--primary);
+	--primary: #60CBED;
 	--secondary: #79D8C2;
+	--secondary-accent: var(--secondary);
 	--tertiary: #ACB8F4;
-	--success: #83D6A5;
-	--warning: #EDBE6A;
 	--danger: #F27E84;
+	--warning: #EDBE6A;
+	--success: #83D6A5;
 	--canvas: #0F1D24;
 	--panel-surface: #0F1D24;
+	--surface-raised: #17252C;
 	--surface: #213038;
-	--surface-hover: #2D3B42;
-	--surface-pressed: #18262D;
-	--surface-selected: #60CBED29;
+	--text: #E3ECEF;
+	--text-secondary: #A5B8C1;
+	--text-disabled: #84969f;
+	--border: #293c45;
+	--border-strong: #49616D;
+	--surface-hover: #334148;
+	--surface-pressed: #1d2a31;
+	--surface-selected: #1c3944;
 	--surface-menu: #17252C;
 	--surface-tooltip: #17252C;
-	--surface-overlay: #000000AA;
-	--text-disabled: #B4BCC6;
-	--control-muted: #2A2F37;
-	--shadow-low: none;
-	--shadow-raised: none;
-	--shadow-floating: none;
-
-	--text: #E3ECEF;
 	--text-tooltip: #E3ECEF;
-	--text-secondary: #A5B8C1;
+	--surface-sunken: #0c171d;
+	--surface-input-hover: #18272e;
+	--surface-tint: #172e38;
 	--text-accent: #60CBED;
-	--surface-raised: #17252C;
-	--surface-sunken: #0B161B;
-	--surface-input-hover: #213038;
-	--surface-tint: #60CBED19;
-	--border: #2B3B43;
-	--border-strong: #647C86;
-	--accent-hover: #79D8C2;
-	--accent-pressed: #49AACD;
-	--on-accent: #0F1D24;
-	--danger-surface: #3A2428;
-	--danger-hover: #F6979C;
-	--danger-pressed: #D9686E;
-	--on-danger: #0F1D24;
+	--accent-hover: #73d1ef;
+	--accent-pressed: #54b3d1;
+	--on-accent: #111317;
+	--control-muted: #213038;
 	--nav-surface: #17252C;
+	--surface-overlay: #000000AA;
+	--window-border-color: #007A9C;
+	--shadow-active-window: 0 0 14px #60CBED26, 0 4px 16px #00000055;
+	--edge-control: #263841;
+	--edge-panel: #354953;
+	--shadow-low: none;
+	--shadow-raised: 0 2px 8px #00000018;
+	--shadow-floating: 0 8px 24px #00000038;
+	--shadow-panel: -10px 0 28px #00000050;
+	--shell-panel-surface: #0F1D24;
+	--shell-card-surface: #1c2a32;
+	--shell-header-surface: #17252C;
+	--shadow-overview: 0 10px 30px #00000045;
+	--on-primary: #111317;
+	--primary-surface: #203943;
+	--primary-hover: #73d1ef;
+	--primary-pressed: #4fa6c2;
+	--on-secondary: #111317;
+	--secondary-surface: #233a3e;
+	--secondary-hover: #89ddc9;
+	--secondary-pressed: #63b19f;
+	--on-tertiary: #111317;
+	--tertiary-surface: #293744;
+	--tertiary-hover: #b6c1f5;
+	--tertiary-pressed: #8d97c8;
+	--on-danger: #111317;
+	--danger-surface: #313037;
+	--danger-hover: #f48d93;
+	--danger-pressed: #c6676c;
+	--on-warning: #111317;
+	--warning-surface: #313733;
+	--warning-hover: #efc67c;
+	--warning-pressed: #c29c57;
+	--on-success: #111317;
+	--success-surface: #243a3b;
+	--success-hover: #92dbb0;
+	--success-pressed: #6baf87;
 }
+
 
 /* Structure and typography. */
 canvas {
@@ -72,7 +103,7 @@ card,
 empty-state {
 	background-color: var(--surface-raised);
 	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: 3px;
 	padding: 12px;
 	gap: 8px;
 }

@@ -8,47 +8,78 @@
  * The first block is the public palette shared with dark.css; desktop themes
  * and applications override these names. The second block is private to this
  * stylesheet. */
-:root { --edge-control:#BECFD5; --edge-panel:#C7D6DC; --shadow-panel:-10px 0 28px #1D293D26;
-	--accent: #007A9C;
+:root {
+	--accent: var(--primary);
+	--primary: #007A9C;
 	--secondary: #087865;
+	--secondary-accent: var(--secondary);
 	--tertiary: #515DA0;
-	--success: #246A42;
-	--warning: #8A5A00;
 	--danger: #B3303B;
+	--warning: #8A5A00;
+	--success: #246A42;
 	--canvas: #F3F7F8;
 	--panel-surface: #F3F7F8;
+	--surface-raised: #FFFFFF;
 	--surface: #DFE9ED;
-	--surface-hover: #D1DFE4;
-	--surface-pressed: #C5D8DE;
-	--surface-selected: #007A9C24;
+	--text: #152B34;
+	--text-secondary: #435E69;
+	--text-disabled: #6a818a;
+	--border: #c9d4d9;
+	--border-strong: #95AAB4;
+	--surface-hover: #cdd6da;
+	--surface-pressed: #c2cbce;
+	--surface-selected: #bedce4;
 	--surface-menu: #FFFFFF;
 	--surface-tooltip: #FFFFFF;
-	--surface-overlay: #18222D80;
-	--text-disabled: #2E363D;
-	--control-muted: #E3E8ED;
-	--shadow-low: none;
-	--shadow-raised: none;
-	--shadow-floating: none;
-
-	--text: #152B34;
 	--text-tooltip: #152B34;
-	--text-secondary: #435E69;
+	--surface-sunken: #f5f9f9;
+	--surface-input-hover: #e9f0f3;
+	--surface-tint: #e0edf1;
 	--text-accent: #007A9C;
-	--surface-raised: #FFFFFF;
-	--surface-sunken: #E9F0F2;
-	--surface-input-hover: #DFE9ED;
-	--surface-tint: #007A9C16;
-	--border: #C3D2D8;
-	--border-strong: #71858D;
-	--accent-hover: #006382;
-	--accent-pressed: #00516B;
+	--accent-hover: #006b89;
+	--accent-pressed: #006b89;
 	--on-accent: #FFFFFF;
-	--danger-surface: #FCE8EA;
-	--danger-hover: #9C2832;
-	--danger-pressed: #84212A;
-	--on-danger: #FFFFFF;
+	--control-muted: #DFE9ED;
 	--nav-surface: #FFFFFF;
+	--surface-overlay: #18222D80;
+	--window-border-color: #007A9C;
+	--shadow-active-window: 0 6px 18px #183B4B60;
+	--edge-control: #cdd8dd;
+	--edge-panel: #b6c5cc;
+	--shadow-low: none;
+	--shadow-raised: 0 2px 8px #1D293D0A;
+	--shadow-floating: 0 8px 24px #1D293D1A;
+	--shadow-panel: -10px 0 28px #1D293D26;
+	--shell-panel-surface: #F3F7F8;
+	--shell-card-surface: #e5edf0;
+	--shell-header-surface: #FFFFFF;
+	--shadow-overview: 0 10px 30px #183B4B24;
+	--on-primary: #FFFFFF;
+	--primary-surface: #e0eff3;
+	--primary-hover: #006b89;
+	--primary-pressed: #006480;
+	--on-secondary: #FFFFFF;
+	--secondary-surface: #e1efed;
+	--secondary-hover: #076a59;
+	--secondary-pressed: #076253;
+	--on-tertiary: #FFFFFF;
+	--tertiary-surface: #eaecf4;
+	--tertiary-hover: #47528d;
+	--tertiary-pressed: #424c83;
+	--on-danger: #FFFFFF;
+	--danger-surface: #f6e6e7;
+	--danger-hover: #9e2a34;
+	--danger-pressed: #932730;
+	--on-warning: #FFFFFF;
+	--warning-surface: #f1ebe0;
+	--warning-hover: #794f00;
+	--warning-pressed: #714a00;
+	--on-success: #FFFFFF;
+	--success-surface: #e5ede8;
+	--success-hover: #205d3a;
+	--success-pressed: #1e5736;
 }
+
 
 /* Structure and typography. */
 :root {
@@ -76,7 +107,7 @@ card,
 empty-state {
 	background-color: var(--surface-raised);
 	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: 3px;
 	padding: 12px;
 	gap: 8px;
 }

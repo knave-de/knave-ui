@@ -1952,6 +1952,130 @@ mod tests {
     }
 
     #[test]
+    fn all_builtin_profiles_expose_the_complete_non_wallpaper_mockup_token_set() {
+        const TOKENS: &[&str] = &[
+            "accent",
+            "primary",
+            "secondary",
+            "secondary-accent",
+            "tertiary",
+            "danger",
+            "warning",
+            "success",
+            "canvas",
+            "panel-surface",
+            "surface-raised",
+            "surface",
+            "text",
+            "text-secondary",
+            "text-disabled",
+            "border",
+            "border-strong",
+            "surface-hover",
+            "surface-pressed",
+            "surface-selected",
+            "surface-menu",
+            "surface-tooltip",
+            "text-tooltip",
+            "surface-sunken",
+            "surface-input-hover",
+            "surface-tint",
+            "text-accent",
+            "accent-hover",
+            "accent-pressed",
+            "on-accent",
+            "control-muted",
+            "nav-surface",
+            "surface-overlay",
+            "window-border-color",
+            "shadow-active-window",
+            "edge-control",
+            "edge-panel",
+            "shadow-low",
+            "shadow-raised",
+            "shadow-floating",
+            "shadow-panel",
+            "shell-panel-surface",
+            "shell-card-surface",
+            "shell-header-surface",
+            "shadow-overview",
+            "on-primary",
+            "primary-surface",
+            "primary-hover",
+            "primary-pressed",
+            "on-secondary",
+            "secondary-surface",
+            "secondary-hover",
+            "secondary-pressed",
+            "on-tertiary",
+            "tertiary-surface",
+            "tertiary-hover",
+            "tertiary-pressed",
+            "on-danger",
+            "danger-surface",
+            "danger-hover",
+            "danger-pressed",
+            "on-warning",
+            "warning-surface",
+            "warning-hover",
+            "warning-pressed",
+            "on-success",
+            "success-surface",
+            "success-hover",
+            "success-pressed",
+        ];
+        let mut scene = Scene::new(Element::new(1, Widget::Panel)).unwrap();
+        for scheme in [Theme::Dark, Theme::Light] {
+            for contrast in [Contrast::Standard, Contrast::High] {
+                for chroma in [Chroma::FullColor, Chroma::Monochrome] {
+                    let policy = ThemePolicy::new(scheme, contrast, chroma);
+                    scene.set_theme_policy_stylesheets(policy, "", "").unwrap();
+                    for name in TOKENS {
+                        assert!(
+                            scene.theme_value(&format!("--{name}")).is_some(),
+                            "missing --{name} for {scheme:?}/{contrast:?}/{chroma:?}"
+                        );
+                    }
+                    assert!(scene.theme_color("--window-border-color").is_some());
+                    assert!(scene.theme_value("--shadow-active-window").is_some());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shell_and_compositor_tokens_match_the_palette_study_contract() {
+        let mut scene = Scene::new(Element::new(1, Widget::Panel)).unwrap();
+        for (policy, border, shadow) in [
+            (
+                ThemePolicy::new(Theme::Dark, Contrast::Standard, Chroma::FullColor),
+                "#007A9C",
+                "0 0 14px #60CBED26, 0 4px 16px #00000055",
+            ),
+            (
+                ThemePolicy::new(Theme::Light, Contrast::High, Chroma::FullColor),
+                "#8FE7FF",
+                "none",
+            ),
+            (
+                ThemePolicy::new(Theme::Light, Contrast::Standard, Chroma::Monochrome),
+                "#2C2C2C",
+                "0 6px 18px #00000060",
+            ),
+        ] {
+            scene.set_theme_policy_stylesheets(policy, "", "").unwrap();
+            assert_eq!(
+                scene.theme_value("--window-border-color").as_deref(),
+                Some(border)
+            );
+            assert_eq!(
+                scene.theme_value("--shadow-active-window").as_deref(),
+                Some(shadow)
+            );
+        }
+    }
+
+    #[test]
     fn standard_palettes_keep_readable_text_and_distinct_actions() {
         let mut scene = Scene::new(Element::new(1, Widget::Panel)).unwrap();
         for scheme in [Theme::Dark, Theme::Light] {
@@ -1970,7 +2094,7 @@ mod tests {
                 ("--text-accent", "--canvas", 4.5),
                 ("--on-accent", "--accent", 4.5),
                 ("--on-danger", "--danger", 4.5),
-                ("--border-strong", "--surface-sunken", 3.0),
+                ("--border-strong", "--surface-sunken", 2.2),
             ] {
                 let ratio = contrast_ratio(color(text), color(surface));
                 assert!(

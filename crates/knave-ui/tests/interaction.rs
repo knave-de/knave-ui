@@ -383,7 +383,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == button_bounds
-                && paint.fill == Some(knave_ui::Color::rgba(0x2d, 0x3b, 0x42, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x33, 0x41, 0x48, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
