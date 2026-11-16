@@ -1,4 +1,4 @@
-/* Knave dark — neutral graphite surfaces with one calm accent.
+/* Knave dark — Ink surfaces with a calm cyan accent.
  *
  * Surfaces get lighter as they come closer to the user:
  * canvas < raised (cards, lists) < control < hover.
@@ -156,9 +156,7 @@ badge {
 	width: fit-content;
 }
 
-/* Controls are filled and borderless: borders reflow layout, and the toolkit
- * keeps the same control geometry in every Knave application. Fill contrast
- * separates them from the page instead. */
+/* Controls use a quiet neutral edge and shared compact geometry. */
 button,
 dropdown,
 menu,
@@ -170,6 +168,7 @@ disclosure,
 pagination {
 	color: var(--text);
 	background-color: var(--surface);
+	border: 1px solid var(--edge-control);
 	border-radius: 3px;
 	text-align: center;
 }
@@ -221,6 +220,7 @@ context-menu {
 }
 
 button.primary {
+	border: 1px solid transparent;
 	color: var(--on-accent);
 	background-color: var(--accent);
 }
@@ -234,23 +234,30 @@ button.primary:pressed {
 }
 
 button.secondary {
-	color: var(--text-accent);
-	background-color: var(--surface-tint);
-}
-
-button.secondary:hover {
-	background-color: var(--surface-selected);
-}
-
-button.ghost {
-	background-color: transparent;
-}
-
-button.ghost:hover {
+	color: var(--text);
 	background-color: var(--surface);
 }
 
+button.secondary:hover {
+	background-color: var(--surface-hover);
+}
+
+button.secondary:pressed {
+	background-color: var(--surface-pressed);
+}
+
+button.ghost {
+	color: var(--text-secondary);
+	background-color: transparent;
+	border: 1px solid transparent;
+}
+
+button.ghost:hover {
+	background-color: var(--surface-hover);
+}
+
 button.destructive {
+	border: 1px solid transparent;
 	color: var(--on-danger);
 	background-color: var(--danger);
 }
@@ -281,14 +288,15 @@ combo-box:disabled,
 selectable:disabled,
 disclosure:disabled {
 	background-color: var(--surface);
+	border: 1px solid transparent;
 }
 
-/* The outline marks field boundaries without changing control geometry. */
+/* The edge marks field boundaries; keyboard focus uses a separate outline. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
-	outline-color: var(--border-strong);
-	outline-width: 2px;
+	border: 1px solid var(--edge-control);
+	outline-width: 0;
 }
 
 text-input:hover,
