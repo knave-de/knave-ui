@@ -204,6 +204,10 @@ impl Gpu {
             .into_iter()
             .find(|f| f.is_srgb())
             .ok_or("surface has no sRGB format")?;
+        config.view_formats = vec![
+            WgpuPainter::paired_text_format(config.format)
+                .ok_or("sRGB surface has no compatible Unorm text view format")?,
+        ];
         let painter = WgpuPainter::new(&device, &queue, config.format)?;
         surface.configure(&device, &config);
         let clipboard = clipboard::Clipboard::new(&window)?;
@@ -271,6 +275,13 @@ impl Gpu {
             .clone();
         scale_list(&mut list, scale);
         let view = frame.texture.create_view(&Default::default());
+        let opaque_root = list.clear_color.alpha == u8::MAX;
+        let text_view = opaque_root.then(|| {
+            frame.texture.create_view(&wgpu::TextureViewDescriptor {
+                format: WgpuPainter::paired_text_format(self.config.format),
+                ..Default::default()
+            })
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let [r, g, b, a] = list.clear_color.to_linear_rgba();
         {
@@ -293,14 +304,26 @@ impl Gpu {
                 ..Default::default()
             });
         }
-        self.painter.encode(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &view,
-            (size.width, size.height),
-            &list,
-        )?;
+        if let Some(text_view) = &text_view {
+            self.painter.encode_targets(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &view,
+                text_view,
+                (size.width, size.height),
+                &list,
+            )?;
+        } else {
+            self.painter.encode(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &view,
+                (size.width, size.height),
+                &list,
+            )?;
+        }
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.queue.present(frame);

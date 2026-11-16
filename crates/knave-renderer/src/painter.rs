@@ -1,5 +1,6 @@
 use std::{error::Error, fmt};
 
+use glyphon::ColorMode;
 use knave_ui::{DisplayCommand, Rect};
 
 use crate::{
@@ -83,6 +84,15 @@ pub struct WgpuPainter {
 }
 
 impl WgpuPainter {
+    /// Return the compatible Unorm view format used for encoded-sRGB text blending.
+    pub fn paired_text_format(format: wgpu::TextureFormat) -> Option<wgpu::TextureFormat> {
+        match format {
+            wgpu::TextureFormat::Rgba8UnormSrgb => Some(wgpu::TextureFormat::Rgba8Unorm),
+            wgpu::TextureFormat::Bgra8UnormSrgb => Some(wgpu::TextureFormat::Bgra8Unorm),
+            _ => None,
+        }
+    }
+
     /// Build GPU passes for an sRGB color attachment.
     pub fn new(
         device: &wgpu::Device,
@@ -119,6 +129,53 @@ impl WgpuPainter {
         viewport: (u32, u32),
         render_list: &knave_ui::DisplayList,
     ) -> Result<(), PainterError> {
+        self.encode_inner(
+            device,
+            queue,
+            encoder,
+            view,
+            view,
+            viewport,
+            render_list,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_targets(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        text_view: &wgpu::TextureView,
+        viewport: (u32, u32),
+        render_list: &knave_ui::DisplayList,
+    ) -> Result<(), PainterError> {
+        self.encode_inner(
+            device,
+            queue,
+            encoder,
+            view,
+            text_view,
+            viewport,
+            render_list,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn encode_inner(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        text_view: &wgpu::TextureView,
+        viewport: (u32, u32),
+        render_list: &knave_ui::DisplayList,
+        paired: bool,
+    ) -> Result<(), PainterError> {
         self.frames += 1;
         if render_list.commands.len() > MAX_DISPLAY_COMMANDS_PER_FRAME {
             return Err(PainterError::TooManyCommands(render_list.commands.len()));
@@ -130,7 +187,13 @@ impl WgpuPainter {
         self.images
             .prepare(device, queue, viewport, &render_list.commands);
         self.text.begin_frame(queue, viewport);
-        let draws = self.prepare_draws(device, queue, viewport, &render_list.commands)?;
+        let color_mode = if paired {
+            ColorMode::Web
+        } else {
+            ColorMode::Accurate
+        };
+        let draws =
+            self.prepare_draws(device, queue, viewport, &render_list.commands, color_mode)?;
         let mut context = RenderContext {
             device,
             queue,
@@ -138,13 +201,24 @@ impl WgpuPainter {
             viewport,
             draws: &draws,
         };
-        self.encode_stream(&mut context, view, &render_list.commands, 0, 0)
+        self.encode_stream(
+            &mut context,
+            view,
+            text_view,
+            color_mode,
+            &render_list.commands,
+            0,
+            0,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode_stream(
         &mut self,
         context: &mut RenderContext<'_, '_>,
         view: &wgpu::TextureView,
+        text_view: &wgpu::TextureView,
+        color_mode: ColorMode,
         commands: &[DisplayCommand],
         command_offset: usize,
         depth: usize,
@@ -163,6 +237,8 @@ impl WgpuPainter {
                 self.encode_prepared(
                     context.encoder,
                     view,
+                    text_view,
+                    color_mode,
                     context.viewport,
                     context.draws,
                     command_offset + segment_start,
@@ -175,9 +251,17 @@ impl WgpuPainter {
                 .acquire(context.device, context.viewport, depth)
                 .ok_or(PainterError::OpacityTargetBudgetExceeded)?;
             self.opacity.clear(context.encoder, &target);
+            let nested_text_view = &target.view;
+            let nested_color_mode = if color_mode == ColorMode::Web {
+                ColorMode::Accurate
+            } else {
+                color_mode
+            };
             let nested = self.encode_stream(
                 context,
                 &target.view,
+                nested_text_view,
+                nested_color_mode,
                 &commands[index + 1..end],
                 command_offset + index + 1,
                 depth + 1,
@@ -195,6 +279,8 @@ impl WgpuPainter {
             self.encode_prepared(
                 context.encoder,
                 view,
+                text_view,
+                color_mode,
                 context.viewport,
                 context.draws,
                 command_offset + segment_start,
@@ -210,9 +296,20 @@ impl WgpuPainter {
         queue: &wgpu::Queue,
         viewport: (u32, u32),
         commands: &[DisplayCommand],
+        color_mode: ColorMode,
     ) -> Result<Vec<PreparedDraw>, PainterError> {
         let mut draws = Vec::with_capacity(commands.len());
         let order = text_batch_order(commands);
+        let mut opacity_depths = Vec::with_capacity(commands.len());
+        let mut opacity_depth = 0usize;
+        for command in commands {
+            opacity_depths.push(opacity_depth);
+            match command {
+                DisplayCommand::BeginOpacity { .. } => opacity_depth += 1,
+                DisplayCommand::EndOpacity => opacity_depth = opacity_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
         let mut command_index = 0;
         while command_index < order.len() {
             match &commands[order[command_index]] {
@@ -281,7 +378,7 @@ impl WgpuPainter {
                     }
                     let run = self
                         .text
-                        .prepare_run(device, queue, &items)
+                        .prepare_run(device, queue, &items, color_mode)
                         .map_err(|error| match error {
                             TextPassError::Glyphon(error) => PainterError::PrepareText(error),
                             TextPassError::TooManyRuns => PainterError::TooManyTextRuns,
@@ -291,10 +388,35 @@ impl WgpuPainter {
                             TextPassError::TextBytesExceeded => PainterError::TextBytesExceeded,
                             TextPassError::FontFamilyTooLong => PainterError::FontFamilyTooLong,
                         })?;
+                    let accurate_run =
+                        if color_mode == ColorMode::Web && opacity_depths[first_command] > 0 {
+                            Some(
+                                self.text
+                                    .prepare_run(device, queue, &items, ColorMode::Accurate)
+                                    .map_err(|error| match error {
+                                        TextPassError::Glyphon(error) => {
+                                            PainterError::PrepareText(error)
+                                        }
+                                        TextPassError::TooManyRuns => PainterError::TooManyTextRuns,
+                                        TextPassError::UnsupportedTransform => {
+                                            PainterError::UnsupportedTextTransform
+                                        }
+                                        TextPassError::TextBytesExceeded => {
+                                            PainterError::TextBytesExceeded
+                                        }
+                                        TextPassError::FontFamilyTooLong => {
+                                            PainterError::FontFamilyTooLong
+                                        }
+                                    })?,
+                            )
+                        } else {
+                            None
+                        };
                     if run != usize::MAX {
                         draws.push(PreparedDraw::Text {
                             command_index: first_command,
                             run,
+                            accurate_run,
                         });
                     }
                 }
@@ -307,10 +429,13 @@ impl WgpuPainter {
         Ok(draws)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode_prepared(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
+        text_view: &wgpu::TextureView,
+        color_mode: ColorMode,
         viewport: (u32, u32),
         draws: &[PreparedDraw],
         command_start: usize,
@@ -338,45 +463,74 @@ impl WgpuPainter {
             text,
             ..
         } = self;
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("knave-renderer-ordered-pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        for draw in selected {
-            match draw {
-                PreparedDraw::Shape {
-                    instance_index,
-                    scissor,
-                    ..
-                } => shapes.draw(&mut pass, instance_index, scissor),
-                PreparedDraw::Image {
-                    instance_index,
-                    scissor,
-                    ..
-                } => images.draw(&mut pass, instance_index, scissor),
-                PreparedDraw::Text { run, .. } => {
-                    pass.set_scissor_rect(
-                        full_scissor[0],
-                        full_scissor[1],
-                        full_scissor[2],
-                        full_scissor[3],
-                    );
-                    text.render(run, &mut pass)
+        let mut index = 0;
+        while index < selected.len() {
+            let first_is_text = matches!(selected[index], PreparedDraw::Text { .. });
+            let end = if color_mode == ColorMode::Web {
+                (index + 1..selected.len())
+                    .find(|&next| {
+                        matches!(selected[next], PreparedDraw::Text { .. }) != first_is_text
+                    })
+                    .unwrap_or(selected.len())
+            } else {
+                selected.len()
+            };
+            let target = if color_mode == ColorMode::Web && first_is_text {
+                text_view
+            } else {
+                view
+            };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("knave-renderer-ordered-pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            for draw in &selected[index..end] {
+                match draw {
+                    PreparedDraw::Shape {
+                        instance_index,
+                        scissor,
+                        ..
+                    } => shapes.draw(&mut pass, *instance_index, *scissor),
+                    PreparedDraw::Image {
+                        instance_index,
+                        scissor,
+                        ..
+                    } => images.draw(&mut pass, *instance_index, *scissor),
+                    PreparedDraw::Text {
+                        run, accurate_run, ..
+                    } => {
+                        pass.set_scissor_rect(
+                            full_scissor[0],
+                            full_scissor[1],
+                            full_scissor[2],
+                            full_scissor[3],
+                        );
+                        text.render(
+                            if color_mode == ColorMode::Accurate {
+                                accurate_run.unwrap_or(*run)
+                            } else {
+                                *run
+                            },
+                            color_mode,
+                            &mut pass,
+                        )
                         .map_err(PainterError::RenderText)?;
+                    }
                 }
             }
+            index = end;
         }
         Ok(())
     }
@@ -449,6 +603,7 @@ enum PreparedDraw {
     Text {
         command_index: usize,
         run: usize,
+        accurate_run: Option<usize>,
     },
 }
 
