@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use glyphon::{
-    Attrs, Buffer, Cache, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea,
-    TextAtlas, TextBounds, TextRenderer, Viewport, Weight, Wrap,
+    Attrs, Buffer, Cache, ColorMode, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
+    TextArea, TextAtlas, TextBounds, TextRenderer, Viewport, Weight, Wrap,
 };
 use knave_ui::{Rect, TextAlign, TextSpan, TextStyle, TextWrap, Transform2D};
 use unicode_segmentation::UnicodeSegmentation;
@@ -76,8 +76,10 @@ pub(super) struct TextPass {
     font_system: FontSystem,
     swash_cache: SwashCache,
     atlas: TextAtlas,
+    web_atlas: TextAtlas,
     viewport: Viewport,
     renderers: Vec<TextRenderer>,
+    web_renderers: Vec<TextRenderer>,
     layouts: HashMap<LayoutKey, CachedLayout>,
     layout_bytes: usize,
     clock: u64,
@@ -98,13 +100,22 @@ impl TextPass {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let cache = Cache::new(device);
         let atlas = TextAtlas::new(device, queue, &cache, format);
+        let web_format = match format {
+            wgpu::TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8Unorm,
+            _ => format,
+        };
+        let web_atlas =
+            TextAtlas::with_color_mode(device, queue, &cache, web_format, ColorMode::Web);
         let viewport = Viewport::new(device, &cache);
         Self {
             font_system: system_fonts(),
             swash_cache: SwashCache::new(),
             atlas,
+            web_atlas,
             viewport,
             renderers: Vec::new(),
+            web_renderers: Vec::new(),
             layouts: HashMap::new(),
             layout_bytes: 0,
             clock: 0,
@@ -115,6 +126,7 @@ impl TextPass {
 
     pub fn begin_frame(&mut self, queue: &wgpu::Queue, size: (u32, u32)) {
         self.atlas.trim();
+        self.web_atlas.trim();
         self.viewport.update(
             queue,
             Resolution {
@@ -131,6 +143,7 @@ impl TextPass {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         items: &[TextItem<'_>],
+        color_mode: ColorMode,
     ) -> Result<usize, TextPassError> {
         if items
             .iter()
@@ -215,20 +228,33 @@ impl TextPass {
         if run_index >= MAX_TEXT_RENDERERS {
             return Err(TextPassError::TooManyRuns);
         }
-        if run_index == self.renderers.len() {
-            self.renderers.push(TextRenderer::new(
-                &mut self.atlas,
-                device,
-                wgpu::MultisampleState::default(),
-                None,
-            ));
+        if color_mode == ColorMode::Web {
+            while self.web_renderers.len() <= run_index {
+                self.web_renderers.push(TextRenderer::new(
+                    &mut self.web_atlas,
+                    device,
+                    wgpu::MultisampleState::default(),
+                    None,
+                ));
+            }
+        } else {
+            while self.renderers.len() <= run_index {
+                self.renderers.push(TextRenderer::new(
+                    &mut self.atlas,
+                    device,
+                    wgpu::MultisampleState::default(),
+                    None,
+                ));
+            }
         }
         let Self {
             font_system,
             swash_cache,
             atlas,
+            web_atlas,
             viewport,
             renderers,
+            web_renderers,
             ..
         } = self;
         let areas = prepared.iter().map(|area| TextArea {
@@ -240,6 +266,11 @@ impl TextPass {
             default_color: area.color,
             custom_glyphs: &[],
         });
+        let (atlas, renderers) = if color_mode == ColorMode::Web {
+            (web_atlas, web_renderers)
+        } else {
+            (atlas, renderers)
+        };
         renderers[run_index]
             .prepare(
                 device,
@@ -293,9 +324,14 @@ impl TextPass {
     pub fn render<'a>(
         &'a self,
         run: usize,
+        color_mode: ColorMode,
         pass: &mut wgpu::RenderPass<'a>,
     ) -> Result<(), glyphon::RenderError> {
-        self.renderers[run].render(&self.atlas, &self.viewport, pass)
+        if color_mode == ColorMode::Web {
+            self.web_renderers[run].render(&self.web_atlas, &self.viewport, pass)
+        } else {
+            self.renderers[run].render(&self.atlas, &self.viewport, pass)
+        }
     }
 
     fn insert_layout(&mut self, key: LayoutKey, buffer: Arc<Buffer>) {

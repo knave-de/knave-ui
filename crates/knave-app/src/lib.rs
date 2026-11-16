@@ -179,6 +179,7 @@ struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
+    supports_paired_text_views: bool,
     painter: WgpuPainter,
     occluded: bool,
 }
@@ -188,6 +189,10 @@ impl Gpu {
         let surface = instance.create_surface(window.clone())?;
         let adapter =
             pollster::block_on(knave_renderer::select_adapter(&instance, Some(&surface)))?;
+        let supports_paired_text_views = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::SURFACE_VIEW_FORMATS);
         let info = adapter.get_info();
         eprintln!(
             "knave-app: GPU adapter {} ({:?}, {})",
@@ -204,6 +209,12 @@ impl Gpu {
             .into_iter()
             .find(|f| f.is_srgb())
             .ok_or("surface has no sRGB format")?;
+        if supports_paired_text_views {
+            config.view_formats = vec![
+                WgpuPainter::paired_text_format(config.format)
+                    .ok_or("sRGB surface has no compatible Unorm text view format")?,
+            ];
+        }
         let painter = WgpuPainter::new(&device, &queue, config.format)?;
         surface.configure(&device, &config);
         let clipboard = clipboard::Clipboard::new(&window)?;
@@ -215,6 +226,7 @@ impl Gpu {
             device,
             queue,
             config,
+            supports_paired_text_views,
             painter,
             occluded: false,
         })
@@ -271,6 +283,13 @@ impl Gpu {
             .clone();
         scale_list(&mut list, scale);
         let view = frame.texture.create_view(&Default::default());
+        let opaque_root = list.clear_color.alpha == u8::MAX;
+        let text_view = (opaque_root && self.supports_paired_text_views).then(|| {
+            frame.texture.create_view(&wgpu::TextureViewDescriptor {
+                format: WgpuPainter::paired_text_format(self.config.format),
+                ..Default::default()
+            })
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let [r, g, b, a] = list.clear_color.to_linear_rgba();
         {
@@ -293,14 +312,26 @@ impl Gpu {
                 ..Default::default()
             });
         }
-        self.painter.encode(
-            &self.device,
-            &self.queue,
-            &mut encoder,
-            &view,
-            (size.width, size.height),
-            &list,
-        )?;
+        if let Some(text_view) = &text_view {
+            self.painter.encode_targets(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &view,
+                text_view,
+                (size.width, size.height),
+                &list,
+            )?;
+        } else {
+            self.painter.encode(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                &view,
+                (size.width, size.height),
+                &list,
+            )?;
+        }
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.queue.present(frame);

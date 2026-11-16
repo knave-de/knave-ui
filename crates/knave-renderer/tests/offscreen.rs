@@ -5,6 +5,343 @@ use knave_ui::{
 };
 
 #[test]
+fn encoded_srgb_text_blending_changes_text_edges_without_changing_shapes_or_opacity() {
+    let instance = wgpu::Instance::default();
+    let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        compatible_surface: None,
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    })) {
+        Ok(adapter) => adapter,
+        Err(error) => {
+            eprintln!("skipping paired text blending test: no headless adapter: {error}");
+            return;
+        }
+    };
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .expect("request an offscreen rendering device");
+    let size = (256, 96);
+    let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    let mut targets = Vec::new();
+    let mut views = Vec::new();
+    let mut text_views = Vec::new();
+    for label in ["accurate", "web"] {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.0,
+                height: size.1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        });
+        views.push(texture.create_view(&Default::default()));
+        text_views.push(texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        }));
+        targets.push(texture);
+    }
+    let list = DisplayList {
+        revision: 7,
+        clear_color: Color::rgba(128, 128, 128, 255),
+        commands: vec![
+            DisplayCommand::Text {
+                bounds: Rect::new(8.0, 8.0, 116.0, 28.0),
+                style: TextStyle {
+                    font_size: 22.0,
+                    line_height: 25.0,
+                    color: Color::rgba(0, 0, 0, 255),
+                    ..TextStyle::default()
+                },
+                text: "Dark Poppins".into(),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::Shape {
+                bounds: Rect::new(8.0, 46.0, 116.0, 32.0),
+                paint: ShapePaint::fill(Color::rgba(24, 32, 44, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::Text {
+                bounds: Rect::new(12.0, 48.0, 108.0, 28.0),
+                style: TextStyle {
+                    font_size: 22.0,
+                    line_height: 25.0,
+                    color: Color::rgba(255, 255, 255, 255),
+                    ..TextStyle::default()
+                },
+                text: "Light Bold".into(),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::BeginOpacity { opacity: 0.5 },
+            DisplayCommand::Shape {
+                bounds: Rect::new(140.0, 12.0, 28.0, 24.0),
+                paint: ShapePaint::fill(Color::rgba(240, 48, 24, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::EndOpacity,
+            DisplayCommand::Shape {
+                bounds: Rect::new(184.0, 46.0, 32.0, 32.0),
+                paint: ShapePaint::fill(Color::rgba(48, 160, 96, 255)),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::Image {
+                bounds: Rect::new(224.0, 46.0, 24.0, 24.0),
+                image: UiImage::from_rgba(1, 1, vec![0, 0, 255, 255]).unwrap(),
+                style: ImageStyle::default(),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::BeginOpacity { opacity: 0.5 },
+            DisplayCommand::Text {
+                bounds: Rect::new(8.0, 78.0, 64.0, 16.0),
+                style: TextStyle {
+                    font_size: 13.0,
+                    line_height: 15.0,
+                    color: Color::rgba(0, 0, 0, 255),
+                    ..TextStyle::default()
+                },
+                text: "Fade".into(),
+                transform: Transform2D::IDENTITY,
+                clip: None,
+            },
+            DisplayCommand::EndOpacity,
+        ],
+    };
+    for paired in [false, true] {
+        let index = usize::from(paired);
+        let mut painter = WgpuPainter::new(&device, &queue, format).unwrap();
+        let mut encoder = device.create_command_encoder(&Default::default());
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("paired-text-clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &views[index],
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu_color(list.clear_color)),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+        if paired {
+            painter
+                .encode_targets(
+                    &device,
+                    &queue,
+                    &mut encoder,
+                    &views[index],
+                    &text_views[index],
+                    size,
+                    &list,
+                )
+                .unwrap();
+        } else {
+            painter
+                .encode(&device, &queue, &mut encoder, &views[index], size, &list)
+                .unwrap();
+        }
+        queue.submit([encoder.finish()]);
+    }
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    let accurate = read_rgba(&device, &queue, &targets[0], size);
+    let web = read_rgba(&device, &queue, &targets[1], size);
+    let pixel = |pixels: &[[u8; 4]], x: usize, y: usize| pixels[y * size.0 as usize + x];
+    assert_eq!(
+        pixel(&accurate, 150, 20),
+        pixel(&web, 150, 20),
+        "opacity composite must be stable"
+    );
+    assert_eq!(
+        pixel(&accurate, 196, 58),
+        pixel(&web, 196, 58),
+        "solid shape colors must be stable"
+    );
+    assert_eq!(
+        pixel(&accurate, 228, 50),
+        [0, 0, 255, 255],
+        "image must draw at its solid sRGB color"
+    );
+    assert_eq!(
+        pixel(&accurate, 228, 50),
+        pixel(&web, 228, 50),
+        "image output must be unchanged"
+    );
+    assert_eq!(
+        pixel(&accurate, 128, 40),
+        pixel(&web, 128, 40),
+        "background colors must be stable"
+    );
+    let dark_differences = pixels_differ_in(&accurate, &web, size, (8, 8, 124, 36));
+    let light_differences = pixels_differ_in(&accurate, &web, size, (8, 46, 132, 80));
+    assert!(
+        dark_differences > 0,
+        "dark glyph antialias edges should use encoded-sRGB blending"
+    );
+    assert!(
+        light_differences > 0,
+        "light glyph antialias edges should use encoded-sRGB blending"
+    );
+    let dark_direction = pixels_web_darker(&accurate, &web, size, (8, 8, 124, 36));
+    let light_direction = pixels_web_darker(&accurate, &web, size, (8, 46, 132, 80));
+    assert_eq!(
+        dark_direction, dark_differences,
+        "black text edges should move toward encoded-sRGB interpolation"
+    );
+    assert_eq!(
+        light_direction, light_differences,
+        "white text edges should move toward encoded-sRGB interpolation"
+    );
+    for (label, pixels) in [("accurate", &accurate), ("web", &web)] {
+        assert!(
+            pixels[78 * size.0 as usize..96 * size.0 as usize]
+                .chunks_exact(size.0 as usize)
+                .flat_map(|row| row.iter().take(64))
+                .any(|pixel| pixel[0] != 128
+                    || pixel[1] != 128
+                    || pixel[2] != 128
+                    || pixel[3] != 255),
+            "text in an opacity layer should render in {label} mode"
+        );
+    }
+    assert_eq!(
+        pixels_differ_in(&accurate, &web, size, (8, 78, 72, 96)),
+        0,
+        "opacity-group text retains the existing linear-light path"
+    );
+    if let Some(dir) = std::env::var_os("KNAVE_RENDERER_TEST_FRAME_DIR") {
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).expect("create renderer test frame directory");
+        for (name, pixels) in [("accurate", &accurate), ("web", &web)] {
+            let file = std::fs::File::create(dir.join(format!("knave-text-{name}.png")))
+                .expect("create renderer test frame");
+            let mut encoder = png::Encoder::new(file, size.0, size.1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder
+                .write_header()
+                .expect("write renderer test PNG header");
+            let bytes = pixels.iter().flatten().copied().collect::<Vec<_>>();
+            writer
+                .write_image_data(&bytes)
+                .expect("write renderer test PNG pixels");
+        }
+    }
+    eprintln!(
+        "paired text blend moved {dark_differences} dark and {light_differences} light pixels toward encoded-sRGB interpolation"
+    );
+}
+
+fn pixels_differ_in(
+    a: &[[u8; 4]],
+    b: &[[u8; 4]],
+    size: (u32, u32),
+    rect: (u32, u32, u32, u32),
+) -> usize {
+    (rect.1..rect.3)
+        .flat_map(|y| (rect.0..rect.2).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            a[y as usize * size.0 as usize + x as usize]
+                != b[y as usize * size.0 as usize + x as usize]
+        })
+        .count()
+}
+
+fn pixels_web_darker(
+    accurate: &[[u8; 4]],
+    web: &[[u8; 4]],
+    size: (u32, u32),
+    rect: (u32, u32, u32, u32),
+) -> usize {
+    (rect.1..rect.3)
+        .flat_map(|y| (rect.0..rect.2).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
+            let index = y as usize * size.0 as usize + x as usize;
+            (0..3).all(|channel| web[index][channel] <= accurate[index][channel])
+                && (0..3).any(|channel| web[index][channel] < accurate[index][channel])
+        })
+        .count()
+}
+
+fn read_rgba(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    size: (u32, u32),
+) -> Vec<[u8; 4]> {
+    let row_pitch = (size.0 * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+        * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("paired-text-readback"),
+        size: u64::from(row_pitch) * u64::from(size.1),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(row_pitch),
+                rows_per_image: Some(size.1),
+            },
+        },
+        wgpu::Extent3d {
+            width: size.0,
+            height: size.1,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+    let slice = buffer.slice(..);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |result| {
+        let _ = sender.send(result);
+    });
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    receiver.recv().unwrap().unwrap();
+    let mapped = slice.get_mapped_range().unwrap();
+    let mut pixels = Vec::with_capacity((size.0 * size.1) as usize);
+    for y in 0..size.1 {
+        for x in 0..size.0 {
+            let offset = (y * row_pitch + x * 4) as usize;
+            pixels.push([
+                mapped[offset],
+                mapped[offset + 1],
+                mapped[offset + 2],
+                mapped[offset + 3],
+            ]);
+        }
+    }
+    pixels
+}
+
+#[test]
 fn offscreen_frame_preserves_order_clips_images_and_renders_real_text() {
     let instance = wgpu::Instance::default();
     let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
