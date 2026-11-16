@@ -266,7 +266,7 @@ fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
     assert_eq!(state.cursor_rectangle.height, 24.0);
     assert_eq!(
         state.cursor_rectangle.y,
-        bounds.y + 21.0 + ((bounds.height - 40.0 - 24.0) / 2.0).max(0.0)
+        bounds.y + 21.0 + ((bounds.height - 42.0 - 24.0) / 2.0).max(0.0)
     );
 }
 #[test]
