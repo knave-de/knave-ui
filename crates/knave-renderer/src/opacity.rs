@@ -25,7 +25,6 @@ struct VertexOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2
 pub(super) struct OpacityTarget {
     _texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
-    pub(super) _text_view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
     bytes: u64,
 }
@@ -190,11 +189,6 @@ impl OpacityPass {
             self.targets[index] = None;
             index += 1;
         }
-        let text_format = match self.format {
-            wgpu::TextureFormat::Rgba8UnormSrgb => wgpu::TextureFormat::Rgba8Unorm,
-            wgpu::TextureFormat::Bgra8UnormSrgb => wgpu::TextureFormat::Bgra8Unorm,
-            _ => return None,
-        };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("knave-opacity-target"),
             size: wgpu::Extent3d {
@@ -207,13 +201,9 @@ impl OpacityPass {
             dimension: wgpu::TextureDimension::D2,
             format: self.format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[text_format],
+            view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let text_view = texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(text_format),
-            ..Default::default()
-        });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("knave-opacity-bind-group"),
             layout: &self.layout,
@@ -241,7 +231,6 @@ impl OpacityPass {
         Some(OpacityTarget {
             _texture: texture,
             view,
-            _text_view: text_view,
             bind_group,
             bytes,
         })

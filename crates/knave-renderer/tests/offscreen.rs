@@ -120,9 +120,9 @@ fn encoded_srgb_text_blending_changes_text_edges_without_changing_shapes_or_opac
             DisplayCommand::EndOpacity,
         ],
     };
-    let mut painter = WgpuPainter::new(&device, &queue, format).unwrap();
     for paired in [false, true] {
         let index = usize::from(paired);
+        let mut painter = WgpuPainter::new(&device, &queue, format).unwrap();
         let mut encoder = device.create_command_encoder(&Default::default());
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -227,14 +227,23 @@ fn encoded_srgb_text_blending_changes_text_edges_without_changing_shapes_or_opac
         0,
         "opacity-group text retains the existing linear-light path"
     );
-    for (name, pixels) in [("accurate", &accurate), ("web", &web)] {
-        let file = std::fs::File::create(format!("/tmp/knave-text-{name}.png")).unwrap();
-        let mut encoder = png::Encoder::new(file, size.0, size.1);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().unwrap();
-        let bytes = pixels.iter().flatten().copied().collect::<Vec<_>>();
-        writer.write_image_data(&bytes).unwrap();
+    if let Some(dir) = std::env::var_os("KNAVE_RENDERER_TEST_FRAME_DIR") {
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).expect("create renderer test frame directory");
+        for (name, pixels) in [("accurate", &accurate), ("web", &web)] {
+            let file = std::fs::File::create(dir.join(format!("knave-text-{name}.png")))
+                .expect("create renderer test frame");
+            let mut encoder = png::Encoder::new(file, size.0, size.1);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder
+                .write_header()
+                .expect("write renderer test PNG header");
+            let bytes = pixels.iter().flatten().copied().collect::<Vec<_>>();
+            writer
+                .write_image_data(&bytes)
+                .expect("write renderer test PNG pixels");
+        }
     }
     eprintln!(
         "paired text blend moved {dark_differences} dark and {light_differences} light pixels toward encoded-sRGB interpolation"

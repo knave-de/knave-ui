@@ -229,7 +229,7 @@ impl TextPass {
             return Err(TextPassError::TooManyRuns);
         }
         if color_mode == ColorMode::Web {
-            if run_index == self.web_renderers.len() {
+            while self.web_renderers.len() <= run_index {
                 self.web_renderers.push(TextRenderer::new(
                     &mut self.web_atlas,
                     device,
@@ -237,13 +237,15 @@ impl TextPass {
                     None,
                 ));
             }
-        } else if run_index == self.renderers.len() {
-            self.renderers.push(TextRenderer::new(
-                &mut self.atlas,
-                device,
-                wgpu::MultisampleState::default(),
-                None,
-            ));
+        } else {
+            while self.renderers.len() <= run_index {
+                self.renderers.push(TextRenderer::new(
+                    &mut self.atlas,
+                    device,
+                    wgpu::MultisampleState::default(),
+                    None,
+                ));
+            }
         }
         let Self {
             font_system,

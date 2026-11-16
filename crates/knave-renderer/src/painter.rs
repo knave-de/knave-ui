@@ -376,9 +376,15 @@ impl WgpuPainter {
                         items.push(item);
                         command_index += 1;
                     }
+                    let run_mode =
+                        if color_mode == ColorMode::Web && opacity_depths[first_command] > 0 {
+                            ColorMode::Accurate
+                        } else {
+                            color_mode
+                        };
                     let run = self
                         .text
-                        .prepare_run(device, queue, &items, color_mode)
+                        .prepare_run(device, queue, &items, run_mode)
                         .map_err(|error| match error {
                             TextPassError::Glyphon(error) => PainterError::PrepareText(error),
                             TextPassError::TooManyRuns => PainterError::TooManyTextRuns,
@@ -388,35 +394,10 @@ impl WgpuPainter {
                             TextPassError::TextBytesExceeded => PainterError::TextBytesExceeded,
                             TextPassError::FontFamilyTooLong => PainterError::FontFamilyTooLong,
                         })?;
-                    let accurate_run =
-                        if color_mode == ColorMode::Web && opacity_depths[first_command] > 0 {
-                            Some(
-                                self.text
-                                    .prepare_run(device, queue, &items, ColorMode::Accurate)
-                                    .map_err(|error| match error {
-                                        TextPassError::Glyphon(error) => {
-                                            PainterError::PrepareText(error)
-                                        }
-                                        TextPassError::TooManyRuns => PainterError::TooManyTextRuns,
-                                        TextPassError::UnsupportedTransform => {
-                                            PainterError::UnsupportedTextTransform
-                                        }
-                                        TextPassError::TextBytesExceeded => {
-                                            PainterError::TextBytesExceeded
-                                        }
-                                        TextPassError::FontFamilyTooLong => {
-                                            PainterError::FontFamilyTooLong
-                                        }
-                                    })?,
-                            )
-                        } else {
-                            None
-                        };
                     if run != usize::MAX {
                         draws.push(PreparedDraw::Text {
                             command_index: first_command,
                             run,
-                            accurate_run,
                         });
                     }
                 }
@@ -508,25 +489,15 @@ impl WgpuPainter {
                         scissor,
                         ..
                     } => images.draw(&mut pass, *instance_index, *scissor),
-                    PreparedDraw::Text {
-                        run, accurate_run, ..
-                    } => {
+                    PreparedDraw::Text { run, .. } => {
                         pass.set_scissor_rect(
                             full_scissor[0],
                             full_scissor[1],
                             full_scissor[2],
                             full_scissor[3],
                         );
-                        text.render(
-                            if color_mode == ColorMode::Accurate {
-                                accurate_run.unwrap_or(*run)
-                            } else {
-                                *run
-                            },
-                            color_mode,
-                            &mut pass,
-                        )
-                        .map_err(PainterError::RenderText)?;
+                        text.render(*run, color_mode, &mut pass)
+                            .map_err(PainterError::RenderText)?;
                     }
                 }
             }
@@ -603,7 +574,6 @@ enum PreparedDraw {
     Text {
         command_index: usize,
         run: usize,
-        accurate_run: Option<usize>,
     },
 }
 
