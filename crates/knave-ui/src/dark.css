@@ -1,4 +1,4 @@
-/* Knave dark — neutral graphite surfaces with one calm accent.
+/* Knave dark — Ink surfaces with a calm cyan accent.
  *
  * Surfaces get lighter as they come closer to the user:
  * canvas < raised (cards, lists) < control < hover.
@@ -9,43 +9,77 @@
  * and applications override these names. The second block is private to this
  * stylesheet. */
 :root {
-	--accent: accent;
-	--warning: #EDBE6A;
+	--accent: var(--primary);
+	--primary: #60CBED;
+	--secondary: #79D8C2;
+	--secondary-accent: var(--secondary);
+	--tertiary: #ACB8F4;
 	--danger: #F27E84;
-	--canvas: #111317;
-	--panel-surface: #111317;
-	--surface: #272C34;
-	--surface-hover: #323842;
-	--surface-pressed: #1E2228;
-	--surface-selected: #5DADE238;
-	--surface-menu: #22262D;
-	--surface-tooltip: #2E333C;
+	--warning: #EDBE6A;
+	--success: #83D6A5;
+	--canvas: #0F1D24;
+	--panel-surface: #0F1D24;
+	--surface-raised: #17252C;
+	--surface: #213038;
+	--text: #E3ECEF;
+	--text-secondary: #A5B8C1;
+	--text-disabled: #84969f;
+	--border: #293c45;
+	--border-strong: #49616D;
+	--surface-hover: #334148;
+	--surface-pressed: #1d2a31;
+	--surface-selected: #1c3944;
+	--surface-menu: #17252C;
+	--surface-tooltip: #17252C;
+	--text-tooltip: #E3ECEF;
+	--surface-sunken: #0c171d;
+	--surface-input-hover: #18272e;
+	--surface-tint: #172e38;
+	--text-accent: #60CBED;
+	--accent-hover: #73d1ef;
+	--accent-pressed: #54b3d1;
+	--on-accent: #111317;
+	--control-muted: #213038;
+	--nav-surface: #17252C;
 	--surface-overlay: #000000AA;
-	--text-disabled: #B4BCC6;
-	--control-muted: #2A2F37;
-	--shadow-low: 0px 1px 2px #00000080;
-	--shadow-raised: 0px 2px 5px #00000073;
-	--shadow-floating: 0px 6px 12px #0000008C;
-
-	--text: #E8EBEF;
-	--text-tooltip: #F7F8FA;
-	--text-secondary: #A7B0BB;
-	--text-accent: #93CDEE;
-	--surface-raised: #1A1D23;
-	--surface-sunken: #090A0D;
-	--surface-input-hover: #0F1115;
-	--surface-tint: #5DADE229;
-	--border: #2E333B;
-	--border-strong: #5A6370;
-	--accent-hover: #7DBEE8;
-	--accent-pressed: #4294C8;
-	--on-accent: #0A1620;
-	--danger-surface: #3D1F24;
-	--danger-hover: #F6979C;
-	--danger-pressed: #D9686E;
-	--on-danger: #1C0709;
-	--nav-surface: #20242B;
+	--window-border-color: #007A9C;
+	--shadow-active-window: 0 0 14px #60CBED26, 0 4px 16px #00000055;
+	--edge-control: #263841;
+	--edge-panel: #354953;
+	--shadow-low: none;
+	--shadow-raised: 0 2px 8px #00000018;
+	--shadow-floating: 0 8px 24px #00000038;
+	--shadow-panel: -10px 0 28px #00000050;
+	--shell-panel-surface: #0F1D24;
+	--shell-card-surface: #1c2a32;
+	--shell-header-surface: #17252C;
+	--shadow-overview: 0 10px 30px #00000045;
+	--on-primary: #111317;
+	--primary-surface: #203943;
+	--primary-hover: #73d1ef;
+	--primary-pressed: #4fa6c2;
+	--on-secondary: #111317;
+	--secondary-surface: #233a3e;
+	--secondary-hover: #89ddc9;
+	--secondary-pressed: #63b19f;
+	--on-tertiary: #111317;
+	--tertiary-surface: #293744;
+	--tertiary-hover: #b6c1f5;
+	--tertiary-pressed: #8d97c8;
+	--on-danger: #111317;
+	--danger-surface: #313037;
+	--danger-hover: #f48d93;
+	--danger-pressed: #c6676c;
+	--on-warning: #111317;
+	--warning-surface: #313733;
+	--warning-hover: #efc67c;
+	--warning-pressed: #c29c57;
+	--on-success: #111317;
+	--success-surface: #243a3b;
+	--success-hover: #92dbb0;
+	--success-pressed: #6baf87;
 }
+
 
 /* Structure and typography. */
 canvas {
@@ -69,7 +103,7 @@ card,
 empty-state {
 	background-color: var(--surface-raised);
 	border: 1px solid var(--border);
-	border-radius: 8px;
+	border-radius: 3px;
 	padding: 12px;
 	gap: 8px;
 }
@@ -122,9 +156,7 @@ badge {
 	width: fit-content;
 }
 
-/* Controls are filled and borderless: borders reflow layout, and the toolkit
- * keeps the same control geometry in every Knave application. Fill contrast
- * separates them from the page instead. */
+/* Controls use a quiet neutral edge and shared compact geometry. */
 button,
 dropdown,
 menu,
@@ -136,7 +168,8 @@ disclosure,
 pagination {
 	color: var(--text);
 	background-color: var(--surface);
-	border-radius: 6px;
+	border: 1px solid var(--edge-control);
+	border-radius: 3px;
 	text-align: center;
 }
 
@@ -178,7 +211,7 @@ dropdown:focus,
 checkbox:focus,
 toggle:focus {
 	outline-color: var(--accent);
-	outline-width: 1px;
+	outline-width: 2px;
 }
 
 menu,
@@ -187,6 +220,7 @@ context-menu {
 }
 
 button.primary {
+	border: 1px solid transparent;
 	color: var(--on-accent);
 	background-color: var(--accent);
 }
@@ -200,23 +234,30 @@ button.primary:pressed {
 }
 
 button.secondary {
-	color: var(--text-accent);
-	background-color: var(--surface-tint);
-}
-
-button.secondary:hover {
-	background-color: var(--surface-selected);
-}
-
-button.ghost {
-	background-color: transparent;
-}
-
-button.ghost:hover {
+	color: var(--text);
 	background-color: var(--surface);
 }
 
+button.secondary:hover {
+	background-color: var(--surface-hover);
+}
+
+button.secondary:pressed {
+	background-color: var(--surface-pressed);
+}
+
+button.ghost {
+	color: var(--text-secondary);
+	background-color: transparent;
+	border: 1px solid transparent;
+}
+
+button.ghost:hover {
+	background-color: var(--surface-hover);
+}
+
 button.destructive {
+	border: 1px solid transparent;
 	color: var(--on-danger);
 	background-color: var(--danger);
 }
@@ -247,14 +288,15 @@ combo-box:disabled,
 selectable:disabled,
 disclosure:disabled {
 	background-color: var(--surface);
+	border-color: transparent;
 }
 
-/* The outline marks field boundaries without changing control geometry. */
+/* The edge marks field boundaries; keyboard focus uses a separate outline. */
 text-input,
 combo-box {
 	background-color: var(--surface-sunken);
-	outline-color: var(--border-strong);
-	outline-width: 1px;
+	border: 1px solid var(--edge-control);
+	outline-width: 0;
 }
 
 text-input:hover,
@@ -430,7 +472,7 @@ dialog,
 command-palette {
 	background-color: var(--surface-menu);
 	border: 1px solid var(--border-strong);
-	border-radius: 10px;
+	border-radius: 8px;
 }
 
 tooltip {
@@ -476,7 +518,7 @@ segment,
 chip,
 slider-thumb,
 switch-thumb {
-	box-shadow: var(--shadow-low);
+	box-shadow: none;
 }
 
 button:hover,
@@ -484,13 +526,13 @@ dropdown:hover,
 menu:hover,
 context-menu:hover,
 pagination:hover {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 card,
 empty-state,
 tooltip {
-	box-shadow: var(--shadow-raised);
+	box-shadow: none;
 }
 
 popup,

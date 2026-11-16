@@ -256,17 +256,17 @@ fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
         .unwrap();
     s.layout([240.0, 120.0], &mut Metrics);
     let bounds = s.bounds(ElementId(1)).unwrap();
-    let click = [bounds.x + 28.0, bounds.y + bounds.height / 2.0];
+    let click = [bounds.x + 29.0, bounds.y + bounds.height / 2.0];
     s.event(Input::PointerDown(click));
     s.layout([240.0, 120.0], &mut Metrics);
 
     let state = s.text_input_state().unwrap();
     assert_eq!(state.cursor, 1);
-    assert_eq!(state.cursor_rectangle.x, bounds.x + 28.0);
+    assert_eq!(state.cursor_rectangle.x, bounds.x + 29.0);
     assert_eq!(state.cursor_rectangle.height, 24.0);
     assert_eq!(
         state.cursor_rectangle.y,
-        bounds.y + 20.0 + ((bounds.height - 40.0 - 24.0) / 2.0).max(0.0)
+        bounds.y + 21.0 + ((bounds.height - 42.0 - 24.0) / 2.0).max(0.0)
     );
 }
 #[test]
@@ -300,7 +300,7 @@ fn centered_text_input_uses_field_width_for_measurement_and_painting() {
     let mut metrics = RecordingMetrics(Vec::new());
     scene.layout([240.0, 120.0], &mut metrics);
     let field_bounds = scene.bounds(ElementId(1)).unwrap();
-    let text_area_width = field_bounds.width - 40.0;
+    let text_area_width = field_bounds.width - 42.0;
     assert_eq!(metrics.0.last().copied(), Some(text_area_width));
 
     metrics.0.clear();
@@ -308,7 +308,7 @@ fn centered_text_input_uses_field_width_for_measurement_and_painting() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Text { text, bounds, style, .. }
             if text == "centered"
-                && bounds.x == field_bounds.x + 20.0
+                && bounds.x == field_bounds.x + 21.0
                 && bounds.width == text_area_width
                 && style.align == knave_ui::TextAlign::Center
     )));
@@ -383,16 +383,16 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == button_bounds
-                && paint.fill == Some(knave_ui::Color::rgba(0x32, 0x38, 0x42, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x33, 0x41, 0x48, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x2e, 0x33, 0x3c, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x17, 0x25, 0x2c, 255))
     )));
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { bounds, paint, .. }
             if *bounds == s.bounds(ElementId(3)).unwrap()
-                && paint.fill == Some(knave_ui::Color::rgba(0x27, 0x2c, 0x34, 255))
+                && paint.fill == Some(knave_ui::Color::rgba(0x21, 0x30, 0x38, 255))
     )));
 
     let menu_bounds = s.bounds(ElementId(2)).unwrap();
@@ -403,7 +403,7 @@ fn stylesheet_replacement_retains_default_surfaces_and_allows_overrides() {
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Shape { paint, .. }
-            if paint.fill == Some(knave_ui::Color::rgba(0x22, 0x26, 0x2d, 255))
+            if paint.fill == Some(knave_ui::Color::rgba(0x17, 0x25, 0x2c, 255))
     )));
 
     let popup = Element::new(10, Widget::Popup { modal: true }).layout(Layout {
@@ -500,7 +500,7 @@ fn bundled_stylesheet_preserves_default_control_insets() {
     let mut s = scene(vec![leaf(1, Widget::Button("Run".into()))]);
     let bounds = s.bounds(ElementId(1)).unwrap();
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
-    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{bounds: text_bounds,text,..} if text=="Run" && text_bounds.x==bounds.x+10.0)));
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{bounds: text_bounds,text,..} if text=="Run" && text_bounds.x==bounds.x+11.0)));
 }
 #[test]
 fn slider_captures_outside_and_cancel_restores_value() {
@@ -1735,7 +1735,7 @@ fn tooltip_uses_readable_text_and_stays_inside_the_viewport() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(tooltip.0, knave_ui::Color::rgba(247, 248, 250, 255));
+    assert_eq!(tooltip.0, knave_ui::Color::rgba(227, 236, 239, 255));
     assert!(tooltip.1.x >= 0.0 && tooltip.1.y >= 0.0);
     assert!(tooltip.1.x + tooltip.1.width <= 400.0);
     assert!(tooltip.1.y + tooltip.1.height <= 400.0);
@@ -1747,7 +1747,7 @@ fn focus_outline_is_for_keyboard_and_disappears_when_control_is_disabled() {
     let outlined = |s: &mut Scene| {
         s.display_list([400.0, 400.0], &mut Metrics).commands.iter().any(|c| matches!(c,
             knave_ui::DisplayCommand::Shape { paint, .. }
-                if paint.border.is_some_and(|b| b.color == knave_ui::Color::ACCENT && b.width == 1.0)))
+                if paint.border.is_some_and(|b| b.color == knave_ui::Color::rgba(96, 203, 237, 255) && b.width == 2.0)))
     };
     click(&mut s, [20.0, 20.0]);
     assert!(s.interaction(ElementId(1)).unwrap().focused);
@@ -2862,7 +2862,9 @@ fn hover_border_width_reflows_and_preserves_hit_testing() {
     let before = s.bounds(ElementId(2)).unwrap().y;
     s.event(Input::PointerMove([20.0, 20.0]));
     s.layout([400.0, 400.0], &mut Metrics);
-    assert_eq!(s.bounds(ElementId(2)).unwrap().y, before + 12.0);
+    // The base button already has 1px top and bottom edges, so the hover
+    // override grows its height by (4 - 1) + (8 - 1) pixels.
+    assert_eq!(s.bounds(ElementId(2)).unwrap().y, before + 10.0);
     let bounds = s.bounds(ElementId(1)).unwrap();
     assert_eq!(
         s.hit_test([bounds.x + 4.0, bounds.y + bounds.height - 1.0]),

@@ -240,11 +240,9 @@ fn high_contrast_policy_strengthens_focus_outline_and_preserves_scheme() {
     let policy = ThemePolicy::new(Theme::Light, Contrast::High, Chroma::FullColor);
     scene.set_theme_policy_stylesheets(policy, "", "").unwrap();
     assert_eq!(scene.theme_policy(), policy);
-    assert!(
-        policy
-            .stylesheet()
-            .contains("*:focus { outline-width: 2px; }")
-    );
+    assert!(policy.stylesheet().contains(
+        "*:focus { outline-color: var(--text); outline-width: 3px; outline-offset: 2px; }"
+    ));
 }
 
 #[test]

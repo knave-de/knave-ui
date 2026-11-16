@@ -281,8 +281,14 @@ impl Scene {
     pub(super) fn auxiliary_style(&self, kind: &str) -> ComputedStyle {
         css::auxiliary(self, kind)
     }
-    pub(super) fn theme_color(&self, name: &str) -> Option<Color> {
+    /// Resolve a named CSS color from the active built-in and custom theme layers.
+    pub fn theme_color(&self, name: &str) -> Option<Color> {
         css::theme_color(self, name)
+    }
+    /// Resolve a named CSS custom property from the active theme layers.
+    /// This is useful for non-color tokens such as shadows and lengths.
+    pub fn theme_value(&self, name: &str) -> Option<String> {
+        css::theme_value(self, name)
     }
     fn paragraph_text_len(&self, index: usize) -> usize {
         let node = &self.nodes[index];
