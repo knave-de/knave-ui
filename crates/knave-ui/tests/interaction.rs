@@ -256,17 +256,17 @@ fn css_text_input_insets_and_line_height_match_click_and_ime_geometry() {
         .unwrap();
     s.layout([240.0, 120.0], &mut Metrics);
     let bounds = s.bounds(ElementId(1)).unwrap();
-    let click = [bounds.x + 28.0, bounds.y + bounds.height / 2.0];
+    let click = [bounds.x + 29.0, bounds.y + bounds.height / 2.0];
     s.event(Input::PointerDown(click));
     s.layout([240.0, 120.0], &mut Metrics);
 
     let state = s.text_input_state().unwrap();
     assert_eq!(state.cursor, 1);
-    assert_eq!(state.cursor_rectangle.x, bounds.x + 28.0);
+    assert_eq!(state.cursor_rectangle.x, bounds.x + 29.0);
     assert_eq!(state.cursor_rectangle.height, 24.0);
     assert_eq!(
         state.cursor_rectangle.y,
-        bounds.y + 20.0 + ((bounds.height - 40.0 - 24.0) / 2.0).max(0.0)
+        bounds.y + 21.0 + ((bounds.height - 40.0 - 24.0) / 2.0).max(0.0)
     );
 }
 #[test]
@@ -300,7 +300,7 @@ fn centered_text_input_uses_field_width_for_measurement_and_painting() {
     let mut metrics = RecordingMetrics(Vec::new());
     scene.layout([240.0, 120.0], &mut metrics);
     let field_bounds = scene.bounds(ElementId(1)).unwrap();
-    let text_area_width = field_bounds.width - 40.0;
+    let text_area_width = field_bounds.width - 42.0;
     assert_eq!(metrics.0.last().copied(), Some(text_area_width));
 
     metrics.0.clear();
@@ -308,7 +308,7 @@ fn centered_text_input_uses_field_width_for_measurement_and_painting() {
     assert!(list.commands.iter().any(|command| matches!(command,
         DisplayCommand::Text { text, bounds, style, .. }
             if text == "centered"
-                && bounds.x == field_bounds.x + 20.0
+                && bounds.x == field_bounds.x + 21.0
                 && bounds.width == text_area_width
                 && style.align == knave_ui::TextAlign::Center
     )));
@@ -500,7 +500,7 @@ fn bundled_stylesheet_preserves_default_control_insets() {
     let mut s = scene(vec![leaf(1, Widget::Button("Run".into()))]);
     let bounds = s.bounds(ElementId(1)).unwrap();
     let list = s.display_list([400.0, 400.0], &mut Metrics).clone();
-    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{bounds: text_bounds,text,..} if text=="Run" && text_bounds.x==bounds.x+10.0)));
+    assert!(list.commands.iter().any(|command|matches!(command,DisplayCommand::Text{bounds: text_bounds,text,..} if text=="Run" && text_bounds.x==bounds.x+11.0)));
 }
 #[test]
 fn slider_captures_outside_and_cancel_restores_value() {
@@ -2862,7 +2862,9 @@ fn hover_border_width_reflows_and_preserves_hit_testing() {
     let before = s.bounds(ElementId(2)).unwrap().y;
     s.event(Input::PointerMove([20.0, 20.0]));
     s.layout([400.0, 400.0], &mut Metrics);
-    assert_eq!(s.bounds(ElementId(2)).unwrap().y, before + 12.0);
+    // The base button already has 1px top and bottom edges, so the hover
+    // override grows its height by (4 - 1) + (8 - 1) pixels.
+    assert_eq!(s.bounds(ElementId(2)).unwrap().y, before + 10.0);
     let bounds = s.bounds(ElementId(1)).unwrap();
     assert_eq!(
         s.hit_test([bounds.x + 4.0, bounds.y + bounds.height - 1.0]),
