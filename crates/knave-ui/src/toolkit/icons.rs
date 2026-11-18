@@ -14,7 +14,7 @@ pub enum IconVariant {
 pub struct TablerIcon {
     name: &'static str,
     svg: &'static str,
-    mask: &'static OnceLock<Vec<u8>>,
+    tree: &'static OnceLock<usvg::Tree>,
 }
 
 impl PartialEq for TablerIcon {
@@ -25,8 +25,16 @@ impl PartialEq for TablerIcon {
 
 impl Eq for TablerIcon {}
 
+#[derive(Clone, Copy, PartialEq)]
+struct RasterKey {
+    name: &'static str,
+    color: Color,
+    width: u32,
+    height: u32,
+}
+
 thread_local! {
-    static RASTERS: RefCell<VecDeque<(&'static str, Color, UiImage)>> = const {
+    static RASTERS: RefCell<VecDeque<(RasterKey, UiImage)>> = const {
         RefCell::new(VecDeque::new())
     };
 }
@@ -35,11 +43,11 @@ impl TablerIcon {
     pub fn named(name: &str, variant: IconVariant) -> Option<Self> {
         macro_rules! asset {
             ($folder:literal, $name:literal) => {{
-                static MASK: OnceLock<Vec<u8>> = OnceLock::new();
+                static TREE: OnceLock<usvg::Tree> = OnceLock::new();
                 Self {
                     name: concat!($folder, "/", $name),
                     svg: include_str!(concat!("../../assets/tabler/", $folder, "/", $name, ".svg")),
-                    mask: &MASK,
+                    tree: &TREE,
                 }
             }};
         }
@@ -57,6 +65,11 @@ impl TablerIcon {
             (IconVariant::Outline, "search") => asset!("outline", "search"),
             (IconVariant::Outline, "settings") => asset!("outline", "settings"),
             (IconVariant::Outline, "dots") => asset!("outline", "dots"),
+            (IconVariant::Outline, "layout-board") => asset!("outline", "layout-board"),
+            (IconVariant::Outline, "minus") => asset!("outline", "minus"),
+            (IconVariant::Outline, "picture-in-picture") => asset!("outline", "picture-in-picture"),
+            (IconVariant::Outline, "square") => asset!("outline", "square"),
+            (IconVariant::Outline, "squares") => asset!("outline", "squares"),
             (IconVariant::Outline, "x") => asset!("outline", "x"),
             _ => return None,
         })
@@ -72,46 +85,60 @@ impl TablerIcon {
 
     /// Render a theme-colored icon for use in custom display lists.
     pub fn image(self, color: Color) -> UiImage {
-        // A 24-unit icon has four samples per unit, including at fractional scales.
-        const SIDE: u32 = 96;
+        let mut image = self
+            .raster(color, 96, 96)
+            .expect("valid fallback icon size");
+        image.tabler = Some((self, color));
+        image
+    }
+
+    pub(crate) fn raster(self, color: Color, width: u32, height: u32) -> Option<UiImage> {
+        if !(1..=512).contains(&width) || !(1..=512).contains(&height) {
+            return None;
+        }
+        let key = RasterKey {
+            name: self.name,
+            color,
+            width,
+            height,
+        };
         RASTERS.with_borrow_mut(|cache| {
-            if let Some(index) = cache
-                .iter()
-                .position(|entry| (entry.0, entry.1) == (self.name, color))
-            {
+            if let Some(index) = cache.iter().position(|entry| entry.0 == key) {
                 let entry = cache.remove(index).unwrap();
-                let image = entry.2.clone();
+                let image = entry.1.clone();
                 cache.push_back(entry);
-                return image;
+                return Some(image);
             }
-            let mask = self.mask.get_or_init(|| {
-                let tree = usvg::Tree::from_str(self.svg, &usvg::Options::default())
-                    .expect("bundled Tabler SVG must parse");
-                let mut pixmap = tiny_skia::Pixmap::new(SIDE, SIDE).unwrap();
-                resvg::render(
-                    &tree,
-                    tiny_skia::Transform::from_scale(4.0, 4.0),
-                    &mut pixmap.as_mut(),
-                );
-                pixmap
-                    .data()
-                    .chunks_exact(4)
-                    .map(|pixel| pixel[3])
-                    .collect()
+            let tree = self.tree.get_or_init(|| {
+                // Use a one-unit outline on Tabler's 24-unit canvas.
+                let svg = self
+                    .svg
+                    .replace(r#"stroke-width="2""#, r#"stroke-width="1""#);
+                usvg::Tree::from_str(&svg, &usvg::Options::default())
+                    .expect("bundled Tabler SVG must parse")
             });
-            let pixels = mask
+            let mut pixmap = tiny_skia::Pixmap::new(width, height)?;
+            resvg::render(
+                tree,
+                tiny_skia::Transform::from_scale(width as f32 / 24.0, height as f32 / 24.0),
+                &mut pixmap.as_mut(),
+            );
+            let pixels = pixmap
+                .data()
+                .as_chunks::<4>()
+                .0
                 .iter()
-                .flat_map(|&coverage| {
-                    let alpha = ((u16::from(coverage) * u16::from(color.alpha) + 127) / 255) as u8;
+                .flat_map(|pixel| {
+                    let alpha = ((u16::from(pixel[3]) * u16::from(color.alpha) + 127) / 255) as u8;
                     [color.red, color.green, color.blue, alpha]
                 })
                 .collect();
-            let image = UiImage::from_rgba(SIDE, SIDE, pixels).unwrap();
+            let image = UiImage::from_rgba(width, height, pixels)?;
             if cache.len() == 64 {
                 cache.pop_front();
             }
-            cache.push_back((self.name, color, image.clone()));
-            image
+            cache.push_back((key, image.clone()));
+            Some(image)
         })
     }
 }
@@ -139,6 +166,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn outline_defaults_to_one_pixel_at_native_size() {
+        let plus = TablerIcon::named("plus", IconVariant::Outline).unwrap();
+        let raster = plus.raster(Color::TEXT, 96, 96).unwrap();
+        let vertical_coverage: u32 = (44..52)
+            .map(|row| u32::from(raster.pixels()[(row * 96 + 32) * 4 + 3]))
+            .sum();
+        assert_eq!(vertical_coverage, 4 * 255);
+    }
+
+    #[test]
     fn tabler_variants_render_distinct_cached_theme_colored_masks() {
         let outline = TablerIcon::named("bookmark", IconVariant::Outline).unwrap();
         let filled = TablerIcon::named("bookmark", IconVariant::Filled).unwrap();
@@ -150,13 +187,16 @@ mod tests {
         assert!(
             outline_image
                 .pixels()
-                .chunks_exact(4)
-                .any(|pixel| pixel == [10, 20, 30, 100])
+                .as_chunks::<4>()
+                .0
+                .contains(&[10, 20, 30, 100])
         );
         assert!(
             outline_image
                 .pixels()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] == 0)
         );
         let button = Element::tabler_button(1, 2, outline, "Add to Library");

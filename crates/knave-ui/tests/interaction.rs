@@ -2896,10 +2896,14 @@ fn application_content_insertion_point_precedes_modal_paint() {
     scene.open_popup(ElementId(10)).unwrap();
     let list = scene.display_list([400.0, 400.0], &mut Metrics).clone();
     let overlay_start = scene.overlay_start();
-    assert!(list.commands[..overlay_start].iter().any(
-        |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Editor")
-    ));
-    assert!(list.commands[overlay_start..].iter().any(
-        |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Dialog")
-    ));
+    assert!(
+        list.commands[..overlay_start].iter().any(
+            |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Editor")
+        )
+    );
+    assert!(
+        list.commands[overlay_start..].iter().any(
+            |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Dialog")
+        )
+    );
 }
