@@ -125,7 +125,9 @@ impl TablerIcon {
             );
             let pixels = pixmap
                 .data()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|pixel| {
                     let alpha = ((u16::from(pixel[3]) * u16::from(color.alpha) + 127) / 255) as u8;
                     [color.red, color.green, color.blue, alpha]
@@ -185,13 +187,16 @@ mod tests {
         assert!(
             outline_image
                 .pixels()
-                .chunks_exact(4)
-                .any(|pixel| pixel == [10, 20, 30, 100])
+                .as_chunks::<4>()
+                .0
+                .contains(&[10, 20, 30, 100])
         );
         assert!(
             outline_image
                 .pixels()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] == 0)
         );
         let button = Element::tabler_button(1, 2, outline, "Add to Library");
