@@ -1,5 +1,6 @@
 use super::*;
 use crate::{Border, CornerRadii, DisplayCommand, ShapePaint, TextStyle, TextWrap, Transform2D};
+use unicode_segmentation::UnicodeSegmentation;
 
 impl Scene {
     /// Reuses the previous display list when neither layout nor visual state changed.
@@ -57,7 +58,7 @@ impl Scene {
                 opacity_path.push(index);
             }
             self.stats.visible_elements += 1;
-            self.paint_node(i);
+            self.paint_node(i, text);
         }
         while opacity_path.pop().is_some() {
             self.list.commands.push(DisplayCommand::EndOpacity);
@@ -159,7 +160,7 @@ impl Scene {
         self.computed_style(self.nodes[index].element.id)
             .map_or(1.0, |style| style.style.opacity)
     }
-    fn paint_node(&mut self, i: usize) {
+    fn paint_node(&mut self, i: usize, text: &mut dyn TextMeasurer) {
         let node = &self.nodes[i];
         let e = &node.element;
         let b = node.bounds;
@@ -363,13 +364,15 @@ impl Scene {
                 );
                 self.list = list;
             }
-            Widget::Toast { label: value, .. } | Widget::Text(value) => text_cmd(
-                &mut self.list,
-                layout.insets().apply(b),
-                clip,
-                value.clone(),
-                style.text.clone(),
-            ),
+            Widget::Toast { label: value, .. } | Widget::Text(value) => {
+                let bounds = layout.insets().apply(b);
+                let value = if e.ellipsize {
+                    ellipsized_label(value, bounds, &style.text, text)
+                } else {
+                    value.clone()
+                };
+                text_cmd(&mut self.list, bounds, clip, value, style.text.clone());
+            }
             Widget::Paragraph(_) => self.list.commands.push(DisplayCommand::RichText {
                 bounds: layout.insets().apply(b),
                 spans: self.paragraph_spans(i),
@@ -1097,6 +1100,32 @@ fn shape(list: &mut DisplayList, bounds: Rect, clip: Option<Rect>, paint: ShapeP
         clip,
     });
 }
+fn ellipsized_label(
+    value: &str,
+    bounds: Rect,
+    style: &TextStyle,
+    measurer: &mut dyn TextMeasurer,
+) -> String {
+    let fits = |measurer: &mut dyn TextMeasurer, label: &str| {
+        let [width, height] = measurer.measure(label, style, bounds.width).size;
+        width <= bounds.width && height <= bounds.height
+    };
+    if value.is_empty() || fits(measurer, value) {
+        return value.to_owned();
+    }
+    if !fits(measurer, "…") {
+        return String::new();
+    }
+    let mut ends: Vec<_> = value
+        .grapheme_indices(true)
+        .map(|(offset, _)| offset)
+        .collect();
+    ends.push(value.len());
+    let candidate = |end| format!("{}…", value[..end].trim_end());
+    let count = ends.partition_point(|&end| fits(measurer, &candidate(end)));
+    candidate(ends[count - 1])
+}
+
 fn text_cmd(
     list: &mut DisplayList,
     bounds: Rect,
