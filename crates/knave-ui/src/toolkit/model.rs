@@ -571,6 +571,8 @@ pub struct Element {
     pub paint_surface: bool,
     pub children: Vec<Element>,
     pub tooltip: Option<String>,
+    /// Fit a text label to its box with a trailing ellipsis when it overflows.
+    pub ellipsize: bool,
     /// None selects the widget default; explicit shapes also apply to its passive children.
     pub cursor: Option<CursorShape>,
     /// Pointer drags from this element start an application drag-and-drop gesture.
@@ -611,6 +613,7 @@ impl Element {
             paint_surface: true,
             children: Vec::new(),
             tooltip: None,
+            ellipsize: false,
             cursor: None,
             drag_source: None,
             drop_target: None,
