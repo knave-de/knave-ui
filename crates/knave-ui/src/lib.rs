@@ -31,6 +31,7 @@ pub struct UiImage {
     width: u32,
     height: u32,
     pixels: Arc<[u8]>,
+    tabler: Option<(toolkit::TablerIcon, Color)>,
 }
 
 impl UiImage {
@@ -45,6 +46,7 @@ impl UiImage {
             width,
             height,
             pixels: Arc::from(pixels.into_boxed_slice()),
+            tabler: None,
         })
     }
 
@@ -58,6 +60,13 @@ impl UiImage {
 
     pub fn pixels(&self) -> &[u8] {
         &self.pixels
+    }
+
+    /// Rerasterize a scalable icon at its device-pixel dimensions.
+    /// Bitmap images return `None` and retain their original sampling behavior.
+    pub fn rasterize_icon(&self, width: u32, height: u32) -> Option<Self> {
+        let (icon, color) = self.tabler?;
+        icon.raster(color, width, height)
     }
 
     pub fn cache_key(&self) -> usize {

@@ -304,7 +304,6 @@ impl ImagePass {
             else {
                 continue;
             };
-            let key = ImageKey::new(image);
             if !bounds.is_finite_positive()
                 || !transform_is_finite(*transform)
                 || !transform
@@ -313,6 +312,25 @@ impl ImagePass {
             {
                 continue;
             }
+            let (mut bounds, uv) = fitted_geometry(*bounds, image, *style);
+            if !bounds.is_finite_positive()
+                || !transform.transform_rect_bounds(bounds).is_finite_positive()
+                || !uv.iter().all(|value| value.is_finite())
+            {
+                continue;
+            }
+            let raster = if uv == [0.0, 0.0, 1.0, 1.0] {
+                pixel_aligned_icon(bounds, *transform, image)
+            } else {
+                None
+            };
+            let image = if let Some((aligned, raster)) = &raster {
+                bounds = *aligned;
+                raster
+            } else {
+                image
+            };
+            let key = ImageKey::new(image);
             let Some(image_bytes) = (image.width() as usize)
                 .checked_mul(image.height() as usize)
                 .and_then(|pixels| pixels.checked_mul(4))
@@ -332,13 +350,6 @@ impl ImagePass {
                 frame_resources.insert(key, Arc::clone(&resource));
                 resource
             };
-            let (bounds, uv) = fitted_geometry(*bounds, image, *style);
-            if !bounds.is_finite_positive()
-                || !transform.transform_rect_bounds(bounds).is_finite_positive()
-                || !uv.iter().all(|value| value.is_finite())
-            {
-                continue;
-            }
             let instance_index = instances.len();
             instances.push(ImageInstance {
                 bounds: [bounds.x, bounds.y, bounds.width, bounds.height],
@@ -425,6 +436,28 @@ impl ImagePass {
         let index = instance_index as u32;
         pass.draw(0..6, index..index + 1);
     }
+}
+
+fn pixel_aligned_icon(
+    bounds: Rect,
+    transform: Transform2D,
+    image: &UiImage,
+) -> Option<(Rect, UiImage)> {
+    if transform.b != 0.0 || transform.c != 0.0 || transform.a <= 0.0 || transform.d <= 0.0 {
+        return None;
+    }
+    let width = (bounds.width * transform.a).round();
+    let height = (bounds.height * transform.d).round();
+    let raster = image.rasterize_icon(width as u32, height as u32)?;
+    let x = ((bounds.x + bounds.width * 0.5) * transform.a + transform.tx - width * 0.5).round();
+    let y = ((bounds.y + bounds.height * 0.5) * transform.d + transform.ty - height * 0.5).round();
+    let aligned = Rect::new(
+        (x - transform.tx) / transform.a,
+        (y - transform.ty) / transform.d,
+        width / transform.a,
+        height / transform.d,
+    );
+    Some((aligned, raster))
 }
 
 impl ImageCache {
@@ -594,6 +627,28 @@ mod tests {
             vec![255; width as usize * height as usize * 4],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn icons_rasterize_and_align_at_fractional_display_scales() {
+        use knave_ui::{
+            Color,
+            toolkit::{IconVariant, TablerIcon},
+        };
+        let icon = TablerIcon::named("books", IconVariant::Outline)
+            .unwrap()
+            .image(Color::TEXT);
+        let bounds = Rect::new(3.5, 8.25, 22.0, 22.0);
+        let scale = Transform2D::scale(1.25, 1.25);
+        let (aligned, raster) = pixel_aligned_icon(bounds, scale, &icon).unwrap();
+        let device = scale.transform_rect_bounds(aligned);
+        assert_eq!((raster.width(), raster.height()), (28, 28));
+        assert!((device.x - device.x.round()).abs() < 0.001);
+        assert!((device.y - device.y.round()).abs() < 0.001);
+        assert!((device.width - 28.0).abs() < 0.001);
+        let (_, repeat) = pixel_aligned_icon(bounds, scale, &icon).unwrap();
+        assert_eq!(raster.cache_key(), repeat.cache_key());
+        assert!(pixel_aligned_icon(bounds, scale, &image(96, 96)).is_none());
     }
 
     #[test]
