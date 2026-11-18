@@ -80,3 +80,12 @@ See [renderer architecture](docs/architecture/renderer-foundation.md),
 The [component catalog](docs/architecture/widget-catalog.md) documents shared
 widgets, keyboard/selection contracts and semantic snapshots. See the
 [theme selector reference](docs/architecture/theme-selectors.md) for CSS coverage.
+
+## Current limitations
+
+The toolkit provides scene-level accessibility semantics for host applications
+to adapt; it does not install an operating-system accessibility bridge. Widget
+styles do not support general CSS transitions or animated interpolation when
+styles or layout change. Scene-owned feedback animation (such as progress
+indicators) and toast timing are supported. Desktop presentation, input and
+accessibility integration are responsibilities of the host application.

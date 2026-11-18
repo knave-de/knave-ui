@@ -154,7 +154,7 @@ impl Scene {
             Widget::SceneSnapshot(snapshot) => snapshot.size(),
             Widget::Separator => [1.0, 1.0],
             Widget::Image(..) => [64.0, 64.0],
-            Widget::Icon(_) => [24.0, 24.0],
+            Widget::Icon(_) | Widget::TablerIcon(_) => [24.0, 24.0],
             Widget::Panel | Widget::Scroll | Widget::Popup { .. } => [0.0, 0.0],
             _ => [120.0, 36.0],
         };

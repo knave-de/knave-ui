@@ -101,7 +101,7 @@ Enter navigate/select them while clipboard and caret editing remain available.
 | Checked/unchecked/mixed/selected/expanded/invalid/loading | Real widget values and semantic state; dedicated alternate-state references and live samples |
 | Modal | Tab trap, Escape/outside dismissal, command filtering/activation, opener restoration |
 | Long text/narrow layouts | Shared wrapping/clipping and constrained-width samples |
-| Scaling | Logical coordinates; host scales input/paint together; fractional output scaling remains an external runtime check |
+| Scaling | Logical coordinates; host scales input/paint together, including fractional output scales |
 | Keyboard only | Roving groups, retained page state, disabled/hidden exclusion and modal traversal |
 | Light/high contrast | Light and dark palettes, high-contrast and monochrome policies and elevation tokens are available |
 
@@ -109,10 +109,13 @@ Enter navigate/select them while clipboard and caret editing remain available.
 measurer. The public snapshot widget renders it through the common painter;
 there is no gallery-only implementation of hover or pressed paint.
 
-Feedback uses monotonic scene time. Visible, focused-window animations request
-50 ms deadlines; scenes without active feedback sleep. Toasts pause on hover,
-keyboard focus, hidden pages and window focus loss. Lifetime and dismissal belong
-to the scene; applications can dismiss or restart a toast explicitly.
+Feedback uses monotonic scene time. Visible, focused-window feedback animations
+request 50 ms deadlines; scenes without active feedback sleep. This covers
+feedback such as progress indicators and toast lifetimes, not general CSS
+transitions or animated interpolation when widget styles or layout change.
+Toasts pause on hover, keyboard focus, hidden pages and window focus loss.
+Lifetime and dismissal belong to the scene; applications can dismiss or restart
+a toast explicitly.
 
 ## Bounds, compatibility and verification
 
@@ -136,7 +139,7 @@ back the coordinated revisions together.
 Tests cover typed effects, disabled/hidden exclusion, group traversal, password
 privacy, multiline caret metrics, validation, split cancellation, accordion focus,
 virtualized end-of-list navigation, tree expansion, sorting, command-palette
-restoration and feedback deadlines. Runtime verification must additionally
-exercise actual wheel direction, fractional scaling, painting and idle behavior;
-nested software-rendered evidence does not establish physical input preferences
-or direct-TTY/hardware-GPU behavior.
+restoration and feedback deadlines. `Scene::accessibility()` exposes semantic
+nodes for a host to adapt; this toolkit does not itself install an operating
+system accessibility bridge. Desktop presentation and input behavior are owned
+by the host application and display server.

@@ -2887,3 +2887,19 @@ fn explicit_layout_border_edges_are_retained_and_validated() {
     item.layout.border_edges.top = -1.0;
     assert!(Scene::new(item).is_err());
 }
+
+#[test]
+fn application_content_insertion_point_precedes_modal_paint() {
+    let popup = leaf(10, Widget::Popup { modal: true })
+        .children(vec![leaf(11, Widget::Text("Dialog".into()))]);
+    let mut scene = scene(vec![leaf(1, Widget::Text("Editor".into())), popup]);
+    scene.open_popup(ElementId(10)).unwrap();
+    let list = scene.display_list([400.0, 400.0], &mut Metrics).clone();
+    let overlay_start = scene.overlay_start();
+    assert!(list.commands[..overlay_start].iter().any(
+        |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Editor")
+    ));
+    assert!(list.commands[overlay_start..].iter().any(
+        |command| matches!(command, DisplayCommand::Text { text, .. } if text == "Dialog")
+    ));
+}

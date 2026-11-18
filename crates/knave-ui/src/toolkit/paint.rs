@@ -19,6 +19,7 @@ impl Scene {
             .unwrap_or(Color::BACKGROUND);
         self.stats.visible_elements = 0;
         let order = self.order.clone();
+        let mut overlay_start = None;
         let mut opacity_path = Vec::new();
         for i in order {
             if self.nodes[i].clip.is_none() {
@@ -44,6 +45,11 @@ impl Scene {
                 opacity_path.pop();
                 self.list.commands.push(DisplayCommand::EndOpacity);
             }
+            if overlay_start.is_none()
+                && matches!(self.nodes[i].element.widget, Widget::Popup { .. })
+            {
+                overlay_start = Some(self.list.commands.len());
+            }
             for index in path.into_iter().skip(common) {
                 self.list.commands.push(DisplayCommand::BeginOpacity {
                     opacity: self.opacity(index),
@@ -56,6 +62,7 @@ impl Scene {
         while opacity_path.pop().is_some() {
             self.list.commands.push(DisplayCommand::EndOpacity);
         }
+        self.overlay_start = overlay_start.unwrap_or(self.list.commands.len());
         self.paint_menu();
         Self::paint_drag_ghost(self, text);
         if self.menu.is_none()
@@ -116,6 +123,12 @@ impl Scene {
         self.stats.paints += 1;
         &self.list
     }
+    /// Insertion index for application content in the last display list, below
+    /// popups, menus, drag previews, and tooltips.
+    pub fn overlay_start(&self) -> usize {
+        self.overlay_start
+    }
+
     /// Shadows are decoration outside the box, so ordinary content clipping
     /// does not cut them off; scroll views and explicit bounds clips still do.
     /// The reach stays anchored to the visible part of the caster.
@@ -283,7 +296,29 @@ impl Scene {
         let text_area = label_content(b, layout);
         let mut label = None;
         match &e.widget {
-            Widget::Icon(icon) => {
+            Widget::Icon(_) | Widget::TablerIcon(_) => {
+                let image = match &e.widget {
+                    Widget::Icon(icon) => icon.image.clone(),
+                    Widget::TablerIcon(icon) => {
+                        let mut color = node
+                            .parent
+                            .filter(|&parent| {
+                                self.nodes[parent].element.button_variant
+                                    == Some(ButtonVariant::Icon)
+                            })
+                            .and_then(|parent| self.computed_style(self.nodes[parent].element.id))
+                            .map_or(style.text.color, |parent| parent.style.text.color);
+                        if state.disabled
+                            || node
+                                .parent
+                                .is_some_and(|parent| !self.nodes[parent].element.enabled)
+                        {
+                            color = self.theme_color("--text-disabled").unwrap_or(color);
+                        }
+                        icon.image(color)
+                    }
+                    _ => unreachable!(),
+                };
                 let size = b.width.min(b.height);
                 self.list.commands.push(DisplayCommand::Image {
                     bounds: Rect::new(
@@ -292,7 +327,7 @@ impl Scene {
                         size,
                         size,
                     ),
-                    image: icon.image.clone(),
+                    image,
                     style: crate::ImageStyle::default(),
                     transform: Transform2D::IDENTITY,
                     clip,

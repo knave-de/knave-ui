@@ -861,7 +861,7 @@ fn known_selector(name: &str) -> bool {
 fn widget_name(w: &Widget) -> &'static str {
     match w {
         Widget::Panel => "panel",
-        Widget::Icon(_) => "icon",
+        Widget::Icon(_) | Widget::TablerIcon(_) => "icon",
         Widget::SceneSnapshot(_) => "scene-snapshot",
         Widget::Pagination { .. } => "pagination",
         Widget::ColorSwatch(_) => "color-swatch",

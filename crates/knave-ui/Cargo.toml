@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Renderer-independent UI scene and interaction primitives for Knave"
 [dependencies]
 unicode-segmentation = "1.12"
+resvg = { version = "0.45", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { version = "1", features = ["fs", "event", "pipe"] }
