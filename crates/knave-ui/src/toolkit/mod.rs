@@ -4,6 +4,8 @@ mod collection_paint;
 mod color_picker;
 mod combo;
 mod components;
+mod icons;
+pub use icons::{IconVariant, TablerIcon};
 mod context_menu;
 mod css;
 use css::Stylesheet;
@@ -108,6 +110,7 @@ pub struct Scene {
     layout_dirty: bool,
     paint_dirty: bool,
     list: DisplayList,
+    overlay_start: usize,
     stats: SceneStats,
     pub inspect: bool,
 }
@@ -379,6 +382,7 @@ impl Scene {
             layout_dirty: true,
             paint_dirty: true,
             list: DisplayList::default(),
+            overlay_start: 0,
             stats: SceneStats::default(),
             inspect: false,
         };

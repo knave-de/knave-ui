@@ -329,6 +329,7 @@ impl Slider {
 pub enum Widget {
     Panel,
     Icon(super::Icon),
+    TablerIcon(super::TablerIcon),
     SceneSnapshot(super::SceneSnapshot),
     Pagination {
         page: usize,

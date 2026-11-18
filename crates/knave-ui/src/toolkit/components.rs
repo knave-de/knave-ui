@@ -70,6 +70,7 @@ impl Element {
     pub fn icon_button(id: u64, image_id: u64, icon: &Icon) -> Self {
         let mut result = Self::action_button(id, "", ButtonVariant::Icon);
         result.semantics.name = Some(icon.name.clone());
+        result.tooltip = Some(icon.name.clone());
         result.layout.flow = Flow::Overlay;
         result.layout.align = Align::Center;
         // The image is passive: hit testing and focus resolve to the button.
